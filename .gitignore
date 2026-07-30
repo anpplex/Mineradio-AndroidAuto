@@ -65,3 +65,10 @@ tmp/
 *.png.tmp
 verification/
 screenshots/
+
+# Local Android-car reverse-build inputs, tools, keys, and outputs.
+.tools/
+Mineradio_*.apk
+android-car/tools/
+android-car/.signing/
+android-car/out/
