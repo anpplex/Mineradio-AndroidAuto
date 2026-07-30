@@ -32,39 +32,62 @@
 
 ## 华为 Android 12 实车安装
 
-1. 确认目标是 64 位 ARM：
+该车机的普通 `adb install` 会被 HMI 的安装确认页拒绝（`INSTALL_FAILED_ABORTED: User rejected permissions`）。请使用仓库内按 Lyra 验证过的安装逻辑：APK 先 push 到 shell 临时目录，暂时停用 `PackageInstaller`，以 `com.huawei.appinstaller.car` 身份对车机用户 12 调用 `pm install`，再恢复 `PackageInstaller` 原先的启用/停用状态。
+
+> 这个流程只用于用户已授权的开发车机；不会修改系统分区、绕过 Android 签名校验，且不向 `upstream` 推送任何内容。
+
+1. 确认设备型号、Android 版本与 ABI：
 
    ```sh
-   adb shell getprop ro.build.version.release
-   adb shell getprop ro.product.cpu.abilist
+   adb -s LD249H019625 shell getprop ro.build.version.release
+   adb -s LD249H019625 shell getprop ro.product.cpu.abilist
    ```
 
-   预期 Android 版本为 `12`，并且 ABI 列表包含 `arm64-v8a`。此 APK 不含 32 位 `armeabi-v7a` 或 x86 native libraries。
+   已实测目标为 Huawei `ICHU3200E15-ADV`、Android 12（API 31）、`arm64-v8a`、1920×1080，车机应用用户为 `12`。适配 APK 的 ABI 与该设备匹配。
 
-2. 由于适配包使用本机生成的新签名证书，如车机已安装同包名 `com.mineradio.app`、但签名证书不同的版本，先在车机上卸载旧版本：
+2. 安装并以真正的全屏窗口启动：
 
    ```sh
-   adb uninstall com.mineradio.app
+   ./android-car/scripts/install-huawei-car.sh LD249H019625 \
+     ./android-car/out/Mineradio-1.1.7.0-huawei-android12-car.apk
    ```
 
-3. 安装：
+   脚本默认用户是 `12`，可在**确认目标用户正确**时覆盖：
 
    ```sh
-   adb install /absolute/path/to/Mineradio-1.1.7.0-huawei-android12-car.apk
+   TARGET_USER=12 ./android-car/scripts/install-huawei-car.sh <serial> <apk-path>
    ```
 
-4. 首次运行后，在系统设置中允许：
-   - 音乐与音频文件读取权限；
-   - 若需要访问 U 盘或共享存储根目录，允许“所有文件访问”；
-   - 若播放在熄屏/休眠后被系统终止，将应用加入电池优化白名单。
-
-5. 如车机 Launcher 未显示图标，先验证明确组件启动：
+   关键安装命令等同于：
 
    ```sh
-   adb shell am start -n com.mineradio.app/.LandscapeWebActivity
+   pm install -r -d -g -t -i com.huawei.appinstaller.car --user 12 \
+     /data/local/tmp/Mineradio-1.1.7.0-huawei-android12-car.apk
    ```
 
-   能启动但未显示图标时，问题在 OEM Launcher 的第三方应用显示策略，不应通过修改系统分区或伪造系统签名处理。
+   它会在退出时删除临时 APK，并在成功或失败时恢复 `com.android.packageinstaller` 在 user 12 和 user 0 的**原始状态**。
+
+3. 如只需重新验证全屏启动，不需再安装：
+
+   ```sh
+   adb -s LD249H019625 shell am force-stop --user 12 com.mineradio.app
+   adb -s LD249H019625 shell am start --user 12 --windowingMode 1 -W \
+     -n com.mineradio.app/.LandscapeWebActivity
+   ```
+
+   直接启动时华为 HMI 可能将应用放到 `hwMultiwindow-secondary` 的右侧区域；先停止应用并指定 `--windowingMode 1` 已在该实车验证为 1920×1080 全屏窗口。
+
+### 已完成的实车验证（2026-07-30）
+
+- Lyra 安装逻辑安装到 user 12 成功；`pm path`、版本 `1.1.7.0`/`4107000` 和 installer `com.huawei.appinstaller.car` 均已核验。
+- `LandscapeWebActivity` 已启动为 resumed 的全屏窗口；通过 ADB 点击启动页后进入 Mineradio 主界面。
+- 运行日志未发现 `FATAL EXCEPTION` 或 `ANR in com.mineradio.app`。
+
+### 尚未通过的验收项
+
+不要将以下项目表述为已兼容：OEM Launcher 的图标发现/默认窗口策略、本地音乐或 U 盘扫描、音频焦点/蓝牙媒体通道、熄屏/ACC/休眠恢复、后台播放。
+
+实车日志已显示 Android 12 拒绝创建共享存储顶级目录 `SPICaMusic`；安装和主界面不受此项影响，但本地音乐扫描仍需插入含音乐文件的 U 盘后单独验收。
 
 ## 复现构建
 
