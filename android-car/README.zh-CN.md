@@ -84,6 +84,13 @@
 
    它会在退出时删除临时 APK，并在成功或失败时恢复 `com.android.packageinstaller` 在 user 12 和 user 0 的**原始状态**。
 
+   如果旧包的签名密钥已永久不可用，只能做**会清除 user 12 应用数据、登录态和设置**的干净重装；必须显式确认，默认安装流程绝不会卸载旧包：
+
+   ```sh
+   CLEAN_REINSTALL=1 ALLOW_DATA_LOSS_REINSTALL=YES TARGET_USER=12 \
+     ./android-car/scripts/install-huawei-car.sh LD249H019625 <newly-signed-apk>
+   ```
+
 3. 如只需重新验证全屏启动，不需再安装：
 
    ```sh

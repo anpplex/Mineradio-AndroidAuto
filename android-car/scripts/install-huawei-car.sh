@@ -8,6 +8,8 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 APK="${2:-$ROOT/android-car/out/Mineradio-1.1.7.0-huawei-android12-car.apk}"
 ADB="${ADB:-adb}"
 TARGET_USER="${TARGET_USER:-12}"
+CLEAN_REINSTALL="${CLEAN_REINSTALL:-0}"
+ALLOW_DATA_LOSS_REINSTALL="${ALLOW_DATA_LOSS_REINSTALL:-}"
 PACKAGE="com.mineradio.app"
 ACTIVITY="$PACKAGE/.LandscapeWebActivity"
 INSTALLER="com.huawei.appinstaller.car"
@@ -18,6 +20,15 @@ if [[ ! -f "$APK" ]]; then
   echo "APK missing: $APK" >&2
   echo "Build it first, or pass the APK as the second argument." >&2
   exit 1
+fi
+
+if [[ "$CLEAN_REINSTALL" != "0" && "$CLEAN_REINSTALL" != "1" ]]; then
+  echo "CLEAN_REINSTALL must be 0 or 1." >&2
+  exit 64
+fi
+if [[ "$CLEAN_REINSTALL" == "1" && "$ALLOW_DATA_LOSS_REINSTALL" != "YES" ]]; then
+  echo "Refusing destructive reinstall. Set ALLOW_DATA_LOSS_REINSTALL=YES after backing up and accepting data loss." >&2
+  exit 64
 fi
 
 if [[ "$("$ADB" -s "$SERIAL" get-state)" != "device" ]]; then
@@ -77,6 +88,11 @@ fi
 if [[ "$SYSTEM_INSTALLER_STATE" == "enabled" ]]; then
   "$ADB" -s "$SERIAL" shell pm disable-user --user 0 "$PACKAGE_INSTALLER"
   SYSTEM_INSTALLER_CHANGED=1
+fi
+
+if [[ "$CLEAN_REINSTALL" == "1" ]]; then
+  echo "=== destructive clean reinstall: removing $PACKAGE data for user $TARGET_USER ===" >&2
+  "$ADB" -s "$SERIAL" shell pm uninstall --user "$TARGET_USER" "$PACKAGE"
 fi
 
 "$ADB" -s "$SERIAL" shell pm install -r -d -g -t \

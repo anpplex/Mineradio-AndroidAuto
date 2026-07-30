@@ -75,3 +75,45 @@ esac
   assert.match(calls, /<shell> <pm> <disable-user> <--user> <0> <com\.android\.packageinstaller>/);
   assert.match(calls, /<shell> <pm> <enable> <--user> <12> <com\.android\.packageinstaller>/);
 });
+
+test('Huawei installer requires an explicit data-loss confirmation for a clean reinstall', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mineradio-car-clean-reinstall-'));
+  const apk = path.join(tmp, 'Mineradio.apk');
+  const adb = path.join(tmp, 'fake-adb');
+  const log = path.join(tmp, 'adb.log');
+  fs.writeFileSync(apk, 'not-a-real-apk');
+  fs.writeFileSync(adb, `#!/usr/bin/env bash
+set -euo pipefail
+{ printf 'adb'; for arg in "$@"; do printf ' <%s>' "$arg"; done; printf '\n'; } >> "$FAKE_ADB_LOG"
+case " $* " in
+  *' get-state '*) echo device ;;
+esac
+`);
+  fs.chmodSync(adb, 0o755);
+
+  const rejected = spawnSync('bash', [script, 'TEST-SERIAL', apk], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, ADB: adb, FAKE_ADB_LOG: log, CLEAN_REINSTALL: '1' },
+  });
+  assert.equal(rejected.status, 64, `${rejected.stdout}\n${rejected.stderr}`);
+  assert.match(rejected.stderr, /Refusing destructive reinstall/);
+  assert.equal(fs.existsSync(log), false);
+
+  const accepted = spawnSync('bash', [script, 'TEST-SERIAL', apk], {
+    cwd: root,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      ADB: adb,
+      FAKE_ADB_LOG: log,
+      CLEAN_REINSTALL: '1',
+      ALLOW_DATA_LOSS_REINSTALL: 'YES',
+    },
+  });
+  assert.equal(accepted.status, 0, `${accepted.stdout}\n${accepted.stderr}`);
+  const calls = fs.readFileSync(log, 'utf8');
+  assert.match(calls, /<shell> <pm> <uninstall> <--user> <12> <com\.mineradio\.app>/);
+  assert.match(calls, /<shell> <pm> <install> <-r> <-d> <-g> <-t>/);
+  assert.ok(calls.indexOf('<shell> <pm> <uninstall>') < calls.indexOf('<shell> <pm> <install>'));
+});
