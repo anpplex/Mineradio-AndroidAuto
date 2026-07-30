@@ -46,14 +46,17 @@ restore_package_installer() {
 
 TARGET_INSTALLER_STATE="$(package_installer_state "$TARGET_USER")"
 SYSTEM_INSTALLER_STATE="$(package_installer_state 0)"
-INSTALLER_STATE_CHANGED=0
+TARGET_INSTALLER_CHANGED=0
+SYSTEM_INSTALLER_CHANGED=0
 
 cleanup() {
   local exit_code=$?
   trap - EXIT
   set +e
-  if [[ "$INSTALLER_STATE_CHANGED" == "1" ]]; then
+  if [[ "$TARGET_INSTALLER_CHANGED" == "1" ]]; then
     restore_package_installer "$TARGET_USER" "$TARGET_INSTALLER_STATE"
+  fi
+  if [[ "$SYSTEM_INSTALLER_CHANGED" == "1" ]]; then
     restore_package_installer 0 "$SYSTEM_INSTALLER_STATE"
   fi
   "$ADB" -s "$SERIAL" shell rm -f "$REMOTE_APK" >/dev/null
@@ -69,11 +72,12 @@ echo "=== install $PACKAGE on $SERIAL (user $TARGET_USER) ==="
 
 if [[ "$TARGET_INSTALLER_STATE" == "enabled" ]]; then
   "$ADB" -s "$SERIAL" shell pm disable-user --user "$TARGET_USER" "$PACKAGE_INSTALLER"
+  TARGET_INSTALLER_CHANGED=1
 fi
 if [[ "$SYSTEM_INSTALLER_STATE" == "enabled" ]]; then
   "$ADB" -s "$SERIAL" shell pm disable-user --user 0 "$PACKAGE_INSTALLER"
+  SYSTEM_INSTALLER_CHANGED=1
 fi
-INSTALLER_STATE_CHANGED=1
 
 "$ADB" -s "$SERIAL" shell pm install -r -d -g -t \
   -i "$INSTALLER" --user "$TARGET_USER" "$REMOTE_APK"
@@ -82,7 +86,8 @@ INSTALLER_STATE_CHANGED=1
 # Restore the original PackageInstaller state before executing the app.
 restore_package_installer "$TARGET_USER" "$TARGET_INSTALLER_STATE"
 restore_package_installer 0 "$SYSTEM_INSTALLER_STATE"
-INSTALLER_STATE_CHANGED=0
+TARGET_INSTALLER_CHANGED=0
+SYSTEM_INSTALLER_CHANGED=0
 
 # The Huawei HMI can otherwise place third-party apps in its secondary pane.
 "$ADB" -s "$SERIAL" shell am force-stop --user "$TARGET_USER" "$PACKAGE"

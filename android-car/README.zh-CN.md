@@ -10,6 +10,21 @@
 - `LandscapeWebActivity` 显式设为 `exported=true`，满足 Android 12 对带 Intent filter 组件的要求。
 - 所有声明为 portrait 的 Activity manifest 方向改为 landscape；应用声明为 `resizeableActivity=true`，更适合非手机比例的中控/副屏。
 - 保留原 APK 的包名、媒体播放服务、存储权限、`arm64-v8a` 原生库和应用资源；不触碰应用逻辑、音频服务或网络接口。
+- 解包后的 `assets/mineradio/index.html` 与新建 `car-hmi.css` 会按原 APK 的 `MENC + IV + AES-256-CBC` 资源格式重新加密；不依赖明文资源落入最终 APK。
+
+## 车机 HMI overlay
+
+车机 HMI overlay 面向已实测的 Huawei `ICHU3200E15-ADV`、Android 12、**1920×1080 横屏**环境。它是本项目的可读性与触控目标，**不是华为 OEM 官方认证或强制尺寸规范**。
+
+- 生效下限：可用横向宽度 `1548px`、高度 `540px`。首页双栏最小宽度为 `560 + 820 + 24 = 1404px`，并预留左右安全边距；因此不在较窄横屏上强行套用双栏，避免 960–1547px 宽度下溢出。
+- 布局：内容与底栏最大宽度 `1680px`，四周以 `16 / 24 / 32 / 48px` 作为基础间距。
+- 触控：常规操作最小 `72×72px`；播放/暂停主操作为 `96×96px`。
+- 字体：搜索与主播放信息 `24px`，首页卡片标题 `28px`，最近播放标题 `34px`，艺人和次级内容 `20px`。
+- 驾驶态优先：首页大卡片、搜索、最近播放、上一首/播放/下一首/队列优先；粒子背景降低并关闭首页卡片漂浮动画；桌面低频播放控件在车机底栏中隐藏。
+- 登录：新增固定的“网易云扫码登录”入口，仅调用原页面已有的 `showLoginModal()`；不会绕过认证、伪造登录或处理账号凭据。
+- 焦点：触摸外的键盘/旋钮焦点使用高对比描边；真实车机的方向键、旋钮焦点路径仍需实机验收。
+
+当前静态验证已覆盖 MENC 加解密回环、HTML/CSS 注入幂等、登录入口和关键 HMI token。已安装的旧适配包只验证了启动基线；**当前 HMI overlay 尚未完成真车界面验收**。
 
 ## 当前产物
 
@@ -26,9 +41,11 @@
 2. APK v2/v3 签名有效性（`apksigner verify --verbose`）；
 3. 唯一启动入口是 `com.mineradio.app.LandscapeWebActivity`；
 4. manifest 含 `android.intent.category.CAR_LAUNCHER`；
-5. application 含 `android:resizeableActivity="true"`。
+5. application 含 `android:resizeableActivity="true"`；
+6. HMI HTML/CSS overlay 的 MENC 加密资源可被解密回读，且登录入口注入幂等；
+7. 新 APK 必须以与车机现有 `com.mineradio.app` 相同的证书签名，才允许覆盖安装。
 
-当前没有连接到真实华为车机，因此**尚未完成实车安装、触控、音频焦点、休眠恢复或 U 盘扫描验证**。
+已完成的是既有横屏适配包的实车安装与启动基线验证；当前 HMI overlay 尚未在车机屏幕上完成触控、焦点、音频焦点、休眠恢复或 U 盘扫描验收。
 
 ## 华为 Android 12 实车安装
 
@@ -91,13 +108,21 @@
 
 ## 复现构建
 
-依赖：JDK 17+、Android build-tools（含 `aapt` 与 `apksigner`）、APKTool `2.11.1`。
+依赖：JDK 17+、Android build-tools（含 `aapt` 与 `apksigner`）、APKTool 3.0.2（已做静态资源验证）。签名密钥必须是现有车机包使用的密钥；构建脚本**不会**自动生成新证书。
 
 ```sh
 export JAVA_HOME=/path/to/jdk
-export APKTOOL_JAR=/absolute/path/to/apktool_2.11.1.jar
-export MINERADIO_CAR_KEYSTORE_PASSWORD='choose-a-local-secret'
+export APKTOOL_JAR=/absolute/path/to/apktool_3.0.2.jar
+export ANDROID_BUILD_TOOLS="$HOME/Library/Android/sdk/build-tools/35.0.0"
+# 仅在本机安全注入已有车机适配包的 keystore 密码；不要把密码写入脚本、Git 或终端历史。
+export MINERADIO_CAR_KEYSTORE_PASSWORD='...'
 ./android-car/scripts/build-car-apk.sh /absolute/path/to/Mineradio_1.1.7.0.apk
 ```
 
-构建签名密钥保存在 `android-car/.signing/`，已被 Git 忽略。请安全备份该密钥；丢失它后，后续适配包将无法作为当前适配包的覆盖更新安装。
+构建前需核对 `android-car/.signing/mineradio-car.jks` 的 `mineradio-car` 别名证书 SHA-256 是否为：
+
+```text
+6A:57:CF:A1:88:D8:70:4D:B6:E7:C8:4A:87:3F:57:B1:1E:DF:B3:34:53:A2:36:BA:3A:9C:32:7B:69:C5:7B:D9
+```
+
+如果证书不匹配、keystore 缺失或密码不可用，停止构建/安装；不得卸载现有包来规避签名不匹配，因为这可能清除应用数据、登录态和设置。`android-car/.signing/`、`android-car/out/`、`android-car/verification/` 均被 Git 忽略，不能提交 APK、JKS、密码、截图、Cookie 或令牌。

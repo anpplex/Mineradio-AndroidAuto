@@ -11,16 +11,15 @@ if [[ -z "$INPUT_APK" || ! -f "$INPUT_APK" ]]; then
 fi
 
 JAVA_BIN="${JAVA_HOME:+$JAVA_HOME/bin/}java"
-KEYTOOL="${KEYTOOL:-${JAVA_HOME:+$JAVA_HOME/bin/}keytool}"
-if ! command -v "$JAVA_BIN" >/dev/null 2>&1 || ! command -v "$KEYTOOL" >/dev/null 2>&1; then
+if ! command -v "$JAVA_BIN" >/dev/null 2>&1; then
   echo "Java 17+ is required. Set JAVA_HOME to a JDK installation." >&2
   exit 69
 fi
 
-APKTOOL_JAR="${APKTOOL_JAR:-$PROJECT_DIR/android-car/tools/apktool_2.11.1.jar}"
+APKTOOL_JAR="${APKTOOL_JAR:-$PROJECT_DIR/android-car/tools/apktool_3.0.2.jar}"
 if [[ ! -f "$APKTOOL_JAR" ]]; then
   echo "Missing APKTool: $APKTOOL_JAR" >&2
-  echo "Download apktool_2.11.1.jar and pass APKTOOL_JAR=/path/to/apktool.jar." >&2
+  echo "Download apktool_3.0.2.jar and pass APKTOOL_JAR=/path/to/apktool.jar." >&2
   exit 69
 fi
 
@@ -48,35 +47,29 @@ if [[ -z "$VERSION_NAME" ]]; then
   exit 65
 fi
 
+if [[ ! -f "$KEYSTORE" ]]; then
+  echo "Missing car signing keystore: $KEYSTORE" >&2
+  echo "Refusing to generate a new certificate because it cannot update an existing car install." >&2
+  exit 66
+fi
+
 OUTPUT_DIR="${OUTPUT_DIR:-$PROJECT_DIR/android-car/out}"
-mkdir -p "$OUTPUT_DIR" "$(dirname "$KEYSTORE")"
+mkdir -p "$OUTPUT_DIR"
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/mineradio-car.XXXXXX")"
 trap 'rm -rf "$WORK_DIR"' EXIT
 DECODED_DIR="$WORK_DIR/decoded"
 UNSIGNED_APK="$WORK_DIR/Mineradio-${VERSION_NAME}-huawei-android12-car-unsigned.apk"
 OUTPUT_APK="$OUTPUT_DIR/Mineradio-${VERSION_NAME}-huawei-android12-car.apk"
 
-if [[ ! -f "$KEYSTORE" ]]; then
-  "$KEYTOOL" -genkeypair \
-    -keystore "$KEYSTORE" \
-    -storepass "$KEY_PASSWORD" \
-    -keypass "$KEY_PASSWORD" \
-    -alias "$KEY_ALIAS" \
-    -keyalg RSA \
-    -keysize 3072 \
-    -validity 3650 \
-    -dname 'CN=Mineradio Car Local Build, OU=Local, O=Mineradio, C=CN' \
-    -noprompt
-fi
-
 "$JAVA_BIN" -jar "$APKTOOL_JAR" d -f --output "$DECODED_DIR" "$INPUT_APK"
 node "$SCRIPT_DIR/patch-apk-manifest.js" "$DECODED_DIR/AndroidManifest.xml"
+node "$SCRIPT_DIR/patch-car-hmi-assets.js" "$DECODED_DIR"
 "$JAVA_BIN" -jar "$APKTOOL_JAR" b "$DECODED_DIR" -o "$UNSIGNED_APK"
 "$APKSIGNER" sign \
   --ks "$KEYSTORE" \
   --ks-key-alias "$KEY_ALIAS" \
-  --ks-pass "pass:$KEY_PASSWORD" \
-  --key-pass "pass:$KEY_PASSWORD" \
+  --ks-pass "env:MINERADIO_CAR_KEYSTORE_PASSWORD" \
+  --key-pass "env:MINERADIO_CAR_KEYSTORE_PASSWORD" \
   --out "$OUTPUT_APK" \
   "$UNSIGNED_APK"
 
@@ -87,4 +80,4 @@ unzip -tqq "$OUTPUT_APK"
 "$AAPT" dump xmltree "$OUTPUT_APK" AndroidManifest.xml | grep -F 'android:resizeableActivity'
 shasum -a 256 "$OUTPUT_APK" | tee "$OUTPUT_APK.sha256"
 printf '\nBuilt: %s\n' "$OUTPUT_APK"
-printf 'Important: this APK has a new signing certificate; uninstall any com.mineradio.app build signed by another key first.\n'
+printf 'Important: before installation, verify the APK signing certificate matches the existing com.mineradio.app package.\n'

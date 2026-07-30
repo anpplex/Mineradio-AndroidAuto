@@ -46,3 +46,32 @@ esac
   assert.match(calls, /<shell> <pm> <enable> <--user> <0> <com\.android\.packageinstaller>/);
   assert.match(calls, /<shell> <rm> <-f> <\/data\/local\/tmp\/Mineradio-1\.1\.7\.0-huawei-android12-car\.apk>/);
 });
+
+test('Huawei installer restores user 12 PackageInstaller when disabling user 0 fails', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mineradio-car-install-rollback-'));
+  const apk = path.join(tmp, 'Mineradio.apk');
+  const adb = path.join(tmp, 'fake-adb');
+  const log = path.join(tmp, 'adb.log');
+  fs.writeFileSync(apk, 'not-a-real-apk');
+  fs.writeFileSync(adb, `#!/usr/bin/env bash
+set -euo pipefail
+{ printf 'adb'; for arg in "$@"; do printf ' <%s>' "$arg"; done; printf '\\n'; } >> "$FAKE_ADB_LOG"
+case " $* " in
+  *' get-state '*) echo device ;;
+  *' shell pm disable-user --user 0 com.android.packageinstaller '*) exit 47 ;;
+esac
+`);
+  fs.chmodSync(adb, 0o755);
+
+  const result = spawnSync('bash', [script, 'TEST-SERIAL', apk], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, ADB: adb, FAKE_ADB_LOG: log },
+  });
+
+  assert.equal(result.status, 47, `${result.stdout}\n${result.stderr}`);
+  const calls = fs.readFileSync(log, 'utf8');
+  assert.match(calls, /<shell> <pm> <disable-user> <--user> <12> <com\.android\.packageinstaller>/);
+  assert.match(calls, /<shell> <pm> <disable-user> <--user> <0> <com\.android\.packageinstaller>/);
+  assert.match(calls, /<shell> <pm> <enable> <--user> <12> <com\.android\.packageinstaller>/);
+});
