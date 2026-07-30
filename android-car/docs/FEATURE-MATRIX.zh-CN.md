@@ -108,7 +108,7 @@
 | ID | Windows 能力 | Car 状态 | Phase | Notes |
 | --- | --- | --- | --- | --- |
 | **WIN-DESKTOP-FULL** | **完整桌面模式**（图标层、壁纸宿主、桌面交互） | **非目标** | NG | 车机不是 Windows 桌面壳。见 §3。 |
-| **WIN-DESKTOP-WE** | **Wallpaper Engine** 库/场景/音频会话 | **非目标** | NG | 永不作为车机交付路径。见 §3。 |
+| **WIN-DESKTOP-WE** | **Wallpaper Engine** 库/场景/音频会话 | **非目标** | NG | 不作为 Windows 功能对齐或默认/生产车机交付路径；用户授权沙盒独立插件单独跟踪。见 §3。 |
 | **WIN-DESKTOP-ICONS** | 桌面图标形状 / 原生图标层 | **非目标** | NG | Electron-only。 |
 | **WIN-DESKTOP-WALLPAPER-MODE** | 壁纸模式 runtime | **非目标** | NG | 与 WE / 全桌面同束排除。 |
 
@@ -135,7 +135,7 @@
 
 | 非目标 | 原因 |
 | --- | --- |
-| **Wallpaper Engine（WE）** | Windows 专属宿主与 DWM/场景管线；车机 WebView 无对等模型。 |
+| **Wallpaper Engine（WE）** | 不进入 Windows 功能对齐和默认/生产主路径；用户授权沙盒仅通过独立插件 APK/进程验证 Android runtime。 |
 | **完整桌面模式（full desktop）** | 依赖 Electron 桌面图标层、壁纸模式与系统桌面交互。 |
 | **桌面歌词（desktop lyrics）** | 依赖置顶透明窗与点击穿透；车机仅保留**应用内**歌词舞台。 |
 | **OEM 车速/档位总线** | 无合法 Car API 接入承诺；模式切换为用户显式操作。 |
@@ -168,4 +168,4 @@ runtime 侧已体现：不强制系统壁纸路径、cruise/stage 关闭桌面�
 | WIN-* 播放/首页/歌词/粒子/控制台 | — | APK 继承 + 壳可达性 | — | 真车闭环 | — |
 | WIN-* 桌面子系统 | — | — | — | — | **WE / 全桌面 / 桌面歌词** |
 
-**一句话**：在 BOUNDARIES 内对齐的是「Windows **应用内**主路径（播控/搜/账/歌词舞台/视觉控制台）的车机可达版 + showcase 舞台」，**不是** 2.0.3 桌面子系统；**WE / 全桌面 / 桌面歌词永久非目标**。详见 [ALIGNMENT-WINDOWS.zh-CN.md](./ALIGNMENT-WINDOWS.zh-CN.md)。
+**一句话**：在 BOUNDARIES 内对齐的是「Windows **应用内**主路径（播控/搜/账/歌词舞台/视觉控制台）的车机可达版 + showcase 舞台」，**不是** 2.0.3 桌面子系统；**WE / 全桌面 / 桌面歌词仍是 Windows 功能对齐与默认/生产主路径的非目标**；用户授权沙盒独立 WE 插件按 [WALLPAPER-PLUGIN-DEVELOPMENT.zh-CN.md](./WALLPAPER-PLUGIN-DEVELOPMENT.zh-CN.md) 单独计算进度。详见 [ALIGNMENT-WINDOWS.zh-CN.md](./ALIGNMENT-WINDOWS.zh-CN.md)。

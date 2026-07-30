@@ -10,6 +10,8 @@
 | [VISUAL-LAYER.zh-CN.md](./VISUAL-LAYER.zh-CN.md) | 行车/巡航/舞台视觉架构 |
 | [STAGE-GAPS.zh-CN.md](./STAGE-GAPS.zh-CN.md) | 舞台缺口清单 |
 | [ALIGNMENT-WINDOWS.zh-CN.md](./ALIGNMENT-WINDOWS.zh-CN.md) | Windows 功能边界内对齐 |
+| [WALLPAPER-PLUGIN-DEVELOPMENT.zh-CN.md](./WALLPAPER-PLUGIN-DEVELOPMENT.zh-CN.md) | 方案 3 唯一任务、transaction 与证据规范 |
+| [WALLPAPER-PLUGIN-PROGRESS.zh-CN.md](./WALLPAPER-PLUGIN-PROGRESS.zh-CN.md) | 方案 3 权威阶段、Gate、SHA 与下一循环 |
 | [../README.zh-CN.md](../README.zh-CN.md) | 构建 / 安装 / 验收命令 |
 
 ---
@@ -47,6 +49,17 @@ Agent E  execute         实车 adb 验收（不改业务源码）
 - Mineradio「自由 / 开放 / 惊艳」放在 **舞台 mode** 最大化，不得默认行车全开。
 - HMI 尺寸为**项目目标**，**不得**表述为华为 OEM 官方强制规范。
 
+### 1.3 用户授权的 Wallpaper Engine 沙盒轨道
+
+- 仅按 [WALLPAPER-PLUGIN-DEVELOPMENT.zh-CN.md](./WALLPAPER-PLUGIN-DEVELOPMENT.zh-CN.md) 开发**独立插件 APK/进程**；Mineradio 只保留窄控制面，进度只以 [WALLPAPER-PLUGIN-PROGRESS.zh-CN.md](./WALLPAPER-PLUGIN-PROGRESS.zh-CN.md) 为准。
+- **Fail-closed 入口：** `当前阶段=PLAN_COMMITTED`、`WP-PLAN-01=DONE`、计划 PR merged/readback、`WP-INFRA=DONE` 四项任一缺失时，禁止进入 `WP-00`～`WP-12E`。当前仍为 `PLAN_REVIEW_REWORK` 时只允许修订、复审和验证计划文档。
+- `WP-INFRA` 是不计权硬 Gate。它必须先提交 transaction runner/catalog/schema tests，记录 runner commit SHA，完成测试、exact SHA sync 与 `origin` exact readback；满足后 Task 0 / `WP-00` 才具备 Definition of Ready。
+- `WP-00`～`WP-11C` 使用 Mineradio `codex/wallpaper-plugin-control` 与 Plugin `/Users/anpple/Codex/WallpaperEngine/.worktrees/mineradio-plugin-sandbox`（`codex/mineradio-plugin-sandbox`）。
+- `WP-12A`～`WP-12E` 不复用核心 worktree：只使用 `/Users/anpple/Codex/WallpaperEngine/.worktrees/mineradio-plugin-embedded-runtime` 与 `/Users/anpple/Codex/Mineradio/.worktrees/wallpaper-plugin-experimental`。`/Users/anpple/Codex/WallpaperEngine` 脏主工作区始终只读。
+- 沙盒技术验证不以版权或再分发许可为门禁；生产/公开发布仍单独决策，禁止把本地 APK、`.so`、`.mpkg` 提交入库。
+- `Release readiness` 只评估排除了官方 WE 包/拆分包、提取 runtime、第三方 `.mpkg`、WP-12 实验二进制与本地证据后的核心发布候选；不得把实验成功折算为发布就绪。
+- 插件、Mineradio、官方 WE 的源码测试、APK、安装、运行和实车结论必须分层记录。无设备在文档/基础设施阶段只记 `FUTURE_DEVICE_GATE`，不阻塞 `WP-PLAN-01` 或 `WP-INFRA`；从 WP-10A 起设备 Gate 才是硬前置。
+
 ---
 
 ## 2. Git Workflow（强制）
@@ -55,7 +68,7 @@ Agent E  execute         实车 adb 验收（不改业务源码）
 
 | 项 | 规定 |
 | --- | --- |
-| 工作分支 | `huawei-android12-car`（默认） |
+| 工作分支 | `huawei-android12-car`（默认集成分支）；短期任务允许从其创建 `codex/*` 分支并通过 PR/审查合回 |
 | 可推送远端 | **仅** `origin` → `anpplex/Mineradio-AndroidAuto` |
 | 禁止推送 | **`upstream`**（`XxHuberrr/Mineradio`）— push 已 DISABLED，不得强行开启或 push |
 | 基线参考 | 可 `git fetch upstream` 只读对齐 Windows 2.0.x 能力，**不**把车机补丁强推上游 |
@@ -107,12 +120,24 @@ git status --short --branch
 ### 2.5 推送
 
 ```sh
-git push origin huawei-android12-car
+git push -u origin "$(git branch --show-current)"
+# 任务分支通过 PR/审查合回 huawei-android12-car；集成分支也只能 push origin
 ```
 
 - **禁止** `git push upstream`
-- **禁止** force-push 已共享的 `origin/huawei-android12-car`（除非用户书面明确要求并知悉风险）
+- 本项目**绝对禁止** `git push --force`、`git push --force-with-lease` 和改写任何已推送历史；不设用户确认例外
 - 推送前再次确认 `git status` 无密钥/APK 误加
+
+#### 2.5.1 方案 3：transaction-only exact sync
+
+上面的通用 branch push **不适用于** `WP-INFRA` 完成后的方案 3 implementation/evidence/closure。方案 3 只允许已提交的 transaction CLI：
+
+1. 在外部写操作前持久化 `IN_FLIGHT` 与 exact local SHA；
+2. 使用 exact SHA refspec 同步到明确的 `origin` ref；
+3. 通过 `git ls-remote --refs` / GitHub API 回读 exact SHA、PR 身份、base/head 与状态；
+4. 中断后先 reconcile/readback，再按持久状态选择唯一下一动作。
+
+禁止在方案 3 实现循环执行 `git push -u origin "$(git branch --show-current)"`、`git push origin <branch>`、手工 `gh pr create/edit/merge`，也禁止调用者绕开 transaction 直接重放 commit/sync。唯一 bootstrap 边界只限计划文档中尚无 runner 时明确列出的 `WP-PLAN-01` 与 `WP-INFRA` 自举步骤；自举完成后立即失效。
 
 ### 2.6 破坏性实车操作
 
@@ -167,11 +192,11 @@ apktool d
 | --- | --- |
 | explore | 只读摸底、逆向字符串、缺口审计 |
 | general-purpose | 实现补丁、测试、文档（划定独占文件） |
-| execute | 实车 adb、安装、截图（不擅自 force-push） |
+| execute | 实车 adb、安装、截图（同样绝对禁止 force-push） |
 
 每个 subagent 的 prompt **必须**包含：
 
-1. 工作目录与分支 `huawei-android12-car`
+1. 工作目录、集成基线 `huawei-android12-car` 与当前 `codex/*` 任务分支
 2. **遵守本 DEVELOPMENT + BOUNDARIES**
 3. 独占文件列表或「禁止改 X」
 4. 门禁命令与是否允许 commit/push（仅 `origin`）
