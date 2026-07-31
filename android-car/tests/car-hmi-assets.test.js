@@ -172,7 +172,13 @@ test('car visual runtime encodes music-class default and stage maximization prob
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /car-search-entry/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /car-fx-more-bar/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /data-car-fx-proxy/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /data-car-fx-action/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /弱动效/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /舞台拉满/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /translateX\(-50%\)/);
+  // Windows desktop NG must stay off
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /desktopLyrics/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /ensureFxKey\('desktopLyrics',\s*false\)/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /car-fx-open/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /car-search-open/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /setLyricStyle/);

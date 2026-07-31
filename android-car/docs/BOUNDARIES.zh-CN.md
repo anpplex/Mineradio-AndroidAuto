@@ -47,7 +47,7 @@
 | B-PRD-01 | **不**宣称华为 OEM 官方认证或强制 HMI 规范；只写「项目车机目标」。 |
 | B-PRD-02 | **不**绕过登录、伪造会员、破解音质、二次分发受版权保护的音源。 |
 | B-PRD-03 | 登录入口仅调用应用既有能力（如 `showLoginModal()`），不伪造票据。 |
-| B-PRD-04 | 默认 **行车** 模式优先安全；**舞台** 惊艳必须用户显式选择（或明确产品决策后改默认并更新文档）。 |
+| B-PRD-04 | 安全与惊艳：历史默认可为 **行车**；**当前车机产品决策为固定 stage showcase**（无 on-screen 三模式条）。drive/cruise 预算可 API 或 FX「弱动效」调用；改默认须同步 VISUAL-LAYER / FEATURE-MATRIX / ALIGNMENT-WINDOWS。 |
 | B-PRD-05 | **永不移植** 到车机主路径：Wallpaper Engine、完整桌面 WorkerW、桌面歌词独立窗、系统托盘热更安装包。 |
 
 ---

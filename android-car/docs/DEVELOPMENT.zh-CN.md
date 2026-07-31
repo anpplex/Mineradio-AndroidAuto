@@ -9,6 +9,7 @@
 | [FEATURE-MATRIX.zh-CN.md](./FEATURE-MATRIX.zh-CN.md) | Windows 2.0.3 ↔ 车机 1.1.7 对齐 |
 | [VISUAL-LAYER.zh-CN.md](./VISUAL-LAYER.zh-CN.md) | 行车/巡航/舞台视觉架构 |
 | [STAGE-GAPS.zh-CN.md](./STAGE-GAPS.zh-CN.md) | 舞台缺口清单 |
+| [ALIGNMENT-WINDOWS.zh-CN.md](./ALIGNMENT-WINDOWS.zh-CN.md) | Windows 功能边界内对齐 |
 | [../README.zh-CN.md](../README.zh-CN.md) | 构建 / 安装 / 验收命令 |
 
 ---

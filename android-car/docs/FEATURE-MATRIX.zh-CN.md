@@ -7,7 +7,8 @@
 | 维度 | 基线 |
 | --- | --- |
 | **上游 Windows** | [XxHuberrr/Mineradio](https://github.com/XxHuberrr/Mineradio) **v2.0.3** Electron 桌面正式版 |
-| **车机产物** | 上游 APK **1.1.7.0** + `android-car/` 补丁（横屏、HMI 密度、视觉三模式、Lyra 安装） |
+| **车机产物** | 上游 APK **1.1.7.0** + `android-car/` 补丁（横屏、HMI 密度、固定 stage showcase、Lyra 安装） |
+| **对齐说明** | 边界内映射见 [ALIGNMENT-WINDOWS.zh-CN.md](./ALIGNMENT-WINDOWS.zh-CN.md) |
 | **目标硬件** | Huawei `ICHU3200E15-ADV`，Android 12，1920×1080 @ 320dpi，应用用户 `12` |
 | **适配形态** | 对用户提供的 Android APK **重打包/壳层注入**，不是把 Electron 工程直接编译成 Android |
 
@@ -95,10 +96,10 @@
 
 | ID | Windows 能力 | Car 状态 | Phase | Notes |
 | --- | --- | --- | --- | --- |
-| **WIN-VISUAL-EMILY** | emily 预设、封面粒子、默认测试存档 | **部分** | P3-视觉 | stage：`setPreset(0)` + coverRes 1.55 等对齐上游惊艳路径（`ab08c20`）。drive 不拉满。 |
+| **WIN-VISUAL-EMILY** | emily 预设、封面粒子、默认测试存档 | **部分** | P3-视觉 | stage：`setPreset(0)` + coverRes **2.2** + 默认测试存档 best-effort；showcase 拉满。 |
 | **WIN-VISUAL-CINEMA** | 电影镜头 / cineshake / bloom | **部分** | P3-视觉 | 按模式预算；stage 拉高，drive 关闭或极弱。 |
 | **WIN-VISUAL-SHELF** | 3D 歌单架（舞台/侧栏/常驻） | **部分** | P3-视觉 | drive 倾向 `off`；stage `stage`+`always`。真车触控与遮挡待验收。 |
-| **WIN-VISUAL-FX-CONSOLE** | 完整视觉控制台 / 用户存档槽 | **部分** | P3-视觉 / P5-平台 | 入口保留；驾驶态弱化。存档路径受 SPICa 阻塞影响。 |
+| **WIN-VISUAL-FX-CONSOLE** | 完整视觉控制台 / 用户存档槽 | **部分** | P3-视觉 / P5-平台 | 底中胶囊 + 底抽屉；「播控·更多」代理音质/EQ/音量/喜欢；存档受 SPICa 路径影响。 |
 | **WIN-VISUAL-QUALITY** | 画质 low/mid/high/ultra、后台策略 | **部分** | P3-视觉 | stage 调 `ultra`；drive 倾向 `low`。 |
 | **WIN-VISUAL-GESTURE-CAM** | 自由相机 / 手势相机 | **非目标** | NG | 触控安全：不主动开启。 |
 
@@ -163,8 +164,8 @@ runtime 侧已体现：不强制系统壁纸路径、cruise/stage 关闭桌面�
 
 | 类别 | 已交付 | 部分 | 阻塞 | 待验收 | 非目标 |
 | --- | --- | --- | --- | --- | --- |
-| CAR-* 适配层 | 横屏、Lyra、密度 HMI、视觉 runtime、stage API、MENC、签名流程 | 登录入口、部分媒体 | **SPICa 存储** | USB 本地库、音频焦点/休眠 | OEM 总线 |
-| WIN-* 播放/首页/歌词舞台/粒子 | — | 继承 APK + 壳层增强 | 设置落盘 | 真车连续播放与触控 | — |
+| CAR-* 适配层 | 横屏、Lyra、密度/IA HMI、固定 stage、MENC、签名 | 登录、AF duck、SPICa 路径 | — | USB、真 AF 导航 | OEM 总线 |
+| WIN-* 播放/首页/歌词/粒子/控制台 | — | APK 继承 + 壳可达性 | — | 真车闭环 | — |
 | WIN-* 桌面子系统 | — | — | — | — | **WE / 全桌面 / 桌面歌词** |
 
-**一句话**：车机 1.1.7 对齐的是「横屏可装可启 + 密度正确的音乐类 HMI + 可选舞台惊艳」，**不是** Windows 2.0.3 桌面子系统的完整复刻；**SPICa 存储仍阻塞**本地设置路径，**WE / 全桌面 / 桌面歌词为永久非目标**。
+**一句话**：在 BOUNDARIES 内对齐的是「Windows **应用内**主路径（播控/搜/账/歌词舞台/视觉控制台）的车机可达版 + showcase 舞台」，**不是** 2.0.3 桌面子系统；**WE / 全桌面 / 桌面歌词永久非目标**。详见 [ALIGNMENT-WINDOWS.zh-CN.md](./ALIGNMENT-WINDOWS.zh-CN.md)。

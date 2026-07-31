@@ -734,16 +734,48 @@
     var bar = doc.createElement('div');
     bar.id = 'car-fx-more-bar';
     bar.innerHTML =
-      '<div class="car-fx-more-label">播控 · 更多</div>' +
+      '<div class="car-fx-more-label">Windows 对齐 · 播控与视觉</div>' +
       '<button type="button" data-car-fx-proxy="heart-btn">喜欢</button>' +
       '<button type="button" data-car-fx-proxy="collect-btn">收藏</button>' +
       '<button type="button" data-car-fx-proxy="play-mode-btn">循环</button>' +
       '<button type="button" data-car-fx-proxy="quality-btn">音质</button>' +
       '<button type="button" data-car-fx-proxy="eq-btn">调声</button>' +
-      '<button type="button" data-car-fx-proxy="volume-btn">音量</button>';
+      '<button type="button" data-car-fx-proxy="volume-btn">音量</button>' +
+      '<button type="button" data-car-fx-action="lyrics">歌词</button>' +
+      '<button type="button" data-car-fx-action="drive">弱动效</button>' +
+      '<button type="button" data-car-fx-action="stage">舞台拉满</button>';
     bar.addEventListener('click', function (event) {
       var t = event.target;
       if (!t || !t.getAttribute) return;
+      var action = t.getAttribute('data-car-fx-action');
+      if (action === 'lyrics') {
+        try {
+          var lyricBtn = doc.querySelector('#bottom-bar .lyrics-toggle-btn');
+          if (lyricBtn) lyricBtn.click();
+          else if (typeof global.toggleLyricsPanel === 'function') global.toggleLyricsPanel();
+        } catch (_) {
+          /* ignore */
+        }
+        return;
+      }
+      if (action === 'drive') {
+        try {
+          setMode('drive', { user: true, persist: true });
+          if (typeof global.showToast === 'function') global.showToast('弱动效（行车预算）');
+        } catch (_) {
+          /* ignore */
+        }
+        return;
+      }
+      if (action === 'stage') {
+        try {
+          setMode('stage', { user: true, persist: true });
+          if (typeof global.showToast === 'function') global.showToast('舞台 Showcase');
+        } catch (_) {
+          /* ignore */
+        }
+        return;
+      }
       var id = t.getAttribute('data-car-fx-proxy');
       if (!id) return;
       try {
