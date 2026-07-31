@@ -106,7 +106,8 @@
       cineshake: 0.55,
       intensity: 0.92,
       bloom: 0.72,
-      coverRes: 1.55,
+      /** Above stock APK slider max (1.55); car runtime raises clamp for sharp emily. */
+      coverRes: 2.05,
       depth: 0.72,
       lyricGlow: 0.42,
       point: 0.78,
@@ -300,14 +301,59 @@
   }
 
   /**
+   * Stock APK clamps cover resolution to 1.55 → grid ≈183 / texture 512, which reads
+   * soft on 1920×1080 car glass (emily is a particle reconstruction of the cover).
+   * On car we raise the clamp + denser grid + larger cover texture for stage/cruise.
+   */
+  function installCoverSharpnessHooks() {
+    if (global.__mineradioCarCoverSharpHooks) return;
+    global.__mineradioCarCoverSharpHooks = true;
+
+    global.normalizeCoverResolution = function carNormalizeCoverResolution(v) {
+      v = Number(v);
+      if (!isFinite(v) || v <= 0) v = 1;
+      return Math.max(0.75, Math.min(2.2, v));
+    };
+
+    global.coverParticleGridForResolution = function carCoverParticleGridForResolution(v) {
+      // Stock: round(118 * res) capped 183. Car stage: denser base + higher cap.
+      var res = global.normalizeCoverResolution(v);
+      var grid = Math.round(148 * res);
+      grid = Math.max(88, Math.min(300, grid));
+      return grid % 2 ? grid : grid + 1;
+    };
+
+    global.coverTextureSizeForResolution = function carCoverTextureSizeForResolution(v) {
+      v = global.normalizeCoverResolution(v);
+      if (v >= 1.9) return 1024;
+      if (v >= 1.55) return 768;
+      if (v >= 1.32) return 512;
+      if (v >= 1.1) return 384;
+      return 256;
+    };
+
+    // Widen the FX slider so UI stays consistent if user opens the panel.
+    try {
+      var slider = global.document.getElementById('fx-coverres');
+      if (slider) {
+        slider.max = '2.2';
+        slider.step = '0.01';
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  /**
    * Emily cover sharpness depends on cover particle grid + texture size.
-   * Slider max is 1.55 → grid ≈183, texture 512. Must call applyCoverParticleResolution
-   * with reload after setPreset, otherwise preset restore leaves a soft/coarse mesh.
+   * Must call applyCoverParticleResolution with reload after setPreset.
    */
   function applyCoverResolutionSharp(value) {
+    installCoverSharpnessHooks();
     var v = Number(value);
-    if (!(v > 0)) v = 1.55;
-    setRangeIfPresent('fx-coverres', v);
+    if (!(v > 0)) v = 2.05;
+    v = global.normalizeCoverResolution(v);
+    setRangeIfPresent('fx-coverres', Math.min(v, 2.2));
     if (typeof global.applyCoverParticleResolution === 'function') {
       try {
         global.applyCoverParticleResolution(v, { reload: true });
@@ -316,14 +362,11 @@
         /* fall through */
       }
     }
-    if (typeof global.normalizeCoverResolution === 'function' && global.fx) {
-      try {
-        global.fx.coverResolution = global.normalizeCoverResolution(v);
-      } catch (_) {
-        /* ignore */
-      }
+    try {
+      if (global.fx) global.fx.coverResolution = v;
+    } catch (_) {
+      /* ignore */
     }
-    // Trigger the same input pipeline the FX panel uses.
     setRangeIfPresent('fx-coverres', v);
     return true;
   }
@@ -569,6 +612,7 @@
       global.document.addEventListener('DOMContentLoaded', boot);
       return;
     }
+    installCoverSharpnessHooks();
     ensureModeSwitch();
     var initial = readStoredMode();
     if (!global.localStorage || global.localStorage.getItem(STORAGE_KEY) == null) {

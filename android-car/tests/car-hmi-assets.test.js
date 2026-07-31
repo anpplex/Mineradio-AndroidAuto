@@ -92,13 +92,17 @@ test('car visual runtime encodes music-class default and stage maximization prob
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /setRenderQuality/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /quality:\s*'ultra'/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /preset:\s*0/);
-  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /coverRes:\s*1\.55/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /floatLayer:\s*true/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /cinema:\s*true/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /applyStageNow/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /STAGE_RETRY_MS/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /applyCoverParticleResolution/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /applyCoverResolutionSharp/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /installCoverSharpnessHooks/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /coverRes:\s*2\.05/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /Math\.min\(2\.2,/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /Math\.min\(300,/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /return 1024/);
   // Preset must run before cover res so emily mesh is not left soft/coarse.
   assert.match(
     CAR_VISUAL_RUNTIME_SOURCE,
