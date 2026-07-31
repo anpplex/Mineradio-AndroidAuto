@@ -675,7 +675,37 @@
     }
   }
 
+  function tryApplyDefaultTestArchive() {
+    // Best-effort whole-snapshot path if the APK exposes archive apply helpers.
+    var names = [
+      'applyUserFxArchive',
+      'applyFxArchiveSnapshot',
+      'applyPackagedFxArchive',
+      'loadDefaultUserFxArchive',
+    ];
+    for (var i = 0; i < names.length; i += 1) {
+      if (typeof global[names[i]] !== 'function') continue;
+      try {
+        global[names[i]]('默认测试');
+        return true;
+      } catch (_) {
+        try {
+          global[names[i]](0);
+          return true;
+        } catch (_2) {
+          /* try next */
+        }
+      }
+    }
+    return false;
+  }
+
   function applyFxProbes(mode, budget) {
+    // 0) Optional full snapshot, then explicit preset (emily) wins for stage identity.
+    if (mode === 'stage' || mode === 'cruise') {
+      tryApplyDefaultTestArchive();
+    }
+
     // 1) Preset first — setPreset can reset coverResolution / visual knobs.
     if (mode === 'stage' || mode === 'cruise') {
       applyPreset(budget.preset);
