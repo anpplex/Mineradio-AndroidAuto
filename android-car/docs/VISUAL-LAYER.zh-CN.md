@@ -35,17 +35,23 @@
 | --- | --- | --- | --- |
 | **drive 行车** | **是** | 弱动效、强对比、主播控优先、3D 架倾向关闭 | 保留品牌主色与底栏玻璃，粒子极低 |
 | **cruise 巡航** | 否 | 氛围与可读平衡 | 中等粒子、轻电影感、歌词舞台可读 |
-| **stage 舞台** | 否（用户点选） | 驻车/等人场景 | 高粒子、低遮罩、高 bloom/intensity、舞台阴影 |
+| **stage 舞台** | 否（用户点选） | 驻车/等人场景 | **最大化还原上游**：emily 预设、极致画质、全开粒子/电影镜头/溢光、3D 歌单架舞台+常驻 |
 
 运行时：
 
 - `document.documentElement[data-car-visual-mode]`
 - CSS 变量：`--car-particle-opacity`、`--car-stage-scrim`、`--car-lyric-scale-boost`
-- 尽力探针现有控件：`#fx-intensity`、`#fx-cineshake`、`#fx-bloom`、`#fx-coverres`、`#render-quality-seg`、`#shelf-seg`
+- **舞台最大化**直接调用 APK 全局 API（补齐现有包能力，而非只改 CSS）：
+  - `setPreset(0)` → emily专辑封面（上游默认惊艳路径）
+  - `setRenderQuality('ultra')`
+  - `setShelfMode('stage')` + `setShelfPresence('always')`
+  - `toggleFx` 确保：`floatLayer` / `cinema` / `lyricGlow` / `lyricGlowBeat` / `lyricGlowParticles` / `lyricCameraLock` / `bloom` / `edge` = on
+  - 滑条预算：intensity≈0.92、cineshake≈0.55、bloom≈0.72、coverRes=**1.55**（对齐上游默认测试封面粒子）
+  - 多次延迟重试（0–8s）等待 splash 后壳层就绪
 - 持久化：`localStorage['mineradio.car.visualMode']`
-- API：`window.MineradioCarVisual.setMode('stage')`
+- API：`MineradioCarVisual.setMode('stage')` / `applyStageNow()`
 
-**不**读取 OEM 车速/档位总线（无权限、无认证）；行车判断留给用户切换 + 系统 `prefers-reduced-motion`。
+**不**读取 OEM 车速/档位总线；**永不**强制桌面歌词 / WE / 手势相机。
 
 ## 4. 与上游 Windows 视觉的对应
 

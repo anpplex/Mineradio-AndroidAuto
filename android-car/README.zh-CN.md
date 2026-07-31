@@ -27,8 +27,8 @@
 - **视觉层三模式**（见 [docs/VISUAL-LAYER.zh-CN.md](./docs/VISUAL-LAYER.zh-CN.md)）：
   - **行车 drive**（默认）：音乐类驾驶优先，弱粒子/低电影震动，主播控与可读性第一；
   - **巡航 cruise**：平衡 Mineradio 氛围与座舱可读；
-  - **舞台 stage**：用户显式选择后最大化粒子、歌词舞台与镜头存在感，贴近上游「自由 / 开放 / 惊艳」；
-  - 运行时 `car-visual-runtime.js` 写入 `data-car-visual-mode` 与 CSS 预算，并尽力联动现有 FX 滑条；**不**接 OEM 车速总线，**不**启用桌面歌词 / Wallpaper Engine。
+  - **舞台 stage**：调用 APK 内 `setPreset(0)/setRenderQuality('ultra')/setShelfMode('stage')/toggleFx(...)` 最大化对齐上游 emily·粒子·电影镜头·3D 架；CSS 全开画布、加强歌词舞台与玻璃播控；
+  - 运行时 `car-visual-runtime.js`；**不**接 OEM 车速总线，**不**启用桌面歌词 / Wallpaper Engine / 手势相机。
 
 当前静态验证已覆盖 MENC 加解密回环、HTML/CSS/runtime 注入幂等、登录入口、视觉模式 token。2026-07-31 密度感知 HMI 已修；**视觉三模式需重新构建安装后做真车切换验收**。
 

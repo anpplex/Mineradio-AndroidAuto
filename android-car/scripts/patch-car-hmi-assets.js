@@ -340,33 +340,110 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     display: inline !important;
   }
 
-  /* Stage: maximize open / free / stunning — open the stage, lower chrome weight. */
+  /* Stage: maximize open / free / stunning — full canvas, glass chrome, lyric stage. */
+  html[data-car-visual-mode="stage"],
+  body.car-mode-stage {
+    --car-particle-opacity: 1;
+    --car-stage-scrim: 0.02;
+  }
+  html[data-car-visual-mode="stage"] #canvas-container,
+  html[data-car-visual-mode="stage"] #idle-guide-canvas,
+  html[data-car-visual-mode="stage"] .particle-background,
+  html[data-car-visual-mode="stage"] #splash-canvas,
+  body.car-mode-stage #canvas-container,
+  body.car-mode-stage #idle-guide-canvas,
+  body.car-mode-stage .particle-background,
+  body.car-mode-stage #splash-canvas {
+    opacity: 1 !important;
+    filter: none !important;
+  }
+  html[data-car-visual-mode="stage"] #canvas-container::after,
+  html[data-car-visual-mode="stage"] .particle-background::after,
+  body.car-mode-stage #canvas-container::after,
+  body.car-mode-stage .particle-background::after {
+    background: rgba(0, 0, 0, 0.02) !important;
+  }
   html[data-car-visual-mode="stage"] #empty-home,
   html[data-car-visual-mode="stage"] #home-empty,
   body.car-mode-stage #empty-home,
   body.car-mode-stage #home-empty {
     background: transparent !important;
   }
+  html[data-car-visual-mode="stage"] .home-card,
+  html[data-car-visual-mode="stage"] #home-recent-panel,
+  body.car-mode-stage .home-card,
+  body.car-mode-stage #home-recent-panel {
+    background: rgba(10, 15, 23, .72) !important;
+    border-color: rgba(12, 205, 191, .22) !important;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, .36), 0 0 0 1px rgba(12, 205, 191, .08) inset !important;
+  }
   html[data-car-visual-mode="stage"] #bottom-bar,
-  body.car-mode-stage #bottom-bar {
-    background: rgba(8, 12, 19, .78) !important;
-    backdrop-filter: blur(12px) !important;
+  body.car-mode-stage #bottom-bar,
+  html[data-car-visual-mode="stage"] #bottom-bar.stage-mode,
+  body.car-mode-stage #bottom-bar.stage-mode {
+    background: rgba(6, 10, 16, .62) !important;
+    backdrop-filter: blur(16px) saturate(1.15) !important;
+    border: 1px solid rgba(12, 205, 191, .18) !important;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, .4) !important;
+  }
+  html[data-car-visual-mode="stage"] #search-box,
+  body.car-mode-stage #search-box,
+  html[data-car-visual-mode="stage"] #search-area.stage-mode #search-box,
+  body.car-mode-stage #search-area.stage-mode #search-box {
+    background: rgba(8, 12, 19, .7) !important;
+    border-color: rgba(12, 205, 191, .28) !important;
   }
   html[data-car-visual-mode="stage"] #fx-fab,
   body.car-mode-stage #fx-fab {
     opacity: 1 !important;
-    transform: scale(1.05) !important;
+    transform: scale(1.08) !important;
+    box-shadow: 0 0 0 2px rgba(12, 205, 191, .35), 0 12px 28px rgba(0, 0, 0, .4) !important;
   }
   html[data-car-visual-mode="stage"] #stage-lyrics,
   html[data-car-visual-mode="stage"] #lyric-float-stage,
+  html[data-car-visual-mode="stage"] #lyric-popword-stage,
   body.car-mode-stage #stage-lyrics,
-  body.car-mode-stage #lyric-float-stage {
-    filter: drop-shadow(0 8px 28px rgba(12, 205, 191, .18)) !important;
+  body.car-mode-stage #lyric-float-stage,
+  body.car-mode-stage #lyric-popword-stage {
+    opacity: 1 !important;
+    filter: drop-shadow(0 10px 36px rgba(12, 205, 191, .28))
+            drop-shadow(0 2px 12px rgba(0, 0, 0, .55)) !important;
+  }
+  html[data-car-visual-mode="stage"] #lyric-float-curr,
+  html[data-car-visual-mode="stage"] #lyric-popword-line,
+  body.car-mode-stage #lyric-float-curr,
+  body.car-mode-stage #lyric-popword-line {
+    color: rgba(255, 255, 255, .98) !important;
+    text-shadow: 0 0 18px rgba(12, 205, 191, .35), 0 4px 22px rgba(0, 0, 0, .65) !important;
+  }
+  html[data-car-visual-mode="stage"] #beat-chip,
+  body.car-mode-stage #beat-chip {
+    opacity: 1 !important;
+    border-color: rgba(12, 205, 191, .4) !important;
+  }
+  html[data-car-visual-mode="stage"] #play-btn,
+  body.car-mode-stage #play-btn {
+    box-shadow: 0 0 0 3px rgba(12, 205, 191, .28), 0 10px 28px rgba(0, 0, 0, .35) !important;
+  }
+  html[data-car-visual-mode="stage"] #car-visual-mode-switch,
+  body.car-mode-stage #car-visual-mode-switch {
+    border-color: rgba(12, 205, 191, .35) !important;
   }
   html[data-car-visual-mode="stage"] #car-visual-mode-switch .car-visual-mode-hint,
   body.car-mode-stage #car-visual-mode-switch .car-visual-mode-hint {
     display: inline !important;
-    max-width: 220px !important;
+    max-width: 260px !important;
+  }
+  /* Stage keeps transport readable but lets particles breathe through panels. */
+  html[data-car-visual-mode="stage"] #playlist-panel,
+  body.car-mode-stage #playlist-panel {
+    background: rgba(8, 12, 19, .86) !important;
+    backdrop-filter: blur(14px) !important;
+  }
+  html[data-car-visual-mode="stage"] #fx-panel,
+  body.car-mode-stage #fx-panel {
+    background: rgba(8, 12, 19, .9) !important;
+    border-color: rgba(12, 205, 191, .2) !important;
   }
 
   /* Reduced motion: honor drive budget + system preference. */

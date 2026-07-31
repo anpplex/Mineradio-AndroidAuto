@@ -84,8 +84,27 @@ test('car visual runtime encodes music-class default and stage maximization prob
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /fx-intensity/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /fx-cineshake/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /initial = 'drive'/);
-  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /t-desktopLyrics/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /desktopLyrics/);
+  // Upstream APK hooks used for stage maximize
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /setPreset/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /toggleFx/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /setShelfMode/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /setRenderQuality/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /quality:\s*'ultra'/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /preset:\s*0/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /coverRes:\s*1\.55/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /floatLayer:\s*true/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /cinema:\s*true/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /applyStageNow/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /STAGE_RETRY_MS/);
   assert.doesNotMatch(CAR_VISUAL_RUNTIME_SOURCE, /eval\(/);
+});
+
+test('car stage CSS fully opens the particle canvas and strengthens lyric stage', () => {
+  assert.match(CAR_HMI_STYLESHEET, /data-car-visual-mode="stage"[\s\S]*#canvas-container[\s\S]*opacity:\s*1/);
+  assert.match(CAR_HMI_STYLESHEET, /#lyric-float-curr/);
+  assert.match(CAR_HMI_STYLESHEET, /drop-shadow\(0 10px 36px/);
+  assert.match(CAR_HMI_STYLESHEET, /#bottom-bar\.stage-mode/);
 });
 
 test('patchCarHmiAssets writes MENC css, runtime and patched index', () => {

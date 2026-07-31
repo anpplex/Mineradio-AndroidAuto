@@ -7,7 +7,9 @@
  * Modes:
  *   drive  — music-class driving: max readability, min motion distraction
  *   cruise — balanced: keep Mineradio identity without full desktop chaos
- *   stage  — parked / user-opt-in: maximize open / free / stunning stage looks
+ *   stage  — maximize upstream Mineradio open / free / stunning stage
+ *            via real APK APIs: setPreset / toggleFx / setShelfMode /
+ *            setRenderQuality / FX sliders
  *
  * Does not bypass auth, alter media rights, or talk to OEM vehicle buses.
  */
@@ -24,52 +26,119 @@
   };
   var HINTS = {
     drive: '驾驶优先：弱动效、强可读、主播控突出',
-    cruise: '平衡：保留氛围与歌词舞台，控制台仍清爽',
-    stage: '惊艳：尽量还原 Mineradio 粒子 / 镜头 / 舞台',
+    cruise: '平衡：封面氛围 + 可读歌词舞台',
+    stage: '最大化：emily · 粒子 · 电影镜头 · 3D 架 · 极致画质',
   };
 
-  /** Per-mode budgets: CSS vars + best-effort FX control probes. */
+  /**
+   * Per-mode budgets.
+   * Stage values intentionally push toward upstream「默认测试 / emily」and above
+   * for parked showcase (coverRes 1.55, strong cinema/bloom/intensity).
+   */
   var MODE_BUDGET = {
     drive: {
       particleOpacity: 0.12,
       scrim: 0.42,
       lyricScaleBoost: 1.08,
       cineshake: 0,
-      intensity: 0.28,
-      bloom: 0.15,
-      coverRes: 0.9,
-      qualityHint: '低',
+      intensity: 0.22,
+      bloom: 0.1,
+      coverRes: 0.85,
+      depth: 0.25,
+      lyricGlow: 0.12,
+      point: 0.35,
+      speed: 0.35,
+      twist: 0.1,
+      scatter: 0.15,
+      bgfade: 0.55,
+      bgopacity: 0.78,
+      quality: 'low',
+      preset: null,
       shelf: 'off',
-      hideFxFab: false,
+      shelfPresence: 'hover',
+      fxOn: {},
+      fxOff: {
+        floatLayer: true,
+        cinema: true,
+        lyricGlow: true,
+        lyricGlowBeat: true,
+        lyricGlowParticles: true,
+        bloom: true,
+        edge: true,
+      },
       reduceMotion: true,
     },
     cruise: {
-      particleOpacity: 0.34,
-      scrim: 0.26,
+      particleOpacity: 0.4,
+      scrim: 0.22,
       lyricScaleBoost: 1.0,
-      cineshake: 0.22,
-      intensity: 0.55,
-      bloom: 0.35,
-      coverRes: 1.2,
-      qualityHint: '中',
+      cineshake: 0.35,
+      intensity: 0.58,
+      bloom: 0.4,
+      coverRes: 1.25,
+      depth: 0.45,
+      lyricGlow: 0.28,
+      point: 0.55,
+      speed: 0.5,
+      twist: 0.25,
+      scatter: 0.3,
+      bgfade: 0.4,
+      bgopacity: 0.5,
+      quality: 'high',
+      preset: 0,
       shelf: 'side',
-      hideFxFab: false,
+      shelfPresence: 'hover',
+      fxOn: {
+        floatLayer: true,
+        cinema: true,
+        lyricGlow: true,
+      },
+      fxOff: {
+        lyricGlowParticles: true,
+        desktopLyrics: true,
+      },
       reduceMotion: false,
     },
     stage: {
-      particleOpacity: 0.72,
-      scrim: 0.08,
-      lyricScaleBoost: 1.0,
+      particleOpacity: 1,
+      scrim: 0.02,
+      lyricScaleBoost: 1.02,
       cineshake: 0.55,
-      intensity: 0.85,
-      bloom: 0.62,
+      intensity: 0.92,
+      bloom: 0.72,
       coverRes: 1.55,
-      qualityHint: '高',
+      depth: 0.72,
+      lyricGlow: 0.42,
+      point: 0.78,
+      speed: 0.68,
+      twist: 0.45,
+      scatter: 0.48,
+      bgfade: 0.28,
+      bgopacity: 0.28,
+      quality: 'ultra',
+      /** emily专辑封面 — upstream default showcase preset */
+      preset: 0,
       shelf: 'stage',
-      hideFxFab: false,
+      shelfPresence: 'always',
+      fxOn: {
+        floatLayer: true,
+        cinema: true,
+        lyricGlow: true,
+        lyricGlowBeat: true,
+        lyricGlowParticles: true,
+        lyricCameraLock: true,
+        bloom: true,
+        edge: true,
+      },
+      fxOff: {
+        desktopLyrics: true,
+        forceSystemWallpaper: true,
+      },
       reduceMotion: false,
     },
   };
+
+  var STAGE_RETRY_MS = [0, 400, 1200, 2500, 4500, 8000];
 
   function normalizeMode(value) {
     var mode = String(value || '').toLowerCase();
@@ -88,7 +157,7 @@
     try {
       if (global.localStorage) global.localStorage.setItem(STORAGE_KEY, mode);
     } catch (_) {
-      /* ignore quota / private mode */
+      /* ignore */
     }
   }
 
@@ -101,13 +170,24 @@
     root.style.setProperty('--car-reduce-motion', budget.reduceMotion ? '1' : '0');
   }
 
+  function callGlobal(name, args) {
+    try {
+      var fn = global[name];
+      if (typeof fn === 'function') {
+        return fn.apply(global, args || []);
+      }
+    } catch (_) {
+      return undefined;
+    }
+    return undefined;
+  }
+
   function setRangeIfPresent(id, value) {
     var el = global.document.getElementById(id);
     if (!el) return false;
     var min = el.min !== '' && el.min != null ? Number(el.min) : 0;
     var max = el.max !== '' && el.max != null ? Number(el.max) : 1;
     var next = Math.min(max, Math.max(min, Number(value)));
-    if (String(el.value) === String(next)) return true;
     el.value = String(next);
     try {
       el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -118,50 +198,221 @@
     return true;
   }
 
-  function clickSegmentByLabel(containerId, label) {
-    var root = global.document.getElementById(containerId);
-    if (!root) return false;
-    var nodes = root.querySelectorAll('button, [role="button"], .seg-btn, .segment, label, span');
-    for (var i = 0; i < nodes.length; i += 1) {
-      var text = (nodes[i].textContent || '').replace(/\s+/g, '');
-      if (text.indexOf(label) >= 0) {
-        try {
-          nodes[i].click();
-          return true;
-        } catch (_) {
-          return false;
+  function clickBySelector(selector) {
+    var el = global.document.querySelector(selector);
+    if (!el) return false;
+    try {
+      el.click();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function readFxFlag(key) {
+    try {
+      if (global.fx && typeof global.fx === 'object' && key in global.fx) {
+        return !!global.fx[key];
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    var toggleId = 't-' + (key === 'floatLayer' ? 'float' : key === 'aiDepth' ? 'aidepth' : key);
+    var toggle = global.document.getElementById(toggleId);
+    if (toggle) return toggle.classList.contains('on');
+    return null;
+  }
+
+  function ensureFxKey(key, wantOn) {
+    var current = readFxFlag(key);
+    if (current === wantOn) return true;
+    if (typeof global.toggleFx === 'function') {
+      try {
+        // toggleFx flips; if unknown state, click once toward desired via DOM class then re-check
+        if (current == null) {
+          global.toggleFx(key);
+          current = readFxFlag(key);
+          if (current === wantOn) return true;
+          if (current != null && current !== wantOn) global.toggleFx(key);
+          return readFxFlag(key) === wantOn;
         }
+        global.toggleFx(key);
+        return readFxFlag(key) === wantOn;
+      } catch (_) {
+        return false;
+      }
+    }
+    var toggleId = 't-' + (key === 'floatLayer' ? 'float' : key);
+    var toggle = global.document.getElementById(toggleId);
+    if (toggle && !!toggle.classList.contains('on') !== wantOn) {
+      try {
+        toggle.click();
+        return true;
+      } catch (_) {
+        return false;
       }
     }
     return false;
   }
 
-  function applyFxProbes(mode, budget) {
-    // Best-effort: only touch controls that already exist in the APK shell.
+  function applyFxKeyMap(map, wantOn) {
+    if (!map) return;
+    Object.keys(map).forEach(function (key) {
+      if (map[key]) ensureFxKey(key, wantOn);
+    });
+  }
+
+  function exitImmersiveIfBlockingShelf(budget) {
+    if (budget.shelf === 'off') return;
+    try {
+      if (global.immersiveMode) {
+        var btn = global.document.getElementById('immersive-btn');
+        if (btn) btn.click();
+        else if (typeof global.setImmersiveMode === 'function') global.setImmersiveMode(false);
+        else if (typeof global.toggleImmersiveMode === 'function') global.toggleImmersiveMode();
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function applyQuality(quality) {
+    if (!quality) return false;
+    if (typeof global.setRenderQuality === 'function') {
+      try {
+        global.setRenderQuality(quality);
+        return true;
+      } catch (_) {
+        /* fall through */
+      }
+    }
+    return clickBySelector('#render-quality-seg button[data-rq="' + quality + '"]');
+  }
+
+  function applyShelf(budget) {
+    exitImmersiveIfBlockingShelf(budget);
+    if (budget.shelf != null) {
+      if (typeof global.setShelfMode === 'function') {
+        try {
+          global.setShelfMode(budget.shelf);
+        } catch (_) {
+          clickBySelector('#shelf-seg button[data-shelf="' + budget.shelf + '"]');
+        }
+      } else {
+        clickBySelector('#shelf-seg button[data-shelf="' + budget.shelf + '"]');
+      }
+    }
+    if (budget.shelfPresence) {
+      if (typeof global.setShelfPresence === 'function') {
+        try {
+          global.setShelfPresence(budget.shelfPresence);
+        } catch (_) {
+          clickBySelector(
+            '#shelf-presence-seg button[data-shelf-presence="' + budget.shelfPresence + '"]',
+          );
+        }
+      } else {
+        clickBySelector(
+          '#shelf-presence-seg button[data-shelf-presence="' + budget.shelfPresence + '"]',
+        );
+      }
+    }
+  }
+
+  function applyPreset(preset) {
+    if (preset == null || preset === '') return false;
+    if (typeof global.setPreset === 'function') {
+      try {
+        global.setPreset(Number(preset), { skipTransition: false });
+        return true;
+      } catch (_) {
+        /* fall through */
+      }
+    }
+    // Dynamic preset grid cards often use data-preset / data-id
+    return (
+      clickBySelector('#preset-grid [data-preset="' + preset + '"]') ||
+      clickBySelector('#preset-grid [data-id="' + preset + '"]') ||
+      clickBySelector('#preset-grid .preset-card:nth-child(' + (Number(preset) + 1) + ')')
+    );
+  }
+
+  function applySliders(budget) {
     setRangeIfPresent('fx-intensity', budget.intensity);
     setRangeIfPresent('fx-cineshake', budget.cineshake);
     setRangeIfPresent('fx-bloom', budget.bloom);
     setRangeIfPresent('fx-coverres', budget.coverRes);
-    setRangeIfPresent('fx-bgopacity', mode === 'stage' ? 0.35 : mode === 'cruise' ? 0.55 : 0.72);
-
-    if (budget.qualityHint) clickSegmentByLabel('render-quality-seg', budget.qualityHint);
-
-    // Drive: prefer shelf closed if the segmented control exists.
-    if (mode === 'drive') {
-      clickSegmentByLabel('shelf-seg', '关闭') || clickSegmentByLabel('shelf-seg', '关');
-    } else if (mode === 'stage') {
-      clickSegmentByLabel('shelf-seg', '舞台') || clickSegmentByLabel('shelf-presence-seg', '常驻');
-    }
-
-    // Desktop-only features stay off on car (never force-enable).
-    var desk = global.document.getElementById('t-desktopLyrics');
-    if (desk && desk.checked) {
+    setRangeIfPresent('fx-depth', budget.depth);
+    setRangeIfPresent('fx-lyricglow', budget.lyricGlow);
+    setRangeIfPresent('fx-point', budget.point);
+    setRangeIfPresent('fx-speed', budget.speed);
+    setRangeIfPresent('fx-twist', budget.twist);
+    setRangeIfPresent('fx-scatter', budget.scatter);
+    setRangeIfPresent('fx-bgfade', budget.bgfade);
+    setRangeIfPresent('fx-bgopacity', budget.bgopacity);
+    // Prefer landscape shell on car units when control exists.
+    clickBySelector('#startup-orient-seg button[data-orient="landscape"]');
+    if (typeof global.setStartupOrientation === 'function') {
       try {
-        desk.click();
+        global.setStartupOrientation('landscape');
       } catch (_) {
-        desk.checked = false;
+        /* ignore */
       }
     }
+  }
+
+  function persistFxIfPossible() {
+    callGlobal('syncFxUniforms');
+    callGlobal('updateFxInputs');
+    callGlobal('saveFxState');
+    callGlobal('saveLyricLayout');
+  }
+
+  function applyFxProbes(mode, budget) {
+    applySliders(budget);
+    applyQuality(budget.quality);
+    applyFxKeyMap(budget.fxOn, true);
+    applyFxKeyMap(budget.fxOff, false);
+    applyShelf(budget);
+
+    // Desktop-only features always off on car.
+    ensureFxKey('desktopLyrics', false);
+    ensureFxKey('forceSystemWallpaper', false);
+    try {
+      if (typeof global.applyDesktopLyricsState === 'function') {
+        global.applyDesktopLyricsState(true);
+      }
+    } catch (_) {
+      /* ignore */
+    }
+
+    if (mode === 'stage' || mode === 'cruise') {
+      applyPreset(budget.preset);
+    }
+
+    // Cam / gesture stays off for cockpit safety even on stage.
+    clickBySelector('#cam-seg button[data-cam="off"]');
+
+    // Keep lyrics visible on sonic topography if that control exists.
+    clickBySelector('#st-showLyrics-seg button[data-val="true"]');
+
+    persistFxIfPossible();
+  }
+
+  function scheduleStageMaximize(mode, budget) {
+    if (mode !== 'stage' && mode !== 'cruise') {
+      applyFxProbes(mode, budget);
+      return;
+    }
+    STAGE_RETRY_MS.forEach(function (delay) {
+      global.setTimeout(function () {
+        var current = normalizeMode(
+          global.document.documentElement && global.document.documentElement.getAttribute(ATTR),
+        );
+        if (current !== mode) return;
+        applyFxProbes(mode, budget);
+      }, delay);
+    });
   }
 
   function ensureModeSwitch() {
@@ -223,10 +474,7 @@
     setCssBudget(budget);
     syncSwitchUi(mode);
     if (!options || options.persist !== false) writeStoredMode(mode);
-    // Delay FX probes until shell widgets exist.
-    global.setTimeout(function () {
-      applyFxProbes(mode, budget);
-    }, options && options.immediate ? 0 : 400);
+    scheduleStageMaximize(mode, budget);
     try {
       global.dispatchEvent(
         new CustomEvent('mineradio:car-visual-mode', {
@@ -245,6 +493,10 @@
     return setMode(MODES[(idx + 1) % MODES.length], { user: true });
   }
 
+  function applyStageNow() {
+    return setMode('stage', { user: true, persist: true });
+  }
+
   function boot() {
     if (!global.document || !global.document.body) {
       global.document.addEventListener('DOMContentLoaded', boot);
@@ -252,22 +504,19 @@
     }
     ensureModeSwitch();
     var initial = readStoredMode();
-    // First run defaults to drive (music-class safety), not stage.
     if (!global.localStorage || global.localStorage.getItem(STORAGE_KEY) == null) {
       initial = 'drive';
     }
     setMode(initial, { persist: true });
 
-    // Re-assert budget after late shell hydration (splash → home).
-    var retries = 0;
-    var timer = global.setInterval(function () {
-      retries += 1;
+    // After splash → home, re-assert once more for late APK shell bind.
+    global.setTimeout(function () {
       var mode = normalizeMode(global.document.documentElement.getAttribute(ATTR));
-      applyFxProbes(mode, MODE_BUDGET[mode]);
-      if (retries >= 8) global.clearInterval(timer);
-    }, 1500);
+      if (mode === 'stage' || mode === 'cruise') {
+        applyFxProbes(mode, MODE_BUDGET[mode]);
+      }
+    }, 6000);
 
-    // Long-press play button area is reserved by player; double-tap mode switch cycles.
     var switchEl = global.document.getElementById('car-visual-mode-switch');
     if (switchEl) {
       switchEl.addEventListener('dblclick', function (event) {
@@ -290,6 +539,7 @@
     },
     setMode: setMode,
     cycleMode: cycleMode,
+    applyStageNow: applyStageNow,
     budgets: MODE_BUDGET,
   };
 
