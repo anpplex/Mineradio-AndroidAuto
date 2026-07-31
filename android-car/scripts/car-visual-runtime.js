@@ -683,12 +683,99 @@
     }
   }
 
+  /** TL search entry — opens focused search without always-on desktop bar. */
+  function ensureCarSearchEntry() {
+    var doc = global.document;
+    if (!doc || !doc.body) return null;
+    var existing = doc.getElementById('car-search-entry');
+    if (existing) return existing;
+    var btn = doc.createElement('button');
+    btn.id = 'car-search-entry';
+    btn.type = 'button';
+    btn.title = '搜索歌曲';
+    btn.setAttribute('aria-label', '搜索歌曲');
+    btn.innerHTML =
+      '<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">' +
+      '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
+    btn.addEventListener('click', function () {
+      try {
+        if (doc.body) doc.body.classList.add('car-search-open');
+        var input = doc.getElementById('search-input');
+        var area = doc.getElementById('search-area');
+        if (area) {
+          area.style.setProperty('opacity', '1', 'important');
+          area.style.setProperty('pointer-events', 'auto', 'important');
+        }
+        if (input) {
+          input.focus();
+          if (typeof input.click === 'function') input.click();
+        }
+        if (typeof global.openSearchPanel === 'function') global.openSearchPanel();
+        if (typeof global.focusSearchInput === 'function') global.focusSearchInput();
+      } catch (_) {
+        /* ignore */
+      }
+    });
+    doc.body.appendChild(btn);
+    return btn;
+  }
+
+  /**
+   * Secondary Mac transport (heart / collect / mode / volume / eq / quality)
+   * lives inside FX sheet — not on play-surface bottom bar.
+   */
+  function ensureCarFxMoreBar() {
+    var doc = global.document;
+    if (!doc) return null;
+    var panel = doc.getElementById('fx-panel');
+    if (!panel) return null;
+    var existing = doc.getElementById('car-fx-more-bar');
+    if (existing) return existing;
+    var bar = doc.createElement('div');
+    bar.id = 'car-fx-more-bar';
+    bar.innerHTML =
+      '<div class="car-fx-more-label">播控 · 更多</div>' +
+      '<button type="button" data-car-fx-proxy="heart-btn">喜欢</button>' +
+      '<button type="button" data-car-fx-proxy="collect-btn">收藏</button>' +
+      '<button type="button" data-car-fx-proxy="play-mode-btn">循环</button>' +
+      '<button type="button" data-car-fx-proxy="quality-btn">音质</button>' +
+      '<button type="button" data-car-fx-proxy="eq-btn">调声</button>' +
+      '<button type="button" data-car-fx-proxy="volume-btn">音量</button>';
+    bar.addEventListener('click', function (event) {
+      var t = event.target;
+      if (!t || !t.getAttribute) return;
+      var id = t.getAttribute('data-car-fx-proxy');
+      if (!id) return;
+      try {
+        var el = doc.getElementById(id);
+        if (el) el.click();
+      } catch (_) {
+        /* ignore */
+      }
+    });
+    var head = panel.querySelector('.fx-head');
+    if (head && head.parentNode) {
+      if (head.nextSibling) panel.insertBefore(bar, head.nextSibling);
+      else panel.appendChild(bar);
+    } else {
+      panel.insertBefore(bar, panel.firstChild);
+    }
+    return bar;
+  }
+
   /** Wire search focus + FX fab so secondary surfaces open with car-scale UX. */
   function installCarChromeHooks() {
     if (global.__mineradioCarChromeHooks) return;
     global.__mineradioCarChromeHooks = true;
     var doc = global.document;
     if (!doc) return;
+
+    try {
+      ensureCarSearchEntry();
+      ensureCarFxMoreBar();
+    } catch (_) {
+      /* ignore */
+    }
 
     function onSearchFocus() {
       try {

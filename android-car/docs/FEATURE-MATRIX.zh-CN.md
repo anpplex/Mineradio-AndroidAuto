@@ -41,10 +41,11 @@
 | **CAR-LANDSCAPE** | 窗口任意尺寸 / 全屏 | **已交付** | P0-壳 | 启动入口切到 `LandscapeWebActivity`；portrait Activity 改 landscape；`resizeableActivity=true`；`exported=true`（Android 12）。 |
 | **CAR-LAUNCHER** | 桌面快捷方式 / 托盘 | **已交付** | P0-壳 | Intent 同时含 `LAUNCHER` + `CAR_LAUNCHER`。OEM Launcher 图标策略仍属待验收，不宣称全 OEM 兼容。 |
 | **CAR-INSTALL-LYRA** | NSIS 安装器 | **已交付** | P1-安装 | 普通 `adb install` 被 HMI 拒绝；`install-huawei-car.sh` 按 Lyra：临时停 `PackageInstaller`，以 `com.huawei.appinstaller.car` 对 user 12 `pm install`。破坏性重装需显式 `CLEAN_REINSTALL` + `ALLOW_DATA_LOSS_REINSTALL`。 |
-| **CAR-HMI-DENSITY** | 桌面 DPI / 缩放 | **已交付** | P2-HMI | **密度修复 `90d6884`**：WebView `width=device-width` @ 320dpi → CSS 约 **960×540**，非物理 1920×1080。media query 按 CSS px（≥900×480）。触控 48/64 CSS px；驾驶态隐藏低频控件。 |
-| **CAR-HMI-LOGIN** | 登录模态 | **部分** | P2-HMI | 壳层固定「网易云扫码登录」入口，只调 `showLoginModal()`；不伪造登录、不处理凭据。真车扫码闭环待验收。 |
-| **CAR-VISUAL-MODES** | 单一桌面视觉控制台 | **已交付** | P3-视觉 | 三模式 runtime：`drive`（默认）/ `cruise` / `stage`；`localStorage['mineradio.car.visualMode']`；`data-car-visual-mode`。2026-07-31 实车截图：`舞台` 高亮 + Showcase toast。见 [VISUAL-LAYER.zh-CN.md](./VISUAL-LAYER.zh-CN.md)。 |
-| **CAR-STAGE-MAX** | Showcase 拉满（非默认测试克制） | **已交付** | P3-视觉 | 产品决策 **showcase 拉满**（`66c5450`+`311f270`）：emily、coverRes **2.2**、ultra、FX 全开、粒子歌词/流光、DIY 开控制台、health 报告、perf 护栏、架/底栏 z 序。实车 smoke `verify-stage-showcase.sh` **PASS**（2026-07-31）：粒子封面 + 大字歌词 +「Showcase拉满: emily · 密粒子」toast。 |
+| **CAR-HMI-DENSITY** | 桌面 DPI / 缩放 | **已交付** | P2-HMI | 密度修复 + 车机 type/touch（64/76、曲名 24）；`--car-safe-top/bottom` 避状态栏/Docker。 |
+| **CAR-HMI-LOGIN** | 登录模态 | **部分** | P2-HMI | 空首页「网易云扫码登录」；播放页藏 APEX/会员胶囊；真车扫码闭环待验收。 |
+| **CAR-HMI-IA** | 桌面角区/模式条 | **已交付** | P2-HMI | TL Home+列表；底中「视觉控制台」抽屉；插件 FAB 仅空首页；**无**行车/巡航/舞台常驻条；底栏减负保曲名。见 [VISUAL-LAYER.zh-CN.md](./VISUAL-LAYER.zh-CN.md) §1.3。 |
+| **CAR-VISUAL-MODES** | 单一桌面视觉控制台 | **已交付** | P3-视觉 | runtime 仍含 drive/cruise/stage 预算；**车机 UI 固定 stage showcase**（`setMode` API only）。 |
+| **CAR-STAGE-MAX** | Showcase 拉满（非默认测试克制） | **已交付** | P3-视觉 | emily、coverRes **2.2**、ultra、FX 全开；smoke 曾 PASS。P0 后曲名/safe-bottom/APEX 再收敛，待重装验收。 |
 | **CAR-MENC-INJECT** | 明文 `public/` 资源 | **已交付** | P0-壳 / P2-HMI | `car-hmi.css` + runtime 按 APK `MENC+IV+AES-256-CBC` 注入 `assets/mineradio/`；构建契约测加解密回环与幂等。 |
 | **CAR-SPICA-STORAGE** | 用户数据目录 / 设置 JSON | **部分** | P4-媒体 | `patch-spica-storage.js` 将路径改到 `Music/SPICaMusic/`（MediaProvider 允许）；verify/smoke **无**顶层 SPICa 拒绝。真车读写闭环与本地库扫描仍待插入介质后单独验收，不得宣称全兼容。 |
 | **CAR-USB-LOCAL** | 本地文件拖放 / 本地库 | **待验收** | P4-媒体 | 需插入含音乐的 U 盘后单独验收；与 SPICa 路径问题叠加。 |

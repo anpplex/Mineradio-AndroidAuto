@@ -90,6 +90,8 @@ test('car HMI stylesheet targets density-scaled WebView CSS px on the landscape 
   assert.match(CAR_HMI_STYLESHEET, /body\.empty-home-active #plugin-fab/);
   assert.match(CAR_HMI_STYLESHEET, /#playlist-panel \.panel-tab/);
   assert.match(CAR_HMI_STYLESHEET, /#fx-fab[\s\S]*opacity:\s*\.78/);
+  assert.match(CAR_HMI_STYLESHEET, /#car-search-entry/);
+  assert.match(CAR_HMI_STYLESHEET, /#car-fx-more-bar/);
   assert.match(CAR_HMI_STYLESHEET, /#bottom-bar > #controls > \.control-cluster > \.ctrl-btn/);
   assert.match(CAR_HMI_STYLESHEET, /#audio-effect-control/);
   assert.match(CAR_HMI_STYLESHEET, /#home-recent-panel/);
@@ -165,6 +167,10 @@ test('car visual runtime encodes music-class default and stage maximization prob
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /installCarChromeHooks/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /hideApexMembershipChrome/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /data-car-apex-hidden/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /ensureCarSearchEntry/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /ensureCarFxMoreBar/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /car-search-entry/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /car-fx-more-bar/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /car-fx-open/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /car-search-open/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /setLyricStyle/);

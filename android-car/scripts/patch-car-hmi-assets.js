@@ -719,6 +719,68 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     font-size: 14px !important;
   }
 
+  /* Car search entry (runtime injects #car-search-entry next to TL nav) */
+  #car-search-entry {
+    position: fixed !important;
+    z-index: 32 !important;
+    top: calc(var(--car-safe-top) + 8px) !important;
+    left: calc(var(--car-corner-inset) + (var(--car-corner-btn) + var(--car-corner-gap)) * 2) !important;
+    width: var(--car-corner-btn) !important;
+    height: var(--car-corner-btn) !important;
+    min-width: var(--car-corner-btn) !important;
+    min-height: var(--car-corner-btn) !important;
+    padding: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 50% !important;
+    border: 1px solid rgba(255, 255, 255, .18) !important;
+    background: var(--car-panel-strong) !important;
+    color: var(--car-text-primary) !important;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .36) !important;
+    font-size: 0 !important;
+  }
+  #car-search-entry svg {
+    width: var(--car-corner-icon) !important;
+    height: var(--car-corner-icon) !important;
+  }
+  body.car-search-open #car-search-entry {
+    border-color: rgba(12, 205, 191, .45) !important;
+    box-shadow: 0 0 0 2px rgba(12, 205, 191, .25), 0 10px 28px rgba(0, 0, 0, .36) !important;
+  }
+
+  /* Secondary transport row inside FX bottom sheet (runtime injects) */
+  #car-fx-more-bar {
+    display: none !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    gap: 10px !important;
+    margin: 0 0 14px !important;
+    padding: 10px 4px 12px !important;
+    border-bottom: 1px solid rgba(255, 255, 255, .1) !important;
+  }
+  body.car-fx-open #car-fx-more-bar {
+    display: flex !important;
+  }
+  #car-fx-more-bar .car-fx-more-label {
+    width: 100% !important;
+    font-size: 14px !important;
+    font-weight: 650 !important;
+    color: var(--car-text-secondary) !important;
+    margin-bottom: 2px !important;
+  }
+  #car-fx-more-bar button {
+    min-height: 48px !important;
+    min-width: 48px !important;
+    padding: 0 14px !important;
+    border-radius: 14px !important;
+    border: 1px solid rgba(255, 255, 255, .16) !important;
+    background: rgba(255, 255, 255, .06) !important;
+    color: var(--car-text-primary) !important;
+    font-size: 15px !important;
+    font-weight: 650 !important;
+  }
+
   /* ——— Visual layer budgets (driven by data-car-visual-mode) ———
    * Do NOT paint WebGL canvases with CSS opacity < 1 on stage: intermediate
    * compositing on Android WebView softens emily cover particles.
