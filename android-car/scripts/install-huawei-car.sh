@@ -106,8 +106,30 @@ TARGET_INSTALLER_CHANGED=0
 SYSTEM_INSTALLER_CHANGED=0
 
 # The Huawei HMI can otherwise place third-party apps in its secondary pane.
+# Some builds return flaky "Error: Activity not started, unknown error code 102"
+# on the first am start after pm install — retry a few times.
 "$ADB" -s "$SERIAL" shell am force-stop --user "$TARGET_USER" "$PACKAGE"
-"$ADB" -s "$SERIAL" shell am start --user "$TARGET_USER" --windowingMode 1 -W -n "$ACTIVITY"
+start_ok=0
+for attempt in 1 2 3 4 5; do
+  start_out="$("$ADB" -s "$SERIAL" shell am start --user "$TARGET_USER" --windowingMode 1 -W -n "$ACTIVITY" 2>&1 || true)"
+  echo "$start_out" | tr -d '\r'
+  if grep -qiE 'Status: *ok' <<<"$start_out"; then
+    start_ok=1
+    break
+  fi
+  if grep -qiE 'error code 102|Error: Activity not started' <<<"$start_out"; then
+    echo "warn: am start attempt $attempt flaky (102); retrying..." >&2
+    sleep 1
+    "$ADB" -s "$SERIAL" shell am force-stop --user "$TARGET_USER" "$PACKAGE" >/dev/null || true
+    sleep 0.5
+    continue
+  fi
+  # Non-102 errors: still try once more then stop retrying this path.
+  sleep 0.5
+done
+if [[ "$start_ok" != "1" ]]; then
+  echo "warn: am start did not report Status: ok after retries; package is installed — use verify-huawei-car.sh" >&2
+fi
 
 echo "=== installed package ==="
 "$ADB" -s "$SERIAL" shell pm path --user "$TARGET_USER" "$PACKAGE"

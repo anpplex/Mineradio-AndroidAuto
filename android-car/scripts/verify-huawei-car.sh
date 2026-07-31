@@ -61,11 +61,29 @@ if [[ "$SKIP_LOGCAT" != "1" ]]; then
   "$ADB" -s "$SERIAL" logcat -c 2>/dev/null || true
 fi
 "$ADB" -s "$SERIAL" shell am force-stop --user "$TARGET_USER" "$PACKAGE"
-start_out="$("$ADB" -s "$SERIAL" shell am start --user "$TARGET_USER" --windowingMode 1 -W -n "$ACTIVITY" 2>&1 || true)"
-echo "$start_out" | tr -d '\r'
-if grep -qiE 'Error|Exception|SecurityException|does not exist|Unable to find|Activity class' <<<"$start_out" \
-  && ! grep -qiE 'Status: *ok' <<<"$start_out"; then
-  fail "am start failed: $start_out"
+start_ok=0
+start_out=""
+for attempt in 1 2 3 4 5; do
+  start_out="$("$ADB" -s "$SERIAL" shell am start --user "$TARGET_USER" --windowingMode 1 -W -n "$ACTIVITY" 2>&1 || true)"
+  echo "$start_out" | tr -d '\r'
+  if grep -qiE 'Status: *ok' <<<"$start_out"; then
+    start_ok=1
+    break
+  fi
+  if grep -qiE 'error code 102|Error: Activity not started' <<<"$start_out"; then
+    echo "warn: am start attempt $attempt returned 102; retrying..." >&2
+    sleep 1
+    "$ADB" -s "$SERIAL" shell am force-stop --user "$TARGET_USER" "$PACKAGE" >/dev/null || true
+    sleep 0.5
+    continue
+  fi
+  if grep -qiE 'SecurityException|does not exist|Unable to find|Activity class' <<<"$start_out"; then
+    fail "am start failed: $start_out"
+  fi
+  sleep 0.5
+done
+if [[ "$start_ok" != "1" ]]; then
+  fail "am start failed after retries: $start_out"
 fi
 ok "am start issued for $ACTIVITY (user $TARGET_USER, windowingMode 1)"
 
@@ -113,6 +131,15 @@ if [[ "$SKIP_LOGCAT" != "1" ]]; then
     fail "FATAL EXCEPTION detected for $PACKAGE in logcat after start"
   fi
   ok "no FATAL EXCEPTION for $PACKAGE in recent logcat"
+
+  # Soft check: legacy illegal top-level SPICaMusic should not appear after car storage patch.
+  # Music/SPICaMusic is the legal remapped path and is OK.
+  if grep -F "Creating a non-default top level directory" <<<"$log_out" \
+    | grep -qF "SPICaMusic"; then
+    echo "warn: MediaProvider still rejects top-level SPICaMusic (storage patch may be missing in installed APK)" >&2
+  else
+    ok "no MediaProvider top-level SPICaMusic rejection in recent logcat"
+  fi
 else
   ok "logcat scan skipped (SKIP_LOGCAT=1)"
 fi

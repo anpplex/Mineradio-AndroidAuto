@@ -71,6 +71,13 @@ test('verify-huawei-car.sh encodes required acceptance contract', () => {
   assert.match(src, /exit 1/);
 });
 
+test('verify-huawei-car.sh retries flaky am start error 102', () => {
+  const src = fs.readFileSync(script, 'utf8');
+  assert.match(src, /error code 102/);
+  assert.match(src, /for attempt in 1 2 3 4 5/);
+  assert.match(src, /SPICaMusic/);
+});
+
 test('verify-huawei-car.sh is non-destructive (no install/uninstall flags in body)', () => {
   const src = fs.readFileSync(script, 'utf8');
   // Strip comments for a slightly stricter scan
