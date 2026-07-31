@@ -84,8 +84,20 @@
 - [ ] 系统「减少动态效果」时粒子进一步压低  
 - [ ] 不出现桌面歌词窗 / WE 相关强提示主路径  
 
-## 7. 后续可增强（未做）
+## 7. Audio duck（已做 · Web 层）
+
+导航/电话等导致 **media pause** 或 **document.hidden / blur** 时：
+
+- `body.car-audio-duck` + 高 scrim，压 intensity / cinema / 歌词舞台亮度  
+- **不**退出 showcase 模式（`data-car-visual-mode` 仍为 stage）  
+- `play` / focus / 恢复播放 → `setAudioDuck(false)` 再拉满 showcase  
+
+API：`MineradioCarVisual.setAudioDuck(true|false, reason)`、`isAudioDuckActive()`。
+
+原生 APK `AudioFocusManager`（media3）未改 smali；Web 钩子覆盖 WebView 播放路径。
+
+## 8. 后续可增强（未做）
 
 - 驻车信号（若未来有合法 Car API）自动建议切 stage  
-- 与 AudioFocus 联动：导航语音时短暂压粒子  
-- 将 Windows 2.0 模块化视觉预算表导入 runtime  
+- 将 Windows 2.0 模块化视觉预算表完整导入 runtime  
+- smali 监听 `onAudioFocusChange` 经 JS bridge 调 `setAudioDuck`（更准）  

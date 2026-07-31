@@ -124,6 +124,10 @@ test('car visual runtime encodes music-class default and stage maximization prob
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /applyLyricShowcaseColors/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /maybeThrottleShowcaseQuality/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /#fac900/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /setAudioDuck/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /installAudioDuckHooks/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /car-audio-duck/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /media-pause/);
   // Preset must run before cover res so emily mesh is not left soft/coarse.
   assert.match(
     CAR_VISUAL_RUNTIME_SOURCE,
@@ -147,6 +151,8 @@ test('car stage CSS fully opens the particle canvas and strengthens lyric stage'
     CAR_HMI_STYLESHEET,
     /data-car-visual-mode="stage"[\s\S]*lyrics-toggle-btn[\s\S]*display:\s*inline-flex/,
   );
+  assert.match(CAR_HMI_STYLESHEET, /car-audio-duck/);
+  assert.match(CAR_HMI_STYLESHEET, /body\.car-audio-duck #canvas-container::after/);
 });
 
 test('patchCarHmiAssets writes MENC css, runtime and patched index', () => {

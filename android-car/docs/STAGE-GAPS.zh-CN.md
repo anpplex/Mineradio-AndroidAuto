@@ -206,7 +206,8 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 说明 | `VISUAL-LAYER.zh-CN.md` §7 已列；无合法车速/驻车 API 前不做。非本阶段代码缺口。 |
+| **状态** | **Audio duck 已实现（Web 层）** — `setAudioDuck`：pause/hide/blur 时抬 scrim、压 intensity/cinema/歌词；play/focus 恢复 showcase。原生 `AudioFocusManager`（media3）未 smali 改写。 |
+| 驻车自动 stage | 仍无合法车速/档位 API → **不做**。 |
 
 ---
 

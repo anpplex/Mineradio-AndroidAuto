@@ -999,7 +999,224 @@
         readStoredMode(),
     );
     if (mode !== 'stage' && mode !== 'cruise') return;
+    // Don't stomp a navigation duck with full showcase mid-interrupt.
+    if (audioDuckActive && reason && String(reason).indexOf('unduck') !== 0) {
+      return;
+    }
     applyFxProbes(mode, MODE_BUDGET[mode]);
+  }
+
+  /**
+   * Audio duck — when nav/phone steals focus or media pauses, dim stage visuals
+   * without leaving showcase mode. Restores on play / visible.
+   * (Web-layer; native AudioFocusManager lives in APK media3 and is not patched.)
+   */
+  var audioDuckActive = false;
+  var audioDuckReason = '';
+  var DUCK_BUDGET = {
+    particleOpacity: 0.2,
+    scrim: 0.58,
+    cineshake: 0,
+    intensity: 0.22,
+    bloom: 0.15,
+    lyricGlow: 0.12,
+  };
+
+  function applyDuckCss(on) {
+    var root = global.document && global.document.documentElement;
+    var body = global.document && global.document.body;
+    if (body) body.classList.toggle('car-audio-duck', !!on);
+    if (!root) return;
+    if (on) {
+      root.style.setProperty('--car-particle-opacity', String(DUCK_BUDGET.particleOpacity));
+      root.style.setProperty('--car-stage-scrim', String(DUCK_BUDGET.scrim));
+    } else {
+      var mode = normalizeMode(root.getAttribute(ATTR) || readStoredMode());
+      var budget = MODE_BUDGET[mode] || MODE_BUDGET.drive;
+      setCssBudget(budget);
+    }
+  }
+
+  function setAudioDuck(on, reason) {
+    on = !!on;
+    var mode = normalizeMode(
+      (global.document &&
+        global.document.documentElement &&
+        global.document.documentElement.getAttribute(ATTR)) ||
+        readStoredMode(),
+    );
+    // Only duck immersive modes; drive is already quiet.
+    if (on && mode === 'drive') {
+      audioDuckActive = false;
+      return false;
+    }
+    if (audioDuckActive === on) {
+      audioDuckReason = reason || audioDuckReason;
+      return on;
+    }
+    audioDuckActive = on;
+    audioDuckReason = reason || '';
+    applyDuckCss(on);
+    if (on) {
+      setRangeIfPresent('fx-intensity', DUCK_BUDGET.intensity);
+      setRangeIfPresent('fx-cineshake', DUCK_BUDGET.cineshake);
+      setRangeIfPresent('fx-bloom', DUCK_BUDGET.bloom);
+      setRangeIfPresent('fx-lyricglow', DUCK_BUDGET.lyricGlow);
+      try {
+        if (global.fx) {
+          if ('intensity' in global.fx) global.fx.intensity = DUCK_BUDGET.intensity;
+          if ('cinemaShake' in global.fx) global.fx.cinemaShake = 0;
+          if ('cinema' in global.fx) global.fx.cinema = false;
+        }
+      } catch (_) {
+        /* ignore */
+      }
+      try {
+        callGlobal('syncFxUniforms');
+      } catch (_) {
+        /* ignore */
+      }
+      try {
+        if (global.console && console.info) {
+          console.info('[MineradioCarVisual] audio-duck on', reason);
+        }
+      } catch (_2) {
+        /* ignore */
+      }
+    } else {
+      reassertIfStageLike('unduck:' + (reason || ''));
+      try {
+        if (global.console && console.info) {
+          console.info('[MineradioCarVisual] audio-duck off', reason);
+        }
+      } catch (_3) {
+        /* ignore */
+      }
+    }
+    try {
+      global.dispatchEvent(
+        new CustomEvent('mineradio:car-audio-duck', {
+          detail: { duck: on, reason: reason || '', mode: mode },
+        }),
+      );
+    } catch (_) {
+      /* ignore */
+    }
+    return on;
+  }
+
+  function anyMediaPlaying() {
+    try {
+      var nodes = global.document.querySelectorAll('audio, video');
+      for (var i = 0; i < nodes.length; i += 1) {
+        var el = nodes[i];
+        if (!el.paused && !el.ended && el.readyState > 2) return true;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    return false;
+  }
+
+  function installAudioDuckHooks() {
+    if (global.__mineradioCarAudioDuckHooks) return;
+    global.__mineradioCarAudioDuckHooks = true;
+
+    function onPause() {
+      // Delay: brief seeks shouldn't duck.
+      global.setTimeout(function () {
+        if (!anyMediaPlaying()) setAudioDuck(true, 'media-pause');
+      }, 280);
+    }
+    function onPlay() {
+      setAudioDuck(false, 'media-play');
+    }
+    function bindMedia(el) {
+      if (!el || el.__mineradioCarDuckBound) return;
+      el.__mineradioCarDuckBound = true;
+      try {
+        el.addEventListener('pause', onPause);
+        el.addEventListener('play', onPlay);
+        el.addEventListener('playing', onPlay);
+        el.addEventListener('volumechange', function () {
+          if (el.muted || el.volume === 0) setAudioDuck(true, 'volume-zero');
+          else if (!el.paused) setAudioDuck(false, 'volume-restore');
+        });
+      } catch (_) {
+        /* ignore */
+      }
+    }
+
+    try {
+      var existing = global.document.querySelectorAll('audio, video');
+      for (var i = 0; i < existing.length; i += 1) bindMedia(existing[i]);
+    } catch (_) {
+      /* ignore */
+    }
+
+    try {
+      var mo = new MutationObserver(function (mutations) {
+        for (var m = 0; m < mutations.length; m += 1) {
+          var nodes = mutations[m].addedNodes || [];
+          for (var n = 0; n < nodes.length; n += 1) {
+            var node = nodes[n];
+            if (!node || node.nodeType !== 1) continue;
+            if (node.matches && (node.matches('audio') || node.matches('video'))) bindMedia(node);
+            if (node.querySelectorAll) {
+              var nested = node.querySelectorAll('audio, video');
+              for (var k = 0; k < nested.length; k += 1) bindMedia(nested[k]);
+            }
+          }
+        }
+      });
+      mo.observe(global.document.documentElement, { childList: true, subtree: true });
+    } catch (_) {
+      /* ignore */
+    }
+
+    // Document hide often tracks multi-window / nav overlay on car HMIs.
+    try {
+      global.document.addEventListener('visibilitychange', function () {
+        if (global.document.hidden) setAudioDuck(true, 'document-hidden');
+        else if (anyMediaPlaying()) setAudioDuck(false, 'document-visible');
+      });
+      global.addEventListener('blur', function () {
+        global.setTimeout(function () {
+          if (!anyMediaPlaying() || global.document.hidden) setAudioDuck(true, 'window-blur');
+        }, 200);
+      });
+      global.addEventListener('focus', function () {
+        if (anyMediaPlaying()) setAudioDuck(false, 'window-focus');
+      });
+    } catch (_) {
+      /* ignore */
+    }
+
+    // Poll as safety net for media sessions that don't emit pause reliably.
+    global.setInterval(function () {
+      var mode = normalizeMode(
+        (global.document &&
+          global.document.documentElement &&
+          global.document.documentElement.getAttribute(ATTR)) ||
+          'drive',
+      );
+      if (mode === 'drive') return;
+      if (global.document.hidden) {
+        setAudioDuck(true, 'poll-hidden');
+        return;
+      }
+      if (!anyMediaPlaying() && audioDuckActive === false) {
+        // stay unducked when idle on home with no media — don't force duck
+        return;
+      }
+      if (!anyMediaPlaying() && audioDuckActive) {
+        // keep duck while paused after interrupt
+        return;
+      }
+      if (anyMediaPlaying() && audioDuckActive) {
+        setAudioDuck(false, 'poll-playing');
+      }
+    }, 2500);
   }
 
   function ensureModeSwitch() {
@@ -1090,6 +1307,7 @@
       return;
     }
     installCoverSharpnessHooks();
+    installAudioDuckHooks();
     ensureModeSwitch();
     var initial = readStoredMode();
     if (!global.localStorage || global.localStorage.getItem(STORAGE_KEY) == null) {
@@ -1105,15 +1323,25 @@
     // P0-5: re-apply stage FX after resume / tab show / playback start (SPICa may drop FX).
     try {
       global.document.addEventListener('visibilitychange', function () {
-        if (!global.document.hidden) reassertIfStageLike('visibility');
+        if (!global.document.hidden && !audioDuckActive) reassertIfStageLike('visibility');
       });
       global.addEventListener('pageshow', function () {
-        reassertIfStageLike('pageshow');
+        if (!audioDuckActive) reassertIfStageLike('pageshow');
       });
       global.document.addEventListener(
         'play',
         function () {
+          setAudioDuck(false, 'capture-play');
           reassertIfStageLike('play');
+        },
+        true,
+      );
+      global.document.addEventListener(
+        'pause',
+        function () {
+          global.setTimeout(function () {
+            if (!anyMediaPlaying()) setAudioDuck(true, 'capture-pause');
+          }, 280);
         },
         true,
       );
@@ -1145,6 +1373,10 @@
     cycleMode: cycleMode,
     applyStageNow: applyStageNow,
     reassertIfStageLike: reassertIfStageLike,
+    setAudioDuck: setAudioDuck,
+    isAudioDuckActive: function () {
+      return !!audioDuckActive;
+    },
     reportStageHealth: function () {
       var mode = normalizeMode(
         (global.document &&

@@ -483,6 +483,25 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     z-index: 42 !important;
   }
 
+  /* Audio duck: nav/phone interrupt — dim stage without leaving showcase mode. */
+  body.car-audio-duck #canvas-container::after,
+  body.car-audio-duck .particle-background::after {
+    background: rgba(0, 0, 0, 0.58) !important;
+    transition: background .2s ease !important;
+  }
+  body.car-audio-duck #stage-lyrics,
+  body.car-audio-duck #lyric-float-stage,
+  body.car-audio-duck #lyric-popword-stage {
+    opacity: .42 !important;
+    filter: none !important;
+  }
+  body.car-audio-duck #beat-chip {
+    opacity: .35 !important;
+  }
+  body.car-audio-duck #fx-fab {
+    opacity: .55 !important;
+  }
+
   /* Reduced motion: honor drive budget + system preference.
    * Never soft-composite stage WebGL via opacity — only raise scrim. */
   body.car-reduce-motion *,
