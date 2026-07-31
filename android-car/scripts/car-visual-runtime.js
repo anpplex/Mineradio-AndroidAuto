@@ -1304,47 +1304,26 @@
     }, 2500);
   }
 
+  /**
+   * Mode switch (行车/巡航/舞台) removed from car play surface.
+   * Showcase stage is the fixed car visual budget; API setMode remains for debug.
+   */
   function ensureModeSwitch() {
     var doc = global.document;
     if (!doc) return null;
     var existing = doc.getElementById('car-visual-mode-switch');
-    if (existing) return existing;
-
-    var wrap = doc.createElement('div');
-    wrap.id = 'car-visual-mode-switch';
-    wrap.setAttribute('role', 'group');
-    wrap.setAttribute('aria-label', '车机视觉模式');
-    wrap.innerHTML =
-      '<button type="button" data-car-mode="drive" aria-pressed="false">行车</button>' +
-      '<button type="button" data-car-mode="cruise" aria-pressed="false">巡航</button>' +
-      '<button type="button" data-car-mode="stage" aria-pressed="false">舞台</button>' +
-      '<span id="car-visual-mode-hint" class="car-visual-mode-hint"></span>';
-
-    wrap.addEventListener('click', function onModeClick(event) {
-      var target = event.target;
-      if (!target || !target.getAttribute) return;
-      var mode = target.getAttribute('data-car-mode');
-      if (!mode) return;
-      setMode(mode, { user: true });
-    });
-
-    doc.body.appendChild(wrap);
-    return wrap;
+    if (existing && existing.parentNode) {
+      try {
+        existing.parentNode.removeChild(existing);
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    return null;
   }
 
-  function syncSwitchUi(mode) {
-    var wrap = global.document.getElementById('car-visual-mode-switch');
-    if (!wrap) return;
-    var buttons = wrap.querySelectorAll('[data-car-mode]');
-    for (var i = 0; i < buttons.length; i += 1) {
-      var btn = buttons[i];
-      var active = btn.getAttribute('data-car-mode') === mode;
-      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-      if (active) btn.classList.add('is-active');
-      else btn.classList.remove('is-active');
-    }
-    var hint = global.document.getElementById('car-visual-mode-hint');
-    if (hint) hint.textContent = HINTS[mode] || '';
+  function syncSwitchUi(/* mode */) {
+    /* no-op: on-screen mode switch removed */
   }
 
   function setMode(nextMode, options) {
@@ -1396,9 +1375,12 @@
     installCarChromeHooks();
     ensureModeSwitch();
     collapseCarChrome({ keepFxClosed: true, closeSearch: true });
-    var initial = readStoredMode();
-    if (!global.localStorage || global.localStorage.getItem(STORAGE_KEY) == null) {
-      initial = 'drive';
+    // Fixed showcase stage on car (no 行车/巡航/舞台 chrome).
+    var initial = 'stage';
+    try {
+      if (global.localStorage) global.localStorage.setItem(STORAGE_KEY, 'stage');
+    } catch (_) {
+      /* ignore */
     }
     setMode(initial, { persist: true });
 

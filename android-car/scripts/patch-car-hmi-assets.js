@@ -45,7 +45,10 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
   /* Car touch: phone 48 is too small at arm's length. */
   --car-touch-target: 64px;
   --car-primary-action: 76px;
-  /* Corner chrome (TL menu / TR home / BR FX) — larger than mid-bar icons. */
+  /* System chrome clearance (Huawei status bar + bottom Docker). CSS px @ ~960. */
+  --car-safe-top: 28px;
+  --car-safe-bottom: 48px;
+  /* Corner chrome: TL nav cluster + BL FX (mode switch removed). */
   --car-corner-inset: 20px;
   --car-corner-btn: 72px;
   --car-corner-icon: 30px;
@@ -74,8 +77,8 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
 
   /* ——— Shell / navigation ——— */
   #empty-home, #home-empty, .empty-home, .home-page {
-    top: calc(var(--car-corner-inset) + var(--car-corner-btn) + var(--car-space-16)) !important;
-    bottom: 116px !important;
+    top: calc(var(--car-safe-top) + var(--car-corner-btn) + var(--car-space-20)) !important;
+    bottom: calc(var(--car-safe-bottom) + 108px) !important;
     width: min(920px, calc(100vw - 48px)) !important;
   }
   .empty-home-shell, .home-shell, .home-layout {
@@ -126,7 +129,7 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
   #beat-chip {
     display: none !important;
   }
-  /* DIY desktop button; car uses mode switch + optional #fx-fab only. */
+  /* DIY desktop button; car uses #fx-fab only. */
   #diy-mode-btn,
   .desktop-mode-btn {
     display: none !important;
@@ -141,13 +144,6 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
   /* Announcement is low-frequency on car. */
   #announcement-entry {
     display: none !important;
-  }
-  /* Keep home on top-right; hide account/APEX/membership chrome on play surface. */
-  #top-right > *:not(#home-btn) {
-    display: none !important;
-  }
-  #top-right #home-btn {
-    display: inline-flex !important;
   }
   /* Color chips / pickers only when FX console is intentionally open. */
   body:not(.car-fx-open) #lyric-highlight-value,
@@ -216,9 +212,11 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
   }
 
   /*
-   * Corner chrome (TL / TR / BR) — car HMI review targets.
-   * Spec: same size, same safe inset, glass Windows look, glyph ≥30px,
-   * edge ≥20px, inter-control gap ≥12px. Not phone 44/48 icon buttons.
+   * Corner chrome — car + Mac play-surface IA:
+   *   TL: playlist + home
+   *   BL: visual console (FX)  — was BR; mode switch removed
+   *   TR: empty on play (login only on empty home, top-right)
+   * Safe top/bottom clear status bar + Docker.
    */
   #playlist-toggle,
   #home-btn,
@@ -244,50 +242,61 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     box-shadow: 0 10px 28px rgba(0, 0, 0, .36) !important;
     -webkit-tap-highlight-color: transparent;
   }
-  /* TL — playlist / menu */
+  /* TL — playlist then home (nav cluster) */
   #playlist-toggle {
-    top: var(--car-corner-inset) !important;
+    top: calc(var(--car-safe-top) + 8px) !important;
     left: var(--car-corner-inset) !important;
     right: auto !important;
     bottom: auto !important;
   }
-  /* TR cluster — home (+ optional login on empty home) */
+  #home-btn {
+    top: calc(var(--car-safe-top) + 8px) !important;
+    left: calc(var(--car-corner-inset) + var(--car-corner-btn) + var(--car-corner-gap)) !important;
+    right: auto !important;
+    bottom: auto !important;
+  }
+  /*
+   * #home-btn lives under #top-right in APK DOM — cannot display:none the wrapper
+   * or Home vanishes. Zero-size host; Home is position:fixed to TL cluster.
+   */
   #top-right {
     position: fixed !important;
-    top: var(--car-corner-inset) !important;
-    right: var(--car-corner-inset) !important;
-    left: auto !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: auto !important;
     bottom: auto !important;
     z-index: 32 !important;
-    display: inline-flex !important;
-    flex-direction: row !important;
-    align-items: center !important;
-    justify-content: flex-end !important;
-    gap: var(--car-corner-gap) !important;
-    width: auto !important;
-    height: var(--car-corner-btn) !important;
-    min-height: var(--car-corner-btn) !important;
+    display: block !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: visible !important;
     padding: 0 !important;
     margin: 0 !important;
-    background: transparent !important;
     border: 0 !important;
+    background: transparent !important;
     box-shadow: none !important;
+    pointer-events: none !important;
   }
   #top-right #home-btn {
-    position: static !important;
-    top: auto !important;
-    right: auto !important;
-    left: auto !important;
-    bottom: auto !important;
+    pointer-events: auto !important;
   }
-  /* BR — visual console entry; clear transport bar + mode switch height */
+  /* BL — visual console (Mac-aligned entry; no 行车/巡航/舞台 bar) */
   #fx-fab {
     top: auto !important;
-    left: auto !important;
-    right: var(--car-corner-inset) !important;
-    bottom: calc(14px + 100px + var(--car-space-12)) !important;
+    left: var(--car-corner-inset) !important;
+    right: auto !important;
+    bottom: calc(var(--car-safe-bottom) + 100px + var(--car-space-12)) !important;
   }
   #fx-fab-hide-btn { display: none !important; }
+  /* Mode switch permanently off the play surface */
+  #car-visual-mode-switch {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+  }
   #playlist-toggle svg,
   #home-btn svg,
   #fx-fab svg,
@@ -304,12 +313,12 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     min-height: var(--car-touch-target) !important;
   }
 
-  /* Login CTA only on empty home — same row as Home, car height/type. */
+  /* Login CTA only on empty home — top-right, clear of TL nav cluster. */
   #car-login-entry {
     position: fixed !important;
     z-index: 32 !important;
-    top: var(--car-corner-inset) !important;
-    right: calc(var(--car-corner-inset) + var(--car-corner-btn) + var(--car-corner-gap)) !important;
+    top: calc(var(--car-safe-top) + 8px) !important;
+    right: var(--car-corner-inset) !important;
     left: auto !important;
     min-width: 160px !important;
     height: var(--car-corner-btn) !important;
@@ -333,7 +342,7 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     display: inline-flex !important;
   }
   #trial-banner {
-    top: calc(var(--car-corner-inset) + var(--car-corner-btn) + var(--car-space-12)) !important;
+    top: calc(var(--car-safe-top) + var(--car-corner-btn) + var(--car-space-16)) !important;
     left: auto !important;
     right: var(--car-corner-inset) !important;
     transform: translateY(-8px) !important;
@@ -357,11 +366,11 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     font-weight: 760 !important;
   }
 
-  /* Transport bar: Windows glass look, car height/type. */
+  /* Transport bar: Windows glass look; sit above car Docker. */
   #bottom-bar {
     min-height: 100px !important;
     width: min(920px, calc(100vw - 40px)) !important;
-    bottom: 14px !important;
+    bottom: var(--car-safe-bottom) !important;
     padding: 12px 18px !important;
     border-radius: 22px !important;
     background: var(--car-panel-strong) !important;
@@ -472,61 +481,15 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     text-shadow: 0 2px 18px rgba(0, 0, 0, .55) !important;
   }
 
-  /* BL mode switch — share corner inset; car-sized segments. */
-  #car-visual-mode-switch {
-    position: fixed !important;
-    z-index: 30 !important;
-    left: var(--car-corner-inset) !important;
-    bottom: calc(14px + 100px + var(--car-space-12)) !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-    padding: 6px !important;
-    border-radius: 20px !important;
-    background: var(--car-panel-strong) !important;
-    border: 1px solid rgba(255, 255, 255, .16) !important;
-    box-shadow: 0 10px 28px rgba(0, 0, 0, .35) !important;
-    max-width: min(320px, calc(100vw - 40px)) !important;
-  }
-  #car-visual-mode-switch button {
-    min-width: 76px !important;
-    min-height: var(--car-corner-btn) !important;
-    padding: 0 18px !important;
-    border: 0 !important;
-    border-radius: 16px !important;
-    background: transparent !important;
-    color: var(--car-text-secondary) !important;
-    font-size: var(--car-type-control) !important;
-    font-weight: 700 !important;
-    letter-spacing: .02em !important;
-    line-height: 1 !important;
-  }
-  #car-visual-mode-switch button.is-active,
-  #car-visual-mode-switch button[aria-pressed="true"] {
-    background: var(--car-accent) !important;
-    color: var(--car-accent-ink) !important;
-  }
-  /* Long desktop hint fights transport; keep labels only (toast for feedback). */
-  #car-visual-mode-switch .car-visual-mode-hint {
-    display: none !important;
-  }
-
-  /* Drive: music-class — minimal chrome, transport-first. */
+  /* Drive budget (API-only; no on-screen mode switch). */
   html[data-car-visual-mode="drive"] body.empty-home-active .home-card,
   body.car-mode-drive.empty-home-active .home-card {
     animation: none !important;
-  }
-  html[data-car-visual-mode="drive"] #fx-fab,
-  body.car-mode-drive #fx-fab,
-  html[data-car-visual-mode="drive"] #fx-panel,
-  body.car-mode-drive #fx-panel {
-    display: none !important;
   }
   html[data-car-visual-mode="drive"] #shelf-touch-shield,
   body.car-mode-drive #shelf-touch-shield {
     pointer-events: none !important;
   }
-  /* While playing (not empty home): collapse search to free center stage for glance. */
   html[data-car-visual-mode="drive"] body:not(.empty-home-active):not(.car-search-open) #search-area,
   body.car-mode-drive:not(.empty-home-active):not(.car-search-open) #search-area {
     opacity: 0 !important;
@@ -631,15 +594,6 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
   body.car-mode-stage #play-btn {
     box-shadow: 0 0 0 3px rgba(12, 205, 191, .28), 0 10px 28px rgba(0, 0, 0, .35) !important;
   }
-  html[data-car-visual-mode="stage"] #car-visual-mode-switch,
-  body.car-mode-stage #car-visual-mode-switch {
-    border-color: rgba(12, 205, 191, .35) !important;
-  }
-  /* Never re-show long showcase hint on car (labels only). */
-  html[data-car-visual-mode="stage"] #car-visual-mode-switch .car-visual-mode-hint,
-  body.car-mode-stage #car-visual-mode-switch .car-visual-mode-hint {
-    display: none !important;
-  }
   /* Stage keeps transport readable but lets particles breathe through panels. */
   html[data-car-visual-mode="stage"] #playlist-panel,
   body.car-mode-stage #playlist-panel {
@@ -657,14 +611,14 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     z-index: 40 !important;
     position: fixed !important;
   }
-  html[data-car-visual-mode="stage"] #car-visual-mode-switch,
-  body.car-mode-stage #car-visual-mode-switch {
-    z-index: 41 !important;
-  }
   html[data-car-visual-mode="stage"] #shelf-touch-shield,
   body.car-mode-stage #shelf-touch-shield {
-    bottom: calc(14px + 100px + var(--car-corner-btn) + var(--car-space-16)) !important;
+    bottom: calc(var(--car-safe-bottom) + 100px + var(--car-corner-btn) + var(--car-space-16)) !important;
     pointer-events: auto !important;
+  }
+  html[data-car-visual-mode="stage"] #fx-fab,
+  body.car-mode-stage #fx-fab {
+    z-index: 41 !important;
   }
   html[data-car-visual-mode="stage"] #play-btn,
   body.car-mode-stage #play-btn {

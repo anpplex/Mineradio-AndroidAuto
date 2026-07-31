@@ -52,27 +52,30 @@ test('car HMI stylesheet targets density-scaled WebView CSS px on the landscape 
   assert.match(CAR_HMI_STYLESHEET, /--car-primary-action:\s*76px/);
   assert.match(CAR_HMI_STYLESHEET, /--car-type-title:\s*24px/);
   assert.match(CAR_HMI_STYLESHEET, /--car-type-body:\s*18px/);
-  // Corner chrome TL/TR/BR car safe zones
+  // Corner chrome TL nav + BL FX; safe areas for status/Docker
+  assert.match(CAR_HMI_STYLESHEET, /--car-safe-top:\s*28px/);
+  assert.match(CAR_HMI_STYLESHEET, /--car-safe-bottom:\s*48px/);
   assert.match(CAR_HMI_STYLESHEET, /--car-corner-inset:\s*20px/);
   assert.match(CAR_HMI_STYLESHEET, /--car-corner-btn:\s*72px/);
   assert.match(CAR_HMI_STYLESHEET, /--car-corner-icon:\s*30px/);
   assert.match(CAR_HMI_STYLESHEET, /--car-corner-gap:\s*12px/);
-  assert.match(CAR_HMI_STYLESHEET, /Corner chrome \(TL \/ TR \/ BR\)/);
+  assert.match(CAR_HMI_STYLESHEET, /TL: playlist \+ home/);
+  assert.match(CAR_HMI_STYLESHEET, /BL: visual console/);
   assert.match(CAR_HMI_STYLESHEET, /Keep Windows Mineradio visual language/);
   assert.match(CAR_HMI_STYLESHEET, /#trial-login-btn/);
   assert.match(CAR_HMI_STYLESHEET, /#car-login-entry/);
   assert.match(CAR_HMI_STYLESHEET, /body\.empty-home-active #car-login-entry/);
   assert.match(CAR_HMI_STYLESHEET, /#playlist-toggle/);
-  assert.match(CAR_HMI_STYLESHEET, /#top-right/);
-  assert.match(CAR_HMI_STYLESHEET, /#fx-fab/);
+  assert.match(CAR_HMI_STYLESHEET, /#home-btn[\s\S]*left:\s*calc\(var\(--car-corner-inset\)/);
+  assert.match(CAR_HMI_STYLESHEET, /#fx-fab[\s\S]*left:\s*var\(--car-corner-inset\)/);
+  assert.match(CAR_HMI_STYLESHEET, /#car-visual-mode-switch[\s\S]*display:\s*none/);
+  assert.match(CAR_HMI_STYLESHEET, /#bottom-bar[\s\S]*bottom:\s*var\(--car-safe-bottom\)/);
   assert.match(CAR_HMI_STYLESHEET, /#bottom-bar > #controls > \.control-cluster > \.ctrl-btn/);
   assert.match(CAR_HMI_STYLESHEET, /#audio-effect-control/);
   assert.match(CAR_HMI_STYLESHEET, /#home-recent-panel/);
-  assert.match(CAR_HMI_STYLESHEET, /#bottom-bar/);
   assert.match(CAR_HMI_STYLESHEET, /min-height:\s*100px/);
   assert.match(CAR_HMI_STYLESHEET, /#canvas-container/);
   assert.match(CAR_HMI_STYLESHEET, /grid-template-columns:\s*minmax\(280px/);
-  // Phone-density chrome off the play surface
   assert.match(CAR_HMI_STYLESHEET, /#beat-chip[\s\S]*display:\s*none/);
   assert.match(CAR_HMI_STYLESHEET, /#search-mode-tabs/);
   assert.match(CAR_HMI_STYLESHEET, /body\.car-fx-open #fx-panel/);
@@ -99,7 +102,9 @@ test('car visual runtime encodes music-class default and stage maximization prob
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /mineradio\.car\.visualMode/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /fx-intensity/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /fx-cineshake/);
-  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /initial = 'drive'/);
+  // Mode switch removed: fixed showcase stage on car
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /initial = 'stage'/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /Mode switch \(行车\/巡航\/舞台\) removed/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /desktopLyrics/);
   // Upstream APK hooks used for stage maximize
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /setPreset/);
@@ -176,11 +181,8 @@ test('car stage CSS fully opens the particle canvas and strengthens lyric stage'
   );
   assert.match(CAR_HMI_STYLESHEET, /car-audio-duck/);
   assert.match(CAR_HMI_STYLESHEET, /body\.car-audio-duck #canvas-container::after/);
-  // Stage must not re-enable long mode hint text
-  assert.match(
-    CAR_HMI_STYLESHEET,
-    /data-car-visual-mode="stage"[\s\S]*car-visual-mode-hint[\s\S]*display:\s*none/,
-  );
+  // Mode switch never visible on car
+  assert.match(CAR_HMI_STYLESHEET, /#car-visual-mode-switch[\s\S]{0,120}display:\s*none/);
 });
 
 test('patchCarHmiAssets writes MENC css, runtime and patched index', () => {
@@ -199,7 +201,8 @@ test('patchCarHmiAssets writes MENC css, runtime and patched index', () => {
   assert.match(index, /data-car-visual-mode="drive"/);
 
   const css = decryptMineradioAsset(fs.readFileSync(path.join(assetDir, 'car-hmi.css'))).toString('utf8');
-  assert.match(css, /#car-visual-mode-switch/);
+  assert.match(css, /#car-visual-mode-switch[\s\S]*display:\s*none/);
+  assert.match(css, /--car-safe-bottom/);
 
   const runtime = decryptMineradioAsset(
     fs.readFileSync(path.join(assetDir, CAR_VISUAL_RUNTIME_NAME)),
