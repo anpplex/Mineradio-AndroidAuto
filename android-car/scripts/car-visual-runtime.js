@@ -27,13 +27,13 @@
   var HINTS = {
     drive: '驾驶优先：弱动效、强可读、主播控突出',
     cruise: '平衡：封面氛围 + 可读歌词舞台',
-    stage: '最大化：emily · 粒子 · 电影镜头 · 3D 架 · 极致画质',
+    stage: 'Showcase 拉满：emily · 密粒子 · 电影镜头 · 3D 架 · 极致',
   };
 
   /**
    * Per-mode budgets.
-   * Stage values intentionally push toward upstream「默认测试 / emily」and above
-   * for parked showcase (coverRes 1.55, strong cinema/bloom/intensity).
+   * Product decision (2026-07-31): stage = SHOWCASE MAX, not「默认测试」克制曲线.
+   * Emily + densest legal cover mesh + full FX toggles for parked wow.
    */
   var MODE_BUDGET = {
     drive: {
@@ -100,25 +100,26 @@
       reduceMotion: false,
     },
     stage: {
+      /** Showcase 拉满 — user decision; not the conservative「默认测试」curve. */
       particleOpacity: 1,
-      scrim: 0.02,
-      lyricScaleBoost: 1.02,
-      cineshake: 0.55,
-      intensity: 0.92,
-      bloom: 0.72,
-      /** Above stock APK slider max (1.55); car runtime raises clamp for sharp emily. */
-      coverRes: 2.05,
-      depth: 0.72,
-      lyricGlow: 0.42,
-      point: 0.78,
-      speed: 0.68,
-      twist: 0.45,
-      scatter: 0.48,
-      bgfade: 0.28,
-      bgopacity: 0.28,
-      color: 1.1,
+      scrim: 0,
+      lyricScaleBoost: 1.04,
+      cineshake: 0.85,
+      intensity: 1.0,
+      bloom: 0.95,
+      /** Car clamp max 2.2; densest emily cover particle mesh. */
+      coverRes: 2.2,
+      depth: 0.9,
+      lyricGlow: 0.62,
+      point: 1.0,
+      speed: 1.0,
+      twist: 0.65,
+      scatter: 0.7,
+      bgfade: 0.12,
+      bgopacity: 0.18,
+      color: 1.25,
       quality: 'ultra',
-      /** emily专辑封面 — upstream default showcase preset */
+      /** emily专辑封面 */
       preset: 0,
       shelf: 'stage',
       shelfPresence: 'always',
@@ -137,6 +138,7 @@
         forceSystemWallpaper: true,
       },
       reduceMotion: false,
+      showcase: true,
     },
   };
 
@@ -404,7 +406,7 @@
   function applyCoverResolutionSharp(value) {
     installCoverSharpnessHooks();
     var v = Number(value);
-    if (!(v > 0)) v = 2.05;
+    if (!(v > 0)) v = 2.2;
     v = global.normalizeCoverResolution(v);
     setRangeIfPresent('fx-coverres', Math.min(v, 2.2));
     if (typeof global.applyCoverParticleResolution === 'function') {
@@ -719,9 +721,9 @@
     applySliders(budget);
 
     // 4) Cover sharpness after preset + quality (emily critical path).
-    applyCoverResolutionSharp(budget.coverRes != null ? budget.coverRes : 2.05);
+    applyCoverResolutionSharp(budget.coverRes != null ? budget.coverRes : 2.2);
     writeFxBudget(budget);
-    applyCoverResolutionSharp(budget.coverRes != null ? budget.coverRes : 2.05);
+    applyCoverResolutionSharp(budget.coverRes != null ? budget.coverRes : 2.2);
 
     applyFxKeyMap(budget.fxOn, true);
     applyFxKeyMap(budget.fxOff, false);
@@ -757,7 +759,7 @@
           global.document.documentElement && global.document.documentElement.getAttribute(ATTR),
         );
         if (current !== mode) return;
-        applyCoverResolutionSharp(budget.coverRes != null ? budget.coverRes : 2.05);
+        applyCoverResolutionSharp(budget.coverRes != null ? budget.coverRes : 2.2);
         if (!shelfLooksApplied(budget)) applyShelf(budget);
         applyParticleLyrics(mode);
         persistFxIfPossible();

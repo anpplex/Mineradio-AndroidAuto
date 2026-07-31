@@ -99,7 +99,11 @@ test('car visual runtime encodes music-class default and stage maximization prob
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /applyCoverParticleResolution/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /applyCoverResolutionSharp/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /installCoverSharpnessHooks/);
-  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /coverRes:\s*2\.05/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /coverRes:\s*2\.2/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /showcase:\s*true/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /SHOWCASE MAX/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /intensity:\s*1\.0/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /cineshake:\s*0\.85/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /Math\.min\(2\.2,/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /Math\.min\(300,/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /return 1024/);
@@ -111,7 +115,7 @@ test('car visual runtime encodes music-class default and stage maximization prob
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /reassertIfStageLike/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /data-rq=/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /visibilitychange/);
-  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /color:\s*1\.1/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /color:\s*1\.25/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /tryApplyDefaultTestArchive/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /默认测试/);
   // Preset must run before cover res so emily mesh is not left soft/coarse.

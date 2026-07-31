@@ -99,11 +99,9 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 现象 | 默认测试：`intensity 0.85, cinemaShake 0.5, depth 0.2, point 1, speed 1, twist 0, scatter 0, bloomStrength 0.62, lyricGlow 0.28, bgOpacity 1, color 1.1`；bloom/edge/float **关**。stage 却：depth 0.72、point 0.78、speed 0.68、twist/scatter 高开、bgopacity 0.28、且强制 bloom/edge/float/光粒/镜头锁。 |
-| 风险 | 既不像 Windows 开箱「默认测试」，又可能因 bg 过透/粒子过扭在 960×540 车机上发糊、发脏。 |
-| 改动 | **`car-visual-runtime.js` → `MODE_BUDGET.stage`**（可拆 `stageDefaultTest` + `stageShowcase` 两档，默认先对齐默认测试再可选拉满）。 |
-| 建议数值（对齐默认测试后再叠加 showcase 开关） | 先：`intensity 0.85–0.92`，`cineshake 0.5`，`depth 0.2–0.35`，`point 1.0`，`speed 1.0`，`twist 0–0.1`，`scatter 0–0.1`，`bloom 0.62`，`lyricGlow 0.28–0.42`，`coverRes 1.55`，`bgfade 0.2`，`bgopacity ≥0.85`，**补 `color: 1.1` + `fx-color`**。showcase 再开 float/bloom/edge。 |
-| 验收 | 同曲 Windows 默认测试截图 vs 车机 stage 粒子疏密、景深、背景不发灰对比。 |
+| **产品决策（2026-07-31）** | **Showcase 拉满** — 明确不要求对齐「默认测试」克制曲线；舞台以惊艳为第一目标。 |
+| 实现 | `MODE_BUDGET.stage`：`intensity/point/speed=1`，`cineshake 0.85`，`bloom 0.95`，`coverRes **2.2**`，`depth 0.9`，`twist/scatter` 高开，float/cinema/溢光/bloom/edge **全开**，`quality: ultra`，`showcase: true`。 |
+| 验收 | 点「舞台」后粒子/镜头/架/歌词存在感明显高于巡航；cover 网格走车机密级 clamp。 |
 
 ### P1-2. 未应用歌词「流光」样式 / 未对齐上游 cinema 歌词模式
 

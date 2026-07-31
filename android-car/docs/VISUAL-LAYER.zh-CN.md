@@ -35,7 +35,7 @@
 | --- | --- | --- | --- |
 | **drive 行车** | **是** | 弱动效、强对比、主播控优先、3D 架倾向关闭 | 保留品牌主色与底栏玻璃，粒子极低 |
 | **cruise 巡航** | 否 | 氛围与可读平衡 | 中等粒子、轻电影感、歌词舞台可读 |
-| **stage 舞台** | 否（用户点选） | 驻车/等人场景 | **最大化还原上游**：emily 预设、极致画质、全开粒子/电影镜头/溢光、3D 歌单架舞台+常驻 |
+| **stage 舞台** | 否（用户点选） | 驻车/等人场景 | **Showcase 拉满**（产品决策）：emily + 密粒子 coverRes2.2 + ultra + 电影/溢光/bloom/edge/float 全开 + 3D 架舞台常驻；**不对齐**「默认测试」克制曲线 |
 
 运行时：
 
@@ -46,8 +46,8 @@
   - `setRenderQuality('ultra')`
   - `setShelfMode('stage')` + `setShelfPresence('always')`
   - `toggleFx` 确保：`floatLayer` / `cinema` / `lyricGlow` / `lyricGlowBeat` / `lyricGlowParticles` / `lyricCameraLock` / `bloom` / `edge` = on
-  - 滑条预算：intensity≈0.92、cineshake≈0.55、bloom≈0.72、coverRes=**1.55**（对齐上游默认测试封面粒子）
-  - **清晰度顺序**：`setPreset(0)` → `setRenderQuality('ultra')` → `applyCoverParticleResolution(1.55,{reload:true})`（避免预设把封面网格打回默认导致 emily 发糊）
+  - 滑条预算（showcase）：intensity/point/speed=1、cineshake≈0.85、bloom≈0.95、coverRes=**2.2**、depth≈0.9
+  - **清晰度顺序**：`setPreset(0)` → quality ultra → `applyCoverParticleResolution(2.2,{reload:true})`
   - WebGL 画布 **禁止** 用 CSS `opacity<1` 降粒子（Android WebView 合成发糊）；行车用 scrim 遮罩代替
   - 多次延迟重试（0–8s）等待 splash 后壳层就绪
 - 持久化：`localStorage['mineradio.car.visualMode']`
