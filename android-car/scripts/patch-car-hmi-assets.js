@@ -13,182 +13,186 @@ const CAR_LOGIN_ENTRY_ID = 'car-login-entry';
 const CAR_LOGIN_ENTRY = `<button type="button" id="${CAR_LOGIN_ENTRY_ID}" aria-label="网易云扫码登录" title="网易云扫码登录" onclick="showLoginModal()">网易云扫码登录</button>`;
 
 /*
- * Project car-HMI target for the validated 1920x1080 landscape unit.
- * These values are intentional project targets, not a claim of OEM certification.
+ * Project car-HMI target for the validated Huawei ICHU3200E15-ADV unit:
+ * physical 1920x1080 @ 320dpi, WebView meta viewport width=device-width.
+ * At density 2.0 that is about 960x540 CSS px — not physical pixels.
+ * Values below are intentional project targets, not OEM certification.
  */
 const CAR_HMI_STYLESHEET = String.raw`/* Mineradio Huawei / Android automotive HMI overlay.
- * The two-column home layout below requires 1548px of available width. */
+ * Match density-scaled WebView CSS px on the validated landscape unit. */
 :root {
+  --car-space-12: 12px;
   --car-space-16: 16px;
+  --car-space-20: 20px;
   --car-space-24: 24px;
   --car-space-32: 32px;
-  --car-space-48: 48px;
-  --car-touch-target: 72px;
-  --car-primary-action: 96px;
+  --car-touch-target: 48px;
+  --car-primary-action: 64px;
   --car-panel: rgba(10, 15, 23, .92);
   --car-panel-strong: rgba(8, 12, 19, .97);
   --car-text-primary: rgba(255, 255, 255, .98);
   --car-text-secondary: rgba(234, 243, 247, .78);
 }
 
-@media (min-width: 1548px) and (min-height: 540px) {
-  html, body { font-size: 20px; }
+/* 900 CSS px ≈ 1800 physical px @ 320dpi; covers the 960 CSS-wide car WebView. */
+@media (min-width: 900px) and (min-height: 480px) {
+  html, body { font-size: 16px; }
 
   /* Do not leave the automotive home screen as a small desktop island. */
   #empty-home, #home-empty, .empty-home, .home-page {
-    top: 144px !important;
-    bottom: 152px !important;
-    width: min(1680px, calc(100vw - 144px)) !important;
+    top: 88px !important;
+    bottom: 108px !important;
+    width: min(920px, calc(100vw - 48px)) !important;
   }
   .empty-home-shell, .home-shell, .home-layout {
-    grid-template-columns: minmax(560px, .95fr) minmax(820px, 1.35fr) !important;
+    grid-template-columns: minmax(280px, .95fr) minmax(420px, 1.35fr) !important;
     grid-template-rows: minmax(0, 1fr) !important;
-    gap: var(--car-space-24) !important;
+    gap: var(--car-space-16) !important;
   }
   .home-hero { grid-row: 1 !important; }
 
   /* Search is a primary driving action, so keep it visible and legible. */
   #search-area, .search-area {
-    top: 40px !important;
+    top: 20px !important;
     opacity: 1 !important;
     pointer-events: auto !important;
   }
-  #search-stack { width: min(760px, 56vw) !important; }
+  #search-stack { width: min(420px, 48vw) !important; }
   #search-box, .search-box {
     min-height: var(--car-touch-target) !important;
     height: var(--car-touch-target) !important;
-    padding-inline: 28px !important;
-    border-radius: 28px !important;
+    padding-inline: 18px !important;
+    border-radius: 22px !important;
     background: var(--car-panel-strong) !important;
     border-color: rgba(255, 255, 255, .20) !important;
   }
-  #search-icon { width: 28px !important; height: 28px !important; margin-right: 16px !important; }
-  #search-input, .search-input { font-size: 24px !important; font-weight: 520 !important; }
+  #search-icon { width: 22px !important; height: 22px !important; margin-right: 12px !important; }
+  #search-input, .search-input { font-size: 18px !important; font-weight: 520 !important; }
   #search-input::placeholder { color: rgba(255, 255, 255, .62) !important; }
 
   /* Main cards become full-card actions with readable Chinese hierarchy. */
   .home-grid, .home-quick-grid, .home-cards, .dashboard-grid {
     grid-template-rows: repeat(3, minmax(0, 1fr)) !important;
     height: 100% !important;
-    gap: var(--car-space-24) !important;
+    gap: var(--car-space-16) !important;
   }
   .home-card, .dashboard-card, .quick-card, .home-tile {
-    min-height: 188px !important;
-    padding: 28px !important;
-    border-radius: 26px !important;
+    min-height: 104px !important;
+    padding: 16px !important;
+    border-radius: 18px !important;
     background: var(--car-panel) !important;
     border-color: rgba(255, 255, 255, .18) !important;
-    box-shadow: 0 16px 42px rgba(0, 0, 0, .32) !important;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .32) !important;
   }
   .home-card-label, .dashboard-card-label, .card-label, .home-kicker {
     display: none !important;
   }
   .home-card-title, .dashboard-card-title, .card-title, .home-tile-title {
     color: var(--car-text-primary) !important;
-    font-size: 28px !important;
+    font-size: 20px !important;
     line-height: 1.2 !important;
     font-weight: 720 !important;
   }
   .home-card-sub, .dashboard-card-sub, .card-sub, .home-tile-sub {
-    margin-top: 12px !important;
+    margin-top: 8px !important;
     color: var(--car-text-secondary) !important;
-    font-size: 20px !important;
-    line-height: 1.45 !important;
+    font-size: 14px !important;
+    line-height: 1.4 !important;
   }
-  .home-card-art { width: 112px !important; height: 112px !important; right: 24px !important; bottom: 24px !important; }
+  .home-card-art { width: 72px !important; height: 72px !important; right: 14px !important; bottom: 14px !important; }
 
   /* Ensure the existing empty/recent panel is useful and readable. */
   #home-recent-panel, .home-hero, .recent-play-card, .recent-card, .home-recent {
     background: var(--car-panel) !important;
     border-color: rgba(255, 255, 255, .20) !important;
-    border-radius: 30px !important;
-    padding: 32px !important;
+    border-radius: 20px !important;
+    padding: 18px !important;
   }
   #home-recent-panel { max-width: none !important; }
   .home-recent-title, .home-title, .recent-title, .recent-play-title {
     color: var(--car-text-primary) !important;
-    font-size: 34px !important;
+    font-size: 22px !important;
     line-height: 1.18 !important;
   }
-  .home-recent-grid { gap: 12px !important; }
-  .home-recent-item { min-height: var(--car-touch-target) !important; padding: 12px 16px !important; }
+  .home-recent-grid { gap: 8px !important; }
+  .home-recent-item { min-height: var(--car-touch-target) !important; padding: 8px 12px !important; }
   .home-recent-empty, .home-sub, .recent-empty, .recent-play-empty {
     color: var(--car-text-secondary) !important;
-    font-size: 22px !important;
-    line-height: 1.5 !important;
+    font-size: 15px !important;
+    line-height: 1.45 !important;
   }
 
-  /* Login stays discoverable and does not compete with search for the same top row. */
+  /* Login stays discoverable without covering the top-right account chip. */
   #car-login-entry {
     position: fixed !important;
     z-index: 24 !important;
-    top: 40px !important;
-    right: 40px !important;
-    min-width: 232px !important;
+    top: 20px !important;
+    right: 168px !important;
+    min-width: 168px !important;
     min-height: var(--car-touch-target) !important;
-    padding: 0 24px !important;
+    padding: 0 16px !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
     border: 1px solid rgba(96, 255, 231, .60) !important;
-    border-radius: 22px !important;
+    border-radius: 16px !important;
     background: #0ccdbf !important;
     color: #041312 !important;
-    font-size: 22px !important;
+    font-size: 15px !important;
     font-weight: 760 !important;
     letter-spacing: .02em !important;
-    box-shadow: 0 12px 30px rgba(0, 0, 0, .34) !important;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .34) !important;
   }
   #trial-banner {
-    top: 128px !important;
+    top: 84px !important;
     left: auto !important;
-    right: 40px !important;
-    transform: translateY(-10px) !important;
+    right: 20px !important;
+    transform: translateY(-8px) !important;
     min-height: var(--car-touch-target) !important;
-    padding: 10px 18px !important;
-    border-radius: 20px !important;
-    font-size: 18px !important;
+    padding: 8px 14px !important;
+    border-radius: 14px !important;
+    font-size: 14px !important;
     background: var(--car-panel-strong) !important;
   }
   #trial-banner.show { transform: translateY(0) !important; }
   #trial-login-btn {
     min-height: var(--car-touch-target) !important;
-    padding: 0 20px !important;
-    margin-left: 12px !important;
+    padding: 0 14px !important;
+    margin-left: 10px !important;
     display: inline-flex !important;
     align-items: center !important;
-    border-radius: 16px !important;
+    border-radius: 12px !important;
     background: #0ccdbf !important;
     color: #041312 !important;
-    font-size: 20px !important;
+    font-size: 14px !important;
     font-weight: 760 !important;
   }
 
-  /* Primary shell actions meet the same 72px target. */
+  /* Primary shell actions: 48 CSS px ≈ 96 physical px @ 320dpi. */
   #playlist-toggle, #home-btn, #announcement-entry, #fx-fab, #bottom-bar-close-btn {
     width: var(--car-touch-target) !important;
     height: var(--car-touch-target) !important;
     min-width: var(--car-touch-target) !important;
     min-height: var(--car-touch-target) !important;
   }
-  #playlist-toggle { top: 40px !important; left: 40px !important; }
+  #playlist-toggle { top: 20px !important; left: 20px !important; }
   /* Keep visual settings above the player rather than over its right-hand controls. */
-  #fx-fab { right: 40px !important; bottom: 192px !important; }
+  #fx-fab { right: 20px !important; bottom: 128px !important; }
   #fx-fab-hide-btn { display: none !important; }
-  #playlist-toggle svg, #home-btn svg, #announcement-entry svg, #fx-fab svg { width: 30px !important; height: 30px !important; }
+  #playlist-toggle svg, #home-btn svg, #announcement-entry svg, #fx-fab svg { width: 22px !important; height: 22px !important; }
 
   /* Main playback only: metadata, previous, play/pause, next and queue. */
   #bottom-bar {
-    min-height: 136px !important;
-    width: min(1680px, calc(100vw - 144px)) !important;
-    bottom: 28px !important;
-    padding: 18px 28px !important;
-    border-radius: 32px !important;
+    min-height: 88px !important;
+    width: min(920px, calc(100vw - 48px)) !important;
+    bottom: 16px !important;
+    padding: 10px 16px !important;
+    border-radius: 22px !important;
     background: var(--car-panel-strong) !important;
   }
   #bottom-bar > #controls {
     grid-template-columns: minmax(0, 1fr) auto auto !important;
-    gap: 20px !important;
+    gap: 12px !important;
     align-items: center !important;
   }
   #bottom-bar .control-track, #bottom-bar .control-meta { min-width: 0 !important; }
@@ -204,10 +208,10 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio Huawei / Android automotive H
     height: var(--car-touch-target) !important;
     min-width: var(--car-touch-target) !important;
     min-height: var(--car-touch-target) !important;
-    border-radius: 22px !important;
+    border-radius: 16px !important;
   }
   #bottom-bar > #bottom-bar-close-btn svg,
-  #bottom-bar > #controls > .control-cluster > .ctrl-btn svg { width: 28px !important; height: 28px !important; }
+  #bottom-bar > #controls > .control-cluster > .ctrl-btn svg { width: 22px !important; height: 22px !important; }
   #play-btn {
     width: var(--car-primary-action) !important;
     height: var(--car-primary-action) !important;
@@ -217,17 +221,17 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio Huawei / Android automotive H
     background: #0ccdbf !important;
     color: #031111 !important;
   }
-  #play-btn svg { width: 38px !important; height: 38px !important; }
-  .control-title, #song-title, .now-playing-title { font-size: 24px !important; color: var(--car-text-primary) !important; }
-  .control-artist, #artist-name, .now-playing-artist { font-size: 20px !important; color: var(--car-text-secondary) !important; }
-  .control-cluster.actions, .control-cluster.modes { gap: var(--car-space-16) !important; }
+  #play-btn svg { width: 28px !important; height: 28px !important; }
+  .control-title, #song-title, .now-playing-title { font-size: 18px !important; color: var(--car-text-primary) !important; }
+  .control-artist, #artist-name, .now-playing-artist { font-size: 14px !important; color: var(--car-text-secondary) !important; }
+  .control-cluster.actions, .control-cluster.modes { gap: var(--car-space-12) !important; }
   #bottom-bar #quality-control, #bottom-bar #heart-btn, #bottom-bar #collect-btn,
   #bottom-bar #refresh-download-btn, #bottom-bar #play-mode-btn, #bottom-bar #sleep-timer-btn,
   #bottom-bar #audio-effect-control, #bottom-bar #eq-control, #bottom-bar .lyrics-toggle-btn,
   #bottom-bar #volume-control, #bottom-bar #controls-hide-btn, #bottom-bar #immersive-btn {
     display: none !important;
   }
-  #bottom-bar #time-display { min-width: 156px !important; font-size: 18px !important; color: var(--car-text-secondary) !important; }
+  #bottom-bar #time-display { min-width: 104px !important; font-size: 13px !important; color: var(--car-text-secondary) !important; }
 
   /* A moving particle field may remain decorative, but cannot compete with controls. */
   body.empty-home-active .home-card { animation: none !important; }
@@ -241,8 +245,8 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio Huawei / Android automotive H
   }
 
   button:focus-visible, [role="button"]:focus-visible, input:focus-visible {
-    outline: 4px solid #5cf6e9 !important;
-    outline-offset: 4px !important;
+    outline: 3px solid #5cf6e9 !important;
+    outline-offset: 3px !important;
   }
 }
 `;

@@ -35,22 +35,25 @@ test('car HMI injection requires a real stylesheet link, not a filename in page 
   assert.equal((patched.match(/car-hmi\.css/g) || []).length, 2);
 });
 
-test('car HMI stylesheet defines large text, touch targets, quieter background and an explicit login action', () => {
-  assert.match(CAR_HMI_STYLESHEET, /@media \(min-width: 1548px\) and \(min-height: 540px\)/);
-  assert.doesNotMatch(CAR_HMI_STYLESHEET, /@media \(min-width: 960px\) and \(min-height: 540px\)/);
-  assert.match(CAR_HMI_STYLESHEET, /--car-touch-target:\s*72px/);
-  assert.match(CAR_HMI_STYLESHEET, /--car-primary-action:\s*96px/);
-  assert.match(CAR_HMI_STYLESHEET, /font-size:\s*24px/);
+test('car HMI stylesheet targets density-scaled WebView CSS px on the landscape unit', () => {
+  // Physical 1920x1080 @ 320dpi with width=device-width ≈ 960x540 CSS px.
+  // The previous 1548px physical-pixel gate never matched that WebView.
+  assert.match(CAR_HMI_STYLESHEET, /@media \(min-width: 900px\) and \(min-height: 480px\)/);
+  assert.doesNotMatch(CAR_HMI_STYLESHEET, /@media \(min-width: 1548px\)/);
+  assert.match(CAR_HMI_STYLESHEET, /--car-touch-target:\s*48px/);
+  assert.match(CAR_HMI_STYLESHEET, /--car-primary-action:\s*64px/);
+  assert.match(CAR_HMI_STYLESHEET, /font-size:\s*18px/);
   assert.match(CAR_HMI_STYLESHEET, /#trial-login-btn/);
   assert.match(CAR_HMI_STYLESHEET, /#car-login-entry/);
-  assert.match(CAR_HMI_STYLESHEET, /#trial-banner[\s\S]*top:\s*128px/);
-  assert.match(CAR_HMI_STYLESHEET, /#fx-fab\s*\{[\s\S]*bottom:\s*192px/);
+  assert.match(CAR_HMI_STYLESHEET, /#trial-banner[\s\S]*top:\s*84px/);
+  assert.match(CAR_HMI_STYLESHEET, /#fx-fab\s*\{[\s\S]*bottom:\s*128px/);
   assert.match(CAR_HMI_STYLESHEET, /#bottom-bar > #controls > \.control-cluster > \.ctrl-btn/);
   assert.match(CAR_HMI_STYLESHEET, /#audio-effect-control/);
   assert.match(CAR_HMI_STYLESHEET, /#home-recent-panel/);
   assert.match(CAR_HMI_STYLESHEET, /#playlist-toggle/);
   assert.match(CAR_HMI_STYLESHEET, /#bottom-bar/);
   assert.match(CAR_HMI_STYLESHEET, /#canvas-container/);
+  assert.match(CAR_HMI_STYLESHEET, /grid-template-columns:\s*minmax\(280px/);
 });
 
 test('car APK build applies the HMI asset overlay after decoding the original APK', () => {
