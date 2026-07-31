@@ -2,7 +2,19 @@
 
 此目录把用户提供的 Android APK 重新打包为**横屏车机启动包**；它不是把上游 Electron 桌面工程直接编译成 Android。
 
-Windows 2.0.3 ↔ 车机 1.1.7 能力对齐见 [docs/FEATURE-MATRIX.zh-CN.md](./docs/FEATURE-MATRIX.zh-CN.md)。
+## 开发必读（强制）
+
+| 文档 | 内容 |
+| --- | --- |
+| **[docs/BOUNDARIES.zh-CN.md](./docs/BOUNDARIES.zh-CN.md)** | **必须遵守的边界**（Git / 安全 / 产品 / 技术 / Subagents） |
+| **[docs/DEVELOPMENT.zh-CN.md](./docs/DEVELOPMENT.zh-CN.md)** | **开发文档**：**Max Subagents** + **严格 Git Workflow** + 门禁与构建闭环 |
+| [AGENTS.md](./AGENTS.md) | Coding agent 入口摘要（指向上述两文） |
+| [docs/FEATURE-MATRIX.zh-CN.md](./docs/FEATURE-MATRIX.zh-CN.md) | Windows 2.0.3 ↔ 车机 1.1.7 能力对齐 |
+
+**两条总纲：**
+
+1. **严格 Git Workflow** — 仅 `origin` / `huawei-android12-car`；提交前 `node --test android-car/tests/*.test.js`；禁止 APK/JKS/密钥/截图入库；禁止 push `upstream`。  
+2. **Max Subagents** — 存在 ≥2 个独立工作域时必须最大合理并行 subagents，主会话集成后统一提交推送。
 
 ## 已做的车机适配
 
