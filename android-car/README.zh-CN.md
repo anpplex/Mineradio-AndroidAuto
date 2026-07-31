@@ -11,7 +11,8 @@ Windows 2.0.3 ↔ 车机 1.1.7 能力对齐见 [docs/FEATURE-MATRIX.zh-CN.md](./
 - 启动 Intent 同时包含普通 `LAUNCHER` 与 `CAR_LAUNCHER`，便于常规 Android Launcher 和支持车载类别查询的 Launcher 发现应用。
 - `LandscapeWebActivity` 显式设为 `exported=true`，满足 Android 12 对带 Intent filter 组件的要求。
 - 所有声明为 portrait 的 Activity manifest 方向改为 landscape；应用声明为 `resizeableActivity=true`，更适合非手机比例的中控/副屏。
-- 保留原 APK 的包名、媒体播放服务、存储权限、`arm64-v8a` 原生库和应用资源；不触碰应用逻辑、音频服务或网络接口。
+- 保留原 APK 的包名、媒体播放服务、存储权限、`arm64-v8a` 原生库和应用资源；不改动音频服务或网络接口。
+- **Android 12 scoped storage**：将 smali 中硬编码的顶级目录 `SPICaMusic` 重映射为合法路径 `Music/SPICaMusic`（`mineradio_settings.json` 与 `databases`），避免 MediaProvider 拒绝创建非默认顶级目录。构建时由 `patch-spica-storage.js` 在 apktool 解包后应用；不改 `SPICaMusicTheme` / `SPICaMusic_update.apk` 等非路径字符串。
 - 解包后的 `assets/mineradio/index.html` 与新建 `car-hmi.css` 会按原 APK 的 `MENC + IV + AES-256-CBC` 资源格式重新加密；不依赖明文资源落入最终 APK。
 
 ## 车机 HMI overlay
@@ -119,14 +120,21 @@ Windows 2.0.3 ↔ 车机 1.1.7 能力对齐见 [docs/FEATURE-MATRIX.zh-CN.md](./
 
 不要将以下项目表述为已兼容：OEM Launcher 的图标发现/默认窗口策略、本地音乐或 U 盘扫描、音频焦点/蓝牙媒体通道、熄屏/ACC/休眠恢复、后台播放。
 
-实车日志已显示 Android 12 MediaProvider **拒绝**应用创建共享存储顶级目录 `SPICaMusic`：
+实车日志曾显示 Android 12 MediaProvider **拒绝**应用创建共享存储顶级目录 `SPICaMusic`：
 
 ```text
 MediaProvider: Creating a non-default top level directory ... is not allowed! ... SPICaMusic
 LandscapeWebActivity: FileNotFoundException: /storage/emulated/12/SPICaMusic/mineradio_settings.json
 ```
 
-这是上游 APK 硬编码路径与 Android 12 scoped storage 的冲突；当前适配包**不修改**原生业务 smali，因此设置文件无法落到该共享路径。安装、横屏启动与 HMI 不受此项阻塞，但依赖 `SPICaMusic/` 的本地设置持久化/本地库扫描不能宣称已兼容。后续若做存储兼容，应改为 app-specific 目录或 `Music/SPICaMusic` 等合法路径，而不是 ADB 强行建目录。本地音乐扫描仍需插入含音乐文件的 U 盘后单独验收。
+适配构建现已通过 `patch-spica-storage.js` 将 smali 路径改为 `Music/SPICaMusic/`（MediaProvider 允许的默认顶级目录 `Music/` 下）：
+
+| 原路径 | 适配后 |
+| --- | --- |
+| `/storage/emulated/<user>/SPICaMusic/mineradio_settings.json` | `.../Music/SPICaMusic/mineradio_settings.json` |
+| `/storage/emulated/<user>/SPICaMusic/databases` | `.../Music/SPICaMusic/databases` |
+
+设置双写到 `getFilesDir()/mineradio_settings.json` 的逻辑仍保留。此项需在真车重新安装后验收读写；**不要**用 ADB 强行创建旧顶级 `SPICaMusic`。本地音乐 / U 盘扫描仍需插入含音乐文件的介质后单独验收。
 
 ## 复现构建
 
