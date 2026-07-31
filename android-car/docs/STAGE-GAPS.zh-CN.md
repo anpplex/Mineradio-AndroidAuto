@@ -107,53 +107,42 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 现象 | 上游默认 `lyricDisplayMode: 'cinema'` 等（2.0.3 体系）。APK 1.1.7.0 为 `setLyricStyle(0..3)`（逐句填充/流光溢彩/整排/逐字），stage **未调用**。 |
-| 改动 | **`car-visual-runtime.js` → `applyFxProbes`** |
-| 具体 | stage：`callGlobal('setLyricStyle', [1])` 或 click `#lsb1`（流光溢彩）；若存在 `setLyricDisplayMode('cinema')` 再双写。 |
-| 验收 | 播放中歌词为流光/高存在感样式，非默认逐句干读。 |
+| **状态** | **已实现** — `setLyricStyle(1)` / `#lsb1` / `setLyricDisplayMode('cinema')` |
+| 验收 | 播放中歌词为流光/高存在感样式。 |
 
 ### P1-3. 未加载「默认测试」用户存档快照（整包对齐捷径）
 
 | 项 | 内容 |
 | --- | --- |
-| 现象 | 上游一键体验来自 `applyUserFxArchive` / `applyFxArchiveSnapshot` + 预置「默认测试」。stage 手写散装预算，易漏字段（color、lyric palette、shelf 细节等）。 |
-| 改动 | **`car-visual-runtime.js` → `applyStageNow` / stage `applyFxProbes` 前半** |
-| 具体 | 探测 `userFxArchives` / `applyUserFxArchive(0)` / `applyFxArchiveSnapshot`；成功则以存档为 base，再叠加 car stage 差异（`shelf=stage`、`presence=always`、quality=ultra、关 desktopLyrics）。无存档则回退当前散装预算。 |
-| 验收 | 有预置存档时 stage ≈ 默认测试 + 舞台架 + 极致画质。 |
+| **状态** | **已实现（best-effort）** — `tryApplyDefaultTestArchive` 后仍用 showcase 预算覆盖 |
+| 说明 | Showcase 决策下存档只作 base，最终以 `MODE_BUDGET.stage` 为准。 |
 
 ### P1-4. CSS 对 `#canvas-container` 的 `opacity` 连坐整幅 WebGL（含歌词 mesh）
 
 | 项 | 内容 |
 | --- | --- |
-| 现象 | `CAR_HMI_STYLESHEET` 用 `opacity: var(--car-particle-opacity)` 打在 `#canvas-container`。粒子歌词若在同一 WebGL 树，drive 压暗会连歌词一起压；stage 虽设 1，但中间态/切换闪烁仍伤体验。 |
-| 改动 | **`patch-car-hmi-assets.js` → `CAR_HMI_STYLESHEET` 视觉预算段** |
-| 具体 | stage 保持 opacity:1 + filter:none（已有）；评估 drive 改为只压 `.particle-background` / 非歌词层，或对 canvas 使用更低 scrim 而非整层 opacity。至少 **stage 选择器优先级**确保不被 `#canvas-container { opacity: var(...) }` 与其它规则打架（检查是否需 `!important` 双写已存在）。 |
-| 验收 | stage 歌词亮度不被全局 opacity 吃掉；切 drive↔stage 无 0.35s「歌词一起淡出」错觉（或可接受则文档化）。 |
+| **状态** | **已实现** — canvas 固定 opacity:1；drive 用 scrim 压暗 |
+| 验收 | stage 歌词/粒子不被全局 opacity 吃掉。 |
 
 ### P1-5. DIY 门闩可能挡住人工微调 / 部分控制台路径
 
 | 项 | 内容 |
 | --- | --- |
-| 现象 | APK 有 DIY 模式；上游 `toggleFxPanel` 在非 DIY 时拒绝打开。runtime 不依赖开面板，但实车验收/用户微调舞台参数需要面板。 |
-| 改动 | **`car-visual-runtime.js` stage 进入时** |
-| 具体 | 若 `diyPlayerMode===false`，`callGlobal('toggleDiyMode')` 或 click `#diy-mode-btn` **一次**（仅 stage，离开 stage 可恢复）。 |
-| 验收 | stage 下点 `#fx-fab` 能打开视觉控制台。 |
+| **状态** | **已实现** — `ensureDiyForStage` |
+| 验收 | stage 下 `#fx-fab` 可开视觉控制台。 |
 
 ### P1-6. 缺少 stage 健康检查 / 失败可见反馈
 
 | 项 | 内容 |
 | --- | --- |
-| 现象 | 探针静默失败；验收只能靠肉眼。 |
-| 改动 | **`car-visual-runtime.js` → `applyFxProbes` 末尾 `reportStageHealth()`** |
-| 具体 | 收集：`preset/quality/shelf/fx flags/coverRes`；`console.info('[MineradioCarVisual]', …)`；可选短 toast「舞台已最大化」/「舞台部分参数未生效」。测试：**`android-car/tests/car-hmi-assets.test.js`** 增加对 `writeFxBudget`/`setParticleLyrics`/`data-rq` 字符串契约。 |
-| 验收 | remote debug 能看到 health 对象；单测锁住 P0 API 名。 |
+| **状态** | **已实现** — `reportStageHealth` → `console.info` + `__mineradioCarStageHealth` |
+| 验收 | remote debug 可见 health 对象。 |
 
-### P1-7. `bgopacity: 0.28` 可能误伤封面/背景氛围
+### P1-7. `bgopacity` 与 showcase 透气
 
 | 项 | 内容 |
 | --- | --- |
-| 现象 | 默认测试背景不透明度 1。stage 压到 0.28 易导致发灰、家页透底混乱。 |
-| 改动 | 同 P1-1 预算表；**优先改 `MODE_BUDGET.stage.bgopacity` → 0.85–1.0**，靠 scrim 与粒子本身透气，而不是砸背景 alpha。 |
+| **状态** | **Showcase 决策保留低 bgopacity（0.18）** — 刻意透出粒子场，不改回 0.85 |
 
 ---
 

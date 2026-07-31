@@ -526,15 +526,188 @@
         /* ignore */
       }
     }
-    // Prefer 流光 style when APK exposes setLyricStyle(0..3)
-    if (mode === 'stage' && typeof global.setLyricStyle === 'function') {
+    // P1-2: 流光溢彩 / cinema lyric style
+    if (mode === 'stage') {
+      if (typeof global.setLyricStyle === 'function') {
+        try {
+          global.setLyricStyle(1);
+          ok = true;
+        } catch (_) {
+          /* ignore */
+        }
+      }
+      clickBySelector('#lsb1') ||
+        clickBySelector('[data-lyric-style="1"]') ||
+        clickBySelector('button[onclick*="setLyricStyle(1"]');
+      if (typeof global.setLyricDisplayMode === 'function') {
+        try {
+          global.setLyricDisplayMode('cinema');
+        } catch (_) {
+          /* ignore */
+        }
+      }
+    }
+    return ok;
+  }
+
+  /** P1-5: ensure DIY unlock so #fx-fab can open the visual console on stage. */
+  function ensureDiyForStage(mode) {
+    if (mode !== 'stage') return false;
+    try {
+      if (global.diyPlayerMode === true) return true;
+    } catch (_) {
+      /* ignore */
+    }
+    if (typeof global.toggleDiyMode === 'function') {
       try {
-        global.setLyricStyle(1);
+        if (!global.diyPlayerMode) global.toggleDiyMode();
+        return !!global.diyPlayerMode;
+      } catch (_) {
+        /* fall through */
+      }
+    }
+    return (
+      clickBySelector('#diy-mode-btn') ||
+      clickBySelector('[data-diy="on"]') ||
+      clickBySelector('button[onclick*="toggleDiyMode"]')
+    );
+  }
+
+  /** P2-5: showcase lyric highlight / glow palette (high presence on glass). */
+  function applyLyricShowcaseColors(mode) {
+    if (mode !== 'stage') return;
+    try {
+      if (global.fx) {
+        if ('lyricHighlight' in global.fx) global.fx.lyricHighlight = '#fac900';
+        if ('lyricGlowColor' in global.fx) global.fx.lyricGlowColor = '#00f5d4';
+        if ('lyricGlow' in global.fx && typeof global.fx.lyricGlow === 'string') {
+          global.fx.lyricGlow = '#00f5d4';
+        }
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    try {
+      var hi = global.document.getElementById('lyric-highlight-value');
+      var gl = global.document.getElementById('lyric-glow-value');
+      var hip = global.document.getElementById('lyric-highlight-picker');
+      var glp = global.document.getElementById('lyric-glow-picker');
+      if (hip) {
+        hip.value = '#fac900';
+        hip.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      if (glp) {
+        glp.value = '#00f5d4';
+        glp.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      if (hi) hi.textContent = '#FAC900';
+      if (gl) gl.textContent = '#00F5D4';
+    } catch (_) {
+      /* ignore */
+    }
+    if (typeof global.setLyricHighlightCustom === 'function') {
+      try {
+        global.setLyricHighlightCustom('#fac900');
       } catch (_) {
         /* ignore */
       }
     }
-    return ok;
+  }
+
+  /** P1-6: visible probe health for remote debug / adb logcat. */
+  function reportStageHealth(mode, budget) {
+    var health = {
+      mode: mode,
+      showcase: !!(budget && budget.showcase),
+      ts: Date.now(),
+      preset: null,
+      quality: null,
+      qualityBtn: null,
+      shelf: null,
+      shelfBtn: null,
+      coverRes: null,
+      particleLyrics: null,
+      cinema: null,
+      floatLayer: null,
+      diy: null,
+    };
+    try {
+      if (global.fx) {
+        health.preset = global.fx.preset;
+        health.shelf = global.fx.shelf;
+        health.coverRes = global.fx.coverResolution;
+        health.particleLyrics = global.fx.particleLyrics;
+        health.cinema = global.fx.cinema;
+        health.floatLayer = global.fx.floatLayer;
+      }
+      health.quality = global.currentRenderQuality || null;
+      health.diy = global.diyPlayerMode;
+    } catch (_) {
+      /* ignore */
+    }
+    try {
+      var qb = global.document.querySelector('#render-quality-seg button.active');
+      health.qualityBtn = qb ? qb.getAttribute('data-rq') : null;
+      var sb = global.document.querySelector('#shelf-seg button.active');
+      health.shelfBtn = sb ? sb.getAttribute('data-shelf') : null;
+    } catch (_) {
+      /* ignore */
+    }
+    try {
+      global.__mineradioCarStageHealth = health;
+      if (global.console && console.info) {
+        console.info('[MineradioCarVisual] stage-health', health);
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    return health;
+  }
+
+  /**
+   * P2-1: if showcase ultra melts the SoC, step quality down once (keep visual toggles).
+   * Best-effort: uses rAF frame-time samples for ~1.2s after stage apply.
+   */
+  function maybeThrottleShowcaseQuality(mode) {
+    if (mode !== 'stage' || global.__mineradioCarPerfGuardArmed) return;
+    global.__mineradioCarPerfGuardArmed = true;
+    var samples = [];
+    var last = 0;
+    var frames = 0;
+    function tick(now) {
+      if (last) samples.push(now - last);
+      last = now;
+      frames += 1;
+      if (frames < 40) {
+        global.requestAnimationFrame(tick);
+        return;
+      }
+      global.__mineradioCarPerfGuardArmed = false;
+      if (!samples.length) return;
+      var sum = 0;
+      for (var i = 0; i < samples.length; i += 1) sum += samples[i];
+      var avg = sum / samples.length;
+      // ~24fps or worse average → step down from ultra
+      if (avg > 42) {
+        var cur = normalizeMode(
+          global.document.documentElement && global.document.documentElement.getAttribute(ATTR),
+        );
+        if (cur !== 'stage') return;
+        applyQuality('fine');
+        try {
+          if (global.console && console.info) {
+            console.info('[MineradioCarVisual] perf-guard: ultra→fine avgFrameMs=', avg.toFixed(1));
+          }
+        } catch (_) {
+          /* ignore */
+        }
+      }
+    }
+    try {
+      global.requestAnimationFrame(tick);
+    } catch (_) {
+      global.__mineradioCarPerfGuardArmed = false;
+    }
   }
 
   /** P0-3: write numeric/bool budget straight into global.fx then sync. */
@@ -730,8 +903,12 @@
     writeFxBudget(budget);
     applyShelf(budget);
 
-    // P0-2 particle / stage lyrics
+    // P0-2 / P1-2 particle + 流光 lyrics
     applyParticleLyrics(mode);
+    applyLyricShowcaseColors(mode);
+
+    // P1-5 DIY so FX console is reachable on stage
+    ensureDiyForStage(mode);
 
     // Desktop-only features always off on car.
     ensureFxKey('desktopLyrics', false);
@@ -751,6 +928,8 @@
     clickBySelector('#st-showLyrics-seg button[data-val="true"]');
 
     persistFxIfPossible();
+    reportStageHealth(mode, budget);
+    if (mode === 'stage') maybeThrottleShowcaseQuality(mode);
 
     // 5) Delayed cover + shelf + lyrics reload after late shell bind.
     if (mode === 'stage' || mode === 'cruise') {
@@ -762,7 +941,10 @@
         applyCoverResolutionSharp(budget.coverRes != null ? budget.coverRes : 2.2);
         if (!shelfLooksApplied(budget)) applyShelf(budget);
         applyParticleLyrics(mode);
+        applyLyricShowcaseColors(mode);
+        ensureDiyForStage(mode);
         persistFxIfPossible();
+        reportStageHealth(mode, budget);
       }, 700);
     }
   }
@@ -941,6 +1123,15 @@
     cycleMode: cycleMode,
     applyStageNow: applyStageNow,
     reassertIfStageLike: reassertIfStageLike,
+    reportStageHealth: function () {
+      var mode = normalizeMode(
+        (global.document &&
+          global.document.documentElement &&
+          global.document.documentElement.getAttribute(ATTR)) ||
+          readStoredMode(),
+      );
+      return reportStageHealth(mode, MODE_BUDGET[mode]);
+    },
     budgets: MODE_BUDGET,
   };
 

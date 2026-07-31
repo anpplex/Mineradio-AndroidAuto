@@ -463,6 +463,25 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     background: rgba(8, 12, 19, .9) !important;
     border-color: rgba(12, 205, 191, .2) !important;
   }
+  /* P2-3: keep transport above stage shelf hit layers. */
+  html[data-car-visual-mode="stage"] #bottom-bar,
+  body.car-mode-stage #bottom-bar {
+    z-index: 40 !important;
+    position: fixed !important;
+  }
+  html[data-car-visual-mode="stage"] #car-visual-mode-switch,
+  body.car-mode-stage #car-visual-mode-switch {
+    z-index: 41 !important;
+  }
+  html[data-car-visual-mode="stage"] #shelf-touch-shield,
+  body.car-mode-stage #shelf-touch-shield {
+    bottom: 120px !important;
+    pointer-events: auto !important;
+  }
+  html[data-car-visual-mode="stage"] #play-btn,
+  body.car-mode-stage #play-btn {
+    z-index: 42 !important;
+  }
 
   /* Reduced motion: honor drive budget + system preference.
    * Never soft-composite stage WebGL via opacity — only raise scrim. */

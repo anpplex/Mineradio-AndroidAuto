@@ -118,6 +118,12 @@ test('car visual runtime encodes music-class default and stage maximization prob
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /color:\s*1\.25/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /tryApplyDefaultTestArchive/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /默认测试/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /reportStageHealth/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /ensureDiyForStage/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /setLyricStyle/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /applyLyricShowcaseColors/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /maybeThrottleShowcaseQuality/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /#fac900/);
   // Preset must run before cover res so emily mesh is not left soft/coarse.
   assert.match(
     CAR_VISUAL_RUNTIME_SOURCE,
