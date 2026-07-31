@@ -2,6 +2,8 @@
 
 此目录把用户提供的 Android APK 重新打包为**横屏车机启动包**；它不是把上游 Electron 桌面工程直接编译成 Android。
 
+Windows 2.0.3 ↔ 车机 1.1.7 能力对齐见 [docs/FEATURE-MATRIX.zh-CN.md](./docs/FEATURE-MATRIX.zh-CN.md)。
+
 ## 已做的车机适配
 
 - 启动入口由 `MainActivity` 切换为 APK 内已有的 `LandscapeWebActivity`。
@@ -106,6 +108,24 @@
    ```
 
    直接启动时华为 HMI 可能将应用放到 `hwMultiwindow-secondary` 的右侧区域；先停止应用并指定 `--windowingMode 1` 已在该实车验证为 1920×1080 全屏窗口。
+
+4. **自动化验收（安装后冒烟，非破坏性）**：
+
+   在 APK 已装到 user 12 的前提下，用验收脚本检查设备在线、包存在、`versionName=1.1.7.0`、全屏启动 `LandscapeWebActivity`、dumpsys 显示 resumed，以及可选 logcat 中无 `FATAL EXCEPTION`。**不会**卸载或 `CLEAN_REINSTALL`。
+
+   ```sh
+   ./android-car/scripts/verify-huawei-car.sh
+   # 或显式指定序列号 / 用户 / 期望版本：
+   TARGET_USER=12 EXPECTED_VERSION=1.1.7.0 \
+     ./android-car/scripts/verify-huawei-car.sh LD249H019625
+   ```
+
+   无设备时可只做脚本结构单测（不连 adb）：
+
+   ```sh
+   bash -n android-car/scripts/verify-huawei-car.sh
+   node --test android-car/tests/verify-huawei-car.test.js
+   ```
 
 ### 已完成的实车验证（2026-07-30）
 
