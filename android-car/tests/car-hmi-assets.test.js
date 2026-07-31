@@ -84,8 +84,12 @@ test('car HMI stylesheet targets density-scaled WebView CSS px on the landscape 
   assert.match(CAR_HMI_STYLESHEET, /#plugin-fab[\s\S]*right:\s*var\(--car-corner-inset\)/);
   assert.match(CAR_HMI_STYLESHEET, /#car-visual-mode-switch[\s\S]*display:\s*none/);
   assert.match(CAR_HMI_STYLESHEET, /#bottom-bar[\s\S]*bottom:\s*var\(--car-safe-bottom\)/);
-  assert.match(CAR_HMI_STYLESHEET, /#bottom-bar #heart-btn/);
-  assert.match(CAR_HMI_STYLESHEET, /#bottom-bar #quality-control/);
+  // Secondary chrome hidden so title column stays readable
+  assert.match(CAR_HMI_STYLESHEET, /#bottom-bar #heart-btn[\s\S]*display:\s*none|#bottom-bar #heart-btn/);
+  assert.match(CAR_HMI_STYLESHEET, /#bottom-bar #quality-control[\s\S]*display:\s*none|#bottom-bar #quality-control/);
+  assert.match(CAR_HMI_STYLESHEET, /body\.empty-home-active #plugin-fab/);
+  assert.match(CAR_HMI_STYLESHEET, /#playlist-panel \.panel-tab/);
+  assert.match(CAR_HMI_STYLESHEET, /#fx-fab[\s\S]*opacity:\s*\.78/);
   assert.match(CAR_HMI_STYLESHEET, /#bottom-bar > #controls > \.control-cluster > \.ctrl-btn/);
   assert.match(CAR_HMI_STYLESHEET, /#audio-effect-control/);
   assert.match(CAR_HMI_STYLESHEET, /#home-recent-panel/);

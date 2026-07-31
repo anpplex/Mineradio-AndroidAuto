@@ -314,29 +314,36 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     pointer-events: auto !important;
   }
   /*
-   * Visual console — bottom floating capsule (Mac label + car hit size).
+   * Visual console — sit just above transport (less lyric occlusion).
    * Panel opens as bottom sheet (not right dock).
    */
   #fx-fab {
     top: auto !important;
     left: 50% !important;
     right: auto !important;
-    bottom: calc(var(--car-safe-bottom) + 108px + var(--car-space-12)) !important;
+    bottom: calc(var(--car-safe-bottom) + 104px + 6px) !important;
     width: auto !important;
-    min-width: 172px !important;
+    min-width: 156px !important;
     max-width: none !important;
-    height: 56px !important;
-    min-height: 56px !important;
-    max-height: 56px !important;
-    padding: 0 22px 0 18px !important;
-    gap: 10px !important;
+    height: 48px !important;
+    min-height: 48px !important;
+    max-height: 48px !important;
+    padding: 0 18px 0 14px !important;
+    gap: 8px !important;
     border-radius: 999px !important;
     transform: translateX(-50%) !important;
     flex-direction: row !important;
+    opacity: .78 !important;
+    z-index: 35 !important;
+  }
+  #fx-fab:hover,
+  #fx-fab:focus-visible,
+  body.car-fx-open #fx-fab {
+    opacity: 1 !important;
   }
   #fx-fab::after {
     content: '视觉控制台';
-    font-size: 16px !important;
+    font-size: 15px !important;
     font-weight: 720 !important;
     letter-spacing: .02em !important;
     color: var(--car-text-primary) !important;
@@ -344,10 +351,10 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     line-height: 1 !important;
   }
   body.car-fx-open #fx-fab {
-    bottom: calc(var(--car-safe-bottom) + min(58vh, 480px) + 20px) !important;
+    bottom: calc(var(--car-safe-bottom) + min(58vh, 480px) + 16px) !important;
   }
   #fx-fab-hide-btn { display: none !important; }
-  /* Plugin install — extreme bottom-right */
+  /* Plugin install — only empty home (low frequency); hide while playing */
   #plugin-fab {
     position: fixed !important;
     z-index: 33 !important;
@@ -360,7 +367,7 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     min-width: var(--car-corner-btn) !important;
     min-height: var(--car-corner-btn) !important;
     padding: 0 !important;
-    display: inline-flex !important;
+    display: none !important;
     align-items: center !important;
     justify-content: center !important;
     border-radius: 50% !important;
@@ -368,6 +375,9 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     background: var(--car-panel-strong) !important;
     color: var(--car-text-primary) !important;
     box-shadow: 0 10px 28px rgba(0, 0, 0, .36) !important;
+  }
+  body.empty-home-active #plugin-fab {
+    display: inline-flex !important;
   }
   #plugin-fab svg {
     width: var(--car-corner-icon) !important;
@@ -622,19 +632,26 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     font-size: 18px !important;
     font-weight: 720 !important;
   }
-  /* Mac-visible set; hide only rare desktop tools */
-  #bottom-bar #quality-control,
-  #bottom-bar #heart-btn,
-  #bottom-bar #collect-btn,
-  #bottom-bar #play-mode-btn,
+  /*
+   * Play surface: cover + title + transport + queue + lyrics + time.
+   * Secondary Mac chrome (heart / + / quality / eq / volume / play-mode) hidden
+   * so meta column stays readable at car width.
+   */
+  #bottom-bar #mini-queue-btn,
   #bottom-bar .lyrics-toggle-btn,
-  #bottom-bar #volume-control,
-  #bottom-bar #eq-control,
-  #bottom-bar #mini-queue-btn {
+  #bottom-bar #prev-btn,
+  #bottom-bar #next-btn,
+  #bottom-bar #play-btn {
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
   }
+  #bottom-bar #quality-control,
+  #bottom-bar #heart-btn,
+  #bottom-bar #collect-btn,
+  #bottom-bar #play-mode-btn,
+  #bottom-bar #volume-control,
+  #bottom-bar #eq-control,
   #bottom-bar #refresh-download-btn,
   #bottom-bar #sleep-timer-btn,
   #bottom-bar #audio-effect-control,
@@ -654,6 +671,52 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
   /* Floating thumb (Mac uses bar cover); avoid double chrome on car */
   #thumb-wrap {
     display: none !important;
+  }
+
+  /* Playlist side panel — car density (not phone pills) */
+  #playlist-panel {
+    max-width: min(420px, 46vw) !important;
+  }
+  #playlist-panel .panel-tab,
+  #playlist-panel .panel-tabs button {
+    min-height: 48px !important;
+    padding: 0 14px !important;
+    font-size: 16px !important;
+    font-weight: 650 !important;
+  }
+  #playlist-panel .queue-chip,
+  #playlist-panel .fx-mini-btn {
+    min-height: 44px !important;
+    padding: 0 12px !important;
+    font-size: 15px !important;
+  }
+  #playlist-panel .queue-list,
+  #playlist-panel #pl-list,
+  #playlist-panel #podcast-list,
+  #playlist-panel #track-panel-list {
+    font-size: 16px !important;
+  }
+  #playlist-panel .queue-list > *,
+  #playlist-panel #pl-list > *,
+  #playlist-panel #podcast-list > * {
+    min-height: 56px !important;
+    padding: 10px 12px !important;
+  }
+
+  /* Home cards: Chinese primary title already; enlarge hit / type */
+  .home-card {
+    min-height: 128px !important;
+  }
+  .home-card-title {
+    font-size: 22px !important;
+  }
+  .home-card-sub {
+    font-size: 16px !important;
+  }
+  /* Dev toast on home — de-emphasize */
+  body.empty-home-active [class*="toast"],
+  body.empty-home-active .home-hint-chip {
+    font-size: 14px !important;
   }
 
   /* ——— Visual layer budgets (driven by data-car-visual-mode) ———
