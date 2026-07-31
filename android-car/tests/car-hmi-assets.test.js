@@ -171,6 +171,8 @@ test('car visual runtime encodes music-class default and stage maximization prob
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /ensureCarFxMoreBar/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /car-search-entry/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /car-fx-more-bar/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /data-car-fx-proxy/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /translateX\(-50%\)/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /car-fx-open/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /car-search-open/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /setLyricStyle/);

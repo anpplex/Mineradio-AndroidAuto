@@ -30,11 +30,13 @@
 
 **已做对的部分（不进差距列表，仅作边界）：**
 
-- stage 三模式状态机、CSS 全开 canvas、玻璃底栏/歌词 drop-shadow、模式切换 UI。
-- `STAGE_RETRY_MS` + 6s 再断言，覆盖 splash 晚绑定。
-- 调用链方向正确：`setPreset` / `toggleFx` / `setShelfMode` / 滑条 `input+change` / quality DOM fallback。
+- stage showcase 预算固定为车机默认（**无** on-screen 行车/巡航/舞台条；`setMode` 仍 API）。
+- CSS 全开 canvas、玻璃底栏/歌词 drop-shadow；底中「视觉控制台」底部抽屉 + 播控·更多。
+- TL：Home + 列表 + 搜索入口；插件 FAB 仅空首页；APEX/会员播放页隐藏。
+- 底栏减负：曲名/艺人优先；safe-top/bottom 避状态栏/Docker。
+- `STAGE_RETRY_MS` + 6s 再断言；`setPreset` / `toggleFx` / `setShelfMode` / data-rq quality 路径。
 - 明确不启桌面歌词、WE、手势相机。
-- 实车 smoke 脚本：`android-car/scripts/verify-stage-showcase.sh`（基线 `verify-huawei-car` → 点 stage/play → `verification/` 截图 + logcat soft markers）。
+- smoke：`verify-stage-showcase.sh`（截图仅 `verification/`）。
 
 ---
 

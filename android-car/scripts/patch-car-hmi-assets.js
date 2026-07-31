@@ -780,6 +780,20 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     font-size: 15px !important;
     font-weight: 650 !important;
   }
+  /* Popovers opened via FX proxy — large car type */
+  body.car-fx-open .quality-popover,
+  body.car-fx-open .volume-popover,
+  body.car-fx-open .eq-popover {
+    z-index: 70 !important;
+    min-width: min(360px, 80vw) !important;
+    font-size: 15px !important;
+  }
+  body.car-fx-open .quality-popover .quality-option,
+  body.car-fx-open .eq-presets button {
+    min-height: 48px !important;
+    font-size: 15px !important;
+    padding: 10px 12px !important;
+  }
 
   /* ——— Visual layer budgets (driven by data-car-visual-mode) ———
    * Do NOT paint WebGL canvases with CSS opacity < 1 on stage: intermediate

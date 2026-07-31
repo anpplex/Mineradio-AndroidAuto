@@ -748,7 +748,58 @@
       if (!id) return;
       try {
         var el = doc.getElementById(id);
-        if (el) el.click();
+        if (!el) return;
+        // Temporarily reveal hidden bottom-bar controls so popovers (音质/调声/音量) can position.
+        var host = el.closest
+          ? el.closest('#quality-control, #eq-control, #volume-control, #audio-effect-control') || el
+          : el;
+        var prev = {
+          display: host.style.display,
+          visibility: host.style.visibility,
+          opacity: host.style.opacity,
+          position: host.style.position,
+          left: host.style.left,
+          top: host.style.top,
+          zIndex: host.style.zIndex,
+          pointerEvents: host.style.pointerEvents,
+        };
+        host.style.setProperty('display', 'inline-flex', 'important');
+        host.style.setProperty('visibility', 'visible', 'important');
+        host.style.setProperty('opacity', '1', 'important');
+        host.style.setProperty('position', 'fixed', 'important');
+        host.style.setProperty('left', '50%', 'important');
+        host.style.setProperty('bottom', 'calc(var(--car-safe-bottom, 72px) + 120px)', 'important');
+        host.style.setProperty('top', 'auto', 'important');
+        host.style.setProperty('transform', 'translateX(-50%)', 'important');
+        host.style.setProperty('z-index', '60', 'important');
+        host.style.setProperty('pointer-events', 'auto', 'important');
+        el.click();
+        global.setTimeout(function () {
+          try {
+            // Keep open while user interacts with popover; restore after idle.
+            var stillOpen =
+              doc.querySelector('.quality-popover:not([style*="display: none"])') ||
+              doc.querySelector('.volume-popover:not([style*="display: none"])') ||
+              doc.querySelector('.eq-popover:not([style*="display: none"])');
+            if (stillOpen) return;
+            if (prev.display) host.style.display = prev.display;
+            else host.style.removeProperty('display');
+            if (prev.visibility) host.style.visibility = prev.visibility;
+            else host.style.removeProperty('visibility');
+            if (prev.opacity) host.style.opacity = prev.opacity;
+            else host.style.removeProperty('opacity');
+            if (prev.position) host.style.position = prev.position;
+            else host.style.removeProperty('position');
+            host.style.removeProperty('left');
+            host.style.removeProperty('top');
+            host.style.removeProperty('bottom');
+            host.style.removeProperty('transform');
+            host.style.removeProperty('z-index');
+            host.style.removeProperty('pointer-events');
+          } catch (_) {
+            /* ignore */
+          }
+        }, 400);
       } catch (_) {
         /* ignore */
       }

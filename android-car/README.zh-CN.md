@@ -40,13 +40,12 @@
 - 驾驶态优先：首页大卡片、搜索、最近播放、上一首/播放/下一首/队列优先；粒子背景降低并关闭首页卡片漂浮动画；桌面低频播放控件（音质/红心/收藏/音效/音量等）在车机底栏中隐藏。
 - 登录：新增固定的“网易云扫码登录”入口，仅调用原页面已有的 `showLoginModal()`；不会绕过认证、伪造登录或处理账号凭据。
 - 焦点：触摸外的键盘/旋钮焦点使用高对比描边；真实车机的方向键、旋钮焦点路径仍需实机验收。
-- **视觉层三模式**（见 [docs/VISUAL-LAYER.zh-CN.md](./docs/VISUAL-LAYER.zh-CN.md)）：
-  - **行车 drive**（默认）：音乐类驾驶优先，弱粒子/低电影震动，主播控与可读性第一；
-  - **巡航 cruise**：平衡 Mineradio 氛围与座舱可读；
-  - **舞台 stage**：调用 APK 内 `setPreset(0)/setRenderQuality('ultra')/setShelfMode('stage')/toggleFx(...)` 最大化对齐上游 emily·粒子·电影镜头·3D 架；CSS 全开画布、加强歌词舞台与玻璃播控；
+- **视觉层**（见 [docs/VISUAL-LAYER.zh-CN.md](./docs/VISUAL-LAYER.zh-CN.md)）：
+  - 车机 **固定 stage showcase**（无 on-screen 行车/巡航/舞台条；`setMode` 仍 API）；
+  - HMI：TL Home+列表+搜索、底中「视觉控制台」抽屉与「播控·更多」、空首页插件/登录、底栏曲名优先、safe-top/bottom 避状态栏/Docker；
   - 运行时 `car-visual-runtime.js`；**不**接 OEM 车速总线，**不**启用桌面歌词 / Wallpaper Engine / 手势相机。
 
-当前静态验证已覆盖 MENC 加解密回环、HTML/CSS/runtime 注入幂等、登录入口、视觉模式 token。2026-07-31 密度感知 HMI 已修；**视觉三模式需重新构建安装后做真车切换验收**。
+当前静态验证已覆盖 MENC 加解密回环、HTML/CSS/runtime 注入幂等、登录入口、车机尺度 token。连上车机后请重装最新 `out/` APK 做真车验收。
 
 ## 当前产物
 
