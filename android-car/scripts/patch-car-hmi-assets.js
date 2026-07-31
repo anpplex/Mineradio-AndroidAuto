@@ -9,17 +9,26 @@ const PASSPHRASE = Buffer.from('Sp1ca@Minerad1o#2024$SecureAssetKey!', 'ascii');
 const KEY = crypto.createHash('sha256').update(PASSPHRASE).digest();
 const MAGIC = Buffer.from('MENC', 'ascii');
 const CAR_HMI_STYLESHEET_NAME = 'car-hmi.css';
+const CAR_VISUAL_RUNTIME_NAME = 'car-visual-runtime.js';
 const CAR_LOGIN_ENTRY_ID = 'car-login-entry';
 const CAR_LOGIN_ENTRY = `<button type="button" id="${CAR_LOGIN_ENTRY_ID}" aria-label="网易云扫码登录" title="网易云扫码登录" onclick="showLoginModal()">网易云扫码登录</button>`;
 
+const CAR_VISUAL_RUNTIME_SOURCE = fs.readFileSync(
+  path.join(__dirname, 'car-visual-runtime.js'),
+  'utf8',
+);
+
 /*
- * Project car-HMI target for the validated Huawei ICHU3200E15-ADV unit:
- * physical 1920x1080 @ 320dpi, WebView meta viewport width=device-width.
- * At density 2.0 that is about 960x540 CSS px — not physical pixels.
- * Values below are intentional project targets, not OEM certification.
+ * Project car-HMI + visual-mode targets for Huawei ICHU3200E15-ADV:
+ * physical 1920x1080 @ 320dpi, WebView width=device-width → ≈960x540 CSS px.
+ * Not an OEM certification claim.
+ *
+ * Visual stack:
+ *   drive  — music-class driving safety (default)
+ *   cruise — identity-preserving balance
+ *   stage  — maximize Mineradio open / free / stunning stage
  */
-const CAR_HMI_STYLESHEET = String.raw`/* Mineradio Huawei / Android automotive HMI overlay.
- * Match density-scaled WebView CSS px on the validated landscape unit. */
+const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay (CSS px, density-scaled). */
 :root {
   --car-space-12: 12px;
   --car-space-16: 16px;
@@ -32,13 +41,19 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio Huawei / Android automotive H
   --car-panel-strong: rgba(8, 12, 19, .97);
   --car-text-primary: rgba(255, 255, 255, .98);
   --car-text-secondary: rgba(234, 243, 247, .78);
+  --car-accent: #0ccdbf;
+  --car-accent-ink: #041312;
+  --car-particle-opacity: .34;
+  --car-stage-scrim: .26;
+  --car-lyric-scale-boost: 1;
+  --car-reduce-motion: 0;
 }
 
 /* 900 CSS px ≈ 1800 physical px @ 320dpi; covers the 960 CSS-wide car WebView. */
 @media (min-width: 900px) and (min-height: 480px) {
   html, body { font-size: 16px; }
 
-  /* Do not leave the automotive home screen as a small desktop island. */
+  /* ——— Shell / navigation ——— */
   #empty-home, #home-empty, .empty-home, .home-page {
     top: 88px !important;
     bottom: 108px !important;
@@ -51,7 +66,6 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio Huawei / Android automotive H
   }
   .home-hero { grid-row: 1 !important; }
 
-  /* Search is a primary driving action, so keep it visible and legible. */
   #search-area, .search-area {
     top: 20px !important;
     opacity: 1 !important;
@@ -70,7 +84,6 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio Huawei / Android automotive H
   #search-input, .search-input { font-size: 18px !important; font-weight: 520 !important; }
   #search-input::placeholder { color: rgba(255, 255, 255, .62) !important; }
 
-  /* Main cards become full-card actions with readable Chinese hierarchy. */
   .home-grid, .home-quick-grid, .home-cards, .dashboard-grid {
     grid-template-rows: repeat(3, minmax(0, 1fr)) !important;
     height: 100% !important;
@@ -101,7 +114,6 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio Huawei / Android automotive H
   }
   .home-card-art { width: 72px !important; height: 72px !important; right: 14px !important; bottom: 14px !important; }
 
-  /* Ensure the existing empty/recent panel is useful and readable. */
   #home-recent-panel, .home-hero, .recent-play-card, .recent-card, .home-recent {
     background: var(--car-panel) !important;
     border-color: rgba(255, 255, 255, .20) !important;
@@ -122,7 +134,6 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio Huawei / Android automotive H
     line-height: 1.45 !important;
   }
 
-  /* Login stays discoverable without covering the top-right account chip. */
   #car-login-entry {
     position: fixed !important;
     z-index: 24 !important;
@@ -136,8 +147,8 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio Huawei / Android automotive H
     justify-content: center !important;
     border: 1px solid rgba(96, 255, 231, .60) !important;
     border-radius: 16px !important;
-    background: #0ccdbf !important;
-    color: #041312 !important;
+    background: var(--car-accent) !important;
+    color: var(--car-accent-ink) !important;
     font-size: 15px !important;
     font-weight: 760 !important;
     letter-spacing: .02em !important;
@@ -162,13 +173,12 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio Huawei / Android automotive H
     display: inline-flex !important;
     align-items: center !important;
     border-radius: 12px !important;
-    background: #0ccdbf !important;
-    color: #041312 !important;
+    background: var(--car-accent) !important;
+    color: var(--car-accent-ink) !important;
     font-size: 14px !important;
     font-weight: 760 !important;
   }
 
-  /* Primary shell actions: 48 CSS px ≈ 96 physical px @ 320dpi. */
   #playlist-toggle, #home-btn, #announcement-entry, #fx-fab, #bottom-bar-close-btn {
     width: var(--car-touch-target) !important;
     height: var(--car-touch-target) !important;
@@ -176,12 +186,10 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio Huawei / Android automotive H
     min-height: var(--car-touch-target) !important;
   }
   #playlist-toggle { top: 20px !important; left: 20px !important; }
-  /* Keep visual settings above the player rather than over its right-hand controls. */
   #fx-fab { right: 20px !important; bottom: 128px !important; }
   #fx-fab-hide-btn { display: none !important; }
   #playlist-toggle svg, #home-btn svg, #announcement-entry svg, #fx-fab svg { width: 22px !important; height: 22px !important; }
 
-  /* Main playback only: metadata, previous, play/pause, next and queue. */
   #bottom-bar {
     min-height: 88px !important;
     width: min(920px, calc(100vw - 48px)) !important;
@@ -218,7 +226,7 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio Huawei / Android automotive H
     min-width: var(--car-primary-action) !important;
     min-height: var(--car-primary-action) !important;
     border-radius: 50% !important;
-    background: #0ccdbf !important;
+    background: var(--car-accent) !important;
     color: #031111 !important;
   }
   #play-btn svg { width: 28px !important; height: 28px !important; }
@@ -233,15 +241,142 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio Huawei / Android automotive H
   }
   #bottom-bar #time-display { min-width: 104px !important; font-size: 13px !important; color: var(--car-text-secondary) !important; }
 
-  /* A moving particle field may remain decorative, but cannot compete with controls. */
-  body.empty-home-active .home-card { animation: none !important; }
-  #canvas-container, #idle-guide-canvas, .particle-background { opacity: .34 !important; }
-  #canvas-container::after, .particle-background::after {
+  /* ——— Visual layer budgets (driven by data-car-visual-mode) ——— */
+  #canvas-container,
+  #idle-guide-canvas,
+  .particle-background,
+  #splash-canvas {
+    opacity: var(--car-particle-opacity) !important;
+    transition: opacity .35s ease !important;
+  }
+  #canvas-container::after,
+  .particle-background::after {
     content: '';
     position: fixed;
     inset: 0;
     pointer-events: none;
-    background: rgba(0, 0, 0, .26);
+    background: rgba(0, 0, 0, var(--car-stage-scrim));
+    transition: background .35s ease;
+  }
+
+  /* Stage lyrics: keep readable hierarchy on density-scaled glass. */
+  #stage-lyrics,
+  #lyric-float-stage,
+  #lyric-popword-stage {
+    transform: scale(var(--car-lyric-scale-boost)) !important;
+    transform-origin: center center !important;
+  }
+  #lyric-float-curr,
+  #lyric-popword-line {
+    color: var(--car-text-primary) !important;
+    text-shadow: 0 2px 18px rgba(0, 0, 0, .55) !important;
+  }
+
+  /* Visual mode switcher (runtime injects DOM; styles always present). */
+  #car-visual-mode-switch {
+    position: fixed !important;
+    z-index: 30 !important;
+    left: 20px !important;
+    bottom: 112px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 6px !important;
+    border-radius: 18px !important;
+    background: var(--car-panel-strong) !important;
+    border: 1px solid rgba(255, 255, 255, .16) !important;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .35) !important;
+    max-width: min(420px, calc(100vw - 40px)) !important;
+  }
+  #car-visual-mode-switch button {
+    min-width: 56px !important;
+    min-height: 40px !important;
+    padding: 0 12px !important;
+    border: 0 !important;
+    border-radius: 12px !important;
+    background: transparent !important;
+    color: var(--car-text-secondary) !important;
+    font-size: 14px !important;
+    font-weight: 680 !important;
+  }
+  #car-visual-mode-switch button.is-active,
+  #car-visual-mode-switch button[aria-pressed="true"] {
+    background: var(--car-accent) !important;
+    color: var(--car-accent-ink) !important;
+  }
+  #car-visual-mode-switch .car-visual-mode-hint {
+    display: none !important;
+    margin-left: 4px !important;
+    padding-right: 8px !important;
+    color: var(--car-text-secondary) !important;
+    font-size: 12px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: 180px !important;
+  }
+
+  /* Drive: music-class — kill home float, hide FX fab prominence, calm shelf shield. */
+  html[data-car-visual-mode="drive"] body.empty-home-active .home-card,
+  body.car-mode-drive.empty-home-active .home-card {
+    animation: none !important;
+  }
+  html[data-car-visual-mode="drive"] #fx-fab,
+  body.car-mode-drive #fx-fab {
+    opacity: .72 !important;
+  }
+  html[data-car-visual-mode="drive"] #shelf-touch-shield,
+  body.car-mode-drive #shelf-touch-shield {
+    pointer-events: none !important;
+  }
+  html[data-car-visual-mode="drive"] #beat-chip,
+  body.car-mode-drive #beat-chip {
+    opacity: .55 !important;
+  }
+
+  /* Cruise: balanced identity. */
+  html[data-car-visual-mode="cruise"] #car-visual-mode-switch .car-visual-mode-hint,
+  body.car-mode-cruise #car-visual-mode-switch .car-visual-mode-hint {
+    display: inline !important;
+  }
+
+  /* Stage: maximize open / free / stunning — open the stage, lower chrome weight. */
+  html[data-car-visual-mode="stage"] #empty-home,
+  html[data-car-visual-mode="stage"] #home-empty,
+  body.car-mode-stage #empty-home,
+  body.car-mode-stage #home-empty {
+    background: transparent !important;
+  }
+  html[data-car-visual-mode="stage"] #bottom-bar,
+  body.car-mode-stage #bottom-bar {
+    background: rgba(8, 12, 19, .78) !important;
+    backdrop-filter: blur(12px) !important;
+  }
+  html[data-car-visual-mode="stage"] #fx-fab,
+  body.car-mode-stage #fx-fab {
+    opacity: 1 !important;
+    transform: scale(1.05) !important;
+  }
+  html[data-car-visual-mode="stage"] #stage-lyrics,
+  html[data-car-visual-mode="stage"] #lyric-float-stage,
+  body.car-mode-stage #stage-lyrics,
+  body.car-mode-stage #lyric-float-stage {
+    filter: drop-shadow(0 8px 28px rgba(12, 205, 191, .18)) !important;
+  }
+  html[data-car-visual-mode="stage"] #car-visual-mode-switch .car-visual-mode-hint,
+  body.car-mode-stage #car-visual-mode-switch .car-visual-mode-hint {
+    display: inline !important;
+    max-width: 220px !important;
+  }
+
+  /* Reduced motion: honor drive budget + system preference. */
+  body.car-reduce-motion *,
+  html[data-car-visual-mode="drive"] * {
+    scroll-behavior: auto !important;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #canvas-container, #idle-guide-canvas, .particle-background { opacity: .08 !important; }
+    body.empty-home-active .home-card { animation: none !important; }
   }
 
   button:focus-visible, [role="button"]:focus-visible, input:focus-visible {
@@ -276,12 +411,31 @@ function injectCarHmiStylesheet(document) {
       ? patched.replace(/<\/head>/i, `${stylesheet}\n</head>`)
       : `${stylesheet}\n${patched}`;
   }
+
+  const runtimePattern = /<script\b[^>]*\bsrc=["']car-visual-runtime\.js["'][^>]*>\s*<\/script>/i;
+  if (!runtimePattern.test(patched)) {
+    const runtimeTag = `\n<script src="${CAR_VISUAL_RUNTIME_NAME}" defer></script>`;
+    patched = /<\/body>/i.test(patched)
+      ? patched.replace(/<\/body>/i, `${runtimeTag}\n</body>`)
+      : `${patched}${runtimeTag}`;
+  }
+
   if (!patched.includes(`id="${CAR_LOGIN_ENTRY_ID}"`)) {
     const entry = `\n${CAR_LOGIN_ENTRY}\n`;
     patched = /<\/body>/i.test(patched)
       ? patched.replace(/<\/body>/i, `${entry}</body>`)
       : `${patched}${entry}`;
   }
+
+  // Default mode attribute before JS boots (safe music-class baseline).
+  if (!/\bdata-car-visual-mode=/.test(patched)) {
+    if (/<html\b[^>]*>/i.test(patched)) {
+      patched = patched.replace(/<html\b([^>]*)>/i, '<html$1 data-car-visual-mode="drive">');
+    } else {
+      patched = `<html data-car-visual-mode="drive">\n${patched}`;
+    }
+  }
+
   return patched;
 }
 
@@ -291,9 +445,19 @@ function patchCarHmiAssets(decodedDir) {
   if (!fs.existsSync(indexPath)) throw new Error(`Missing Mineradio index asset: ${indexPath}`);
 
   const originalIndex = fs.readFileSync(indexPath);
-  const patchedIndex = Buffer.from(injectCarHmiStylesheet(decryptMineradioAsset(originalIndex).toString('utf8')), 'utf8');
+  const patchedIndex = Buffer.from(
+    injectCarHmiStylesheet(decryptMineradioAsset(originalIndex).toString('utf8')),
+    'utf8',
+  );
   fs.writeFileSync(indexPath, encryptMineradioAsset(patchedIndex));
-  fs.writeFileSync(path.join(assetDir, CAR_HMI_STYLESHEET_NAME), encryptMineradioAsset(Buffer.from(CAR_HMI_STYLESHEET, 'utf8')));
+  fs.writeFileSync(
+    path.join(assetDir, CAR_HMI_STYLESHEET_NAME),
+    encryptMineradioAsset(Buffer.from(CAR_HMI_STYLESHEET, 'utf8')),
+  );
+  fs.writeFileSync(
+    path.join(assetDir, CAR_VISUAL_RUNTIME_NAME),
+    encryptMineradioAsset(Buffer.from(CAR_VISUAL_RUNTIME_SOURCE, 'utf8')),
+  );
 }
 
 function main(argv) {
@@ -310,6 +474,8 @@ if (require.main === module) main(process.argv.slice(2));
 module.exports = {
   CAR_HMI_STYLESHEET,
   CAR_HMI_STYLESHEET_NAME,
+  CAR_VISUAL_RUNTIME_NAME,
+  CAR_VISUAL_RUNTIME_SOURCE,
   decryptMineradioAsset,
   encryptMineradioAsset,
   injectCarHmiStylesheet,

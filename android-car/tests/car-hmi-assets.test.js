@@ -1,11 +1,17 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const {
   decryptMineradioAsset,
   encryptMineradioAsset,
   injectCarHmiStylesheet,
+  patchCarHmiAssets,
   CAR_HMI_STYLESHEET,
+  CAR_VISUAL_RUNTIME_SOURCE,
+  CAR_VISUAL_RUNTIME_NAME,
 } = require('../scripts/patch-car-hmi-assets.js');
 
 test('car HMI asset encryption round-trips plaintext with the APK MENC envelope', () => {
@@ -23,8 +29,11 @@ test('car HMI stylesheet injection is idempotent and keeps it after existing sty
 
   assert.match(once, /base\.css[\s\S]*car-hmi\.css/);
   assert.match(once, /id="car-login-entry"[\s\S]*onclick="showLoginModal\(\)"/);
+  assert.match(once, /car-visual-runtime\.js/);
+  assert.match(once, /data-car-visual-mode="drive"/);
   assert.equal((twice.match(/car-hmi\.css/g) || []).length, 1);
   assert.equal((twice.match(/car-login-entry/g) || []).length, 1);
+  assert.equal((twice.match(/car-visual-runtime\.js/g) || []).length, 1);
 });
 
 test('car HMI injection requires a real stylesheet link, not a filename in page text', () => {
@@ -36,8 +45,6 @@ test('car HMI injection requires a real stylesheet link, not a filename in page 
 });
 
 test('car HMI stylesheet targets density-scaled WebView CSS px on the landscape unit', () => {
-  // Physical 1920x1080 @ 320dpi with width=device-width ≈ 960x540 CSS px.
-  // The previous 1548px physical-pixel gate never matched that WebView.
   assert.match(CAR_HMI_STYLESHEET, /@media \(min-width: 900px\) and \(min-height: 480px\)/);
   assert.doesNotMatch(CAR_HMI_STYLESHEET, /@media \(min-width: 1548px\)/);
   assert.match(CAR_HMI_STYLESHEET, /--car-touch-target:\s*48px/);
@@ -56,9 +63,58 @@ test('car HMI stylesheet targets density-scaled WebView CSS px on the landscape 
   assert.match(CAR_HMI_STYLESHEET, /grid-template-columns:\s*minmax\(280px/);
 });
 
+test('car visual layer defines drive/cruise/stage budgets and mode switcher chrome', () => {
+  assert.match(CAR_HMI_STYLESHEET, /--car-particle-opacity/);
+  assert.match(CAR_HMI_STYLESHEET, /--car-stage-scrim/);
+  assert.match(CAR_HMI_STYLESHEET, /data-car-visual-mode="drive"/);
+  assert.match(CAR_HMI_STYLESHEET, /data-car-visual-mode="cruise"/);
+  assert.match(CAR_HMI_STYLESHEET, /data-car-visual-mode="stage"/);
+  assert.match(CAR_HMI_STYLESHEET, /#car-visual-mode-switch/);
+  assert.match(CAR_HMI_STYLESHEET, /#stage-lyrics/);
+  assert.match(CAR_HMI_STYLESHEET, /prefers-reduced-motion/);
+});
+
+test('car visual runtime encodes music-class default and stage maximization probes', () => {
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /MineradioCarVisual/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /modes:\s*MODES/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /drive/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /cruise/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /stage/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /mineradio\.car\.visualMode/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /fx-intensity/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /fx-cineshake/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /initial = 'drive'/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /t-desktopLyrics/);
+  assert.doesNotMatch(CAR_VISUAL_RUNTIME_SOURCE, /eval\(/);
+});
+
+test('patchCarHmiAssets writes MENC css, runtime and patched index', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mineradio-car-hmi-'));
+  const assetDir = path.join(root, 'assets', 'mineradio');
+  fs.mkdirSync(assetDir, { recursive: true });
+  const plain = '<!doctype html><html><head></head><body><div id="canvas-container"></div></body></html>';
+  fs.writeFileSync(path.join(assetDir, 'index.html'), encryptMineradioAsset(Buffer.from(plain, 'utf8')));
+
+  patchCarHmiAssets(root);
+
+  const index = decryptMineradioAsset(fs.readFileSync(path.join(assetDir, 'index.html'))).toString('utf8');
+  assert.match(index, /car-hmi\.css/);
+  assert.match(index, /car-visual-runtime\.js/);
+  assert.match(index, /car-login-entry/);
+  assert.match(index, /data-car-visual-mode="drive"/);
+
+  const css = decryptMineradioAsset(fs.readFileSync(path.join(assetDir, 'car-hmi.css'))).toString('utf8');
+  assert.match(css, /#car-visual-mode-switch/);
+
+  const runtime = decryptMineradioAsset(
+    fs.readFileSync(path.join(assetDir, CAR_VISUAL_RUNTIME_NAME)),
+  ).toString('utf8');
+  assert.match(runtime, /MineradioCarVisual/);
+});
+
 test('car APK build applies the HMI asset overlay after decoding the original APK', () => {
-  const buildScript = require('node:fs').readFileSync(
-    require('node:path').join(__dirname, '../scripts/build-car-apk.sh'),
+  const buildScript = fs.readFileSync(
+    path.join(__dirname, '../scripts/build-car-apk.sh'),
     'utf8',
   );
 

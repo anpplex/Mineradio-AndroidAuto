@@ -72,3 +72,4 @@ Mineradio_*.apk
 android-car/tools/
 android-car/.signing/
 android-car/out/
+android-car/work/
