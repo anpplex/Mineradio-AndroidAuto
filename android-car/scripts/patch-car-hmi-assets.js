@@ -46,8 +46,9 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
   --car-touch-target: 64px;
   --car-primary-action: 76px;
   /* System chrome clearance (Huawei status bar + bottom Docker). CSS px @ ~960. */
-  --car-safe-top: 28px;
-  --car-safe-bottom: 48px;
+  --car-safe-top: 32px;
+  /* Docker + HMI bottom chrome — was 48, still tight on device; raise for P0. */
+  --car-safe-bottom: 72px;
   /* Corner chrome: TL nav cluster + BL FX (mode switch removed). */
   --car-corner-inset: 20px;
   --car-corner-btn: 72px;
@@ -144,6 +145,38 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
   /* Announcement is low-frequency on car. */
   #announcement-entry {
     display: none !important;
+  }
+  /*
+   * Account / APEX / membership chrome — plugin injects top-left pills
+   * (e.g. 「大鹏 APEX 会员」). Never on car play surface; login via empty-home CTA.
+   */
+  #user-btn,
+  #user-capsule,
+  .user-capsule,
+  .user-capsule-btn,
+  .user-capsule-root,
+  [class*="user-capsule"],
+  [id*="user-capsule"]:not(#user-capsule-hide-btn),
+  [class*="apex"],
+  [class*="Apex"],
+  [id*="apex"],
+  [id*="Apex"],
+  [class*="member-badge"],
+  [class*="membership"],
+  [class*="vip-badge"],
+  [class*="svip-badge"],
+  .account-pill,
+  #account-pill,
+  #login-status-pill,
+  #netease-user-pill,
+  .plugin-user-pill {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
   }
   /* Color chips / pickers only when FX console is intentionally open. */
   body:not(.car-fx-open) #lyric-highlight-value,
@@ -449,24 +482,80 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
   }
   #bottom-bar > #controls {
     display: grid !important;
-    grid-template-columns: minmax(160px, 1.1fr) auto minmax(140px, .95fr) !important;
-    gap: 10px 14px !important;
+    /* Left column needs room for cover + title (was starved at 160px). */
+    grid-template-columns: minmax(280px, 1.5fr) auto minmax(120px, 0.85fr) !important;
+    gap: 10px 12px !important;
     align-items: center !important;
+    min-width: 0 !important;
+  }
+  /* Track meta wins over quality/heart/collect when width is tight. */
+  #bottom-bar .control-cluster.actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+  #bottom-bar .control-cluster.actions > #quality-control,
+  #bottom-bar .control-cluster.actions > #heart-btn,
+  #bottom-bar .control-cluster.actions > #collect-btn {
+    flex: 0 0 auto !important;
   }
   #bottom-bar .control-track {
     display: flex !important;
     align-items: center !important;
     gap: 12px !important;
-    min-width: 0 !important;
+    flex: 1 1 auto !important;
+    min-width: 180px !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
   }
   #bottom-bar .control-cover {
     width: 56px !important;
     height: 56px !important;
     min-width: 56px !important;
+    flex: 0 0 56px !important;
     border-radius: 12px !important;
   }
-  #bottom-bar .control-meta { min-width: 0 !important; max-width: none !important; }
-  #bottom-bar .control-title, #bottom-bar .control-artist {
+  #bottom-bar .control-meta {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    gap: 3px !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    overflow: hidden !important;
+  }
+  /* P0: title/artist always readable (ellipsis, never collapse to 0 width). */
+  #bottom-bar .control-title,
+  #bottom-bar #control-title {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 1.2em !important;
+    font-size: 24px !important;
+    line-height: 1.2 !important;
+    font-weight: 700 !important;
+    color: var(--car-text-primary) !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+  #bottom-bar .control-artist,
+  #bottom-bar #control-artist {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 1.15em !important;
+    font-size: 18px !important;
+    line-height: 1.2 !important;
+    font-weight: 520 !important;
+    color: var(--car-text-secondary) !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
@@ -520,12 +609,12 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     color: #031111 !important;
   }
   #play-btn svg { width: 32px !important; height: 32px !important; }
-  .control-title, #song-title, .now-playing-title, #control-title {
+  #song-title, .now-playing-title {
     font-size: var(--car-type-title) !important;
     font-weight: 700 !important;
     color: var(--car-text-primary) !important;
   }
-  .control-artist, #artist-name, .now-playing-artist, #control-artist {
+  #artist-name, .now-playing-artist {
     font-size: var(--car-type-body) !important;
     color: var(--car-text-secondary) !important;
   }

@@ -49,8 +49,10 @@
 
 | Token | 默认 CSS px | 用途 |
 | --- | --- | --- |
-| `--car-safe-top` | **28** | 顶 inset |
-| `--car-safe-bottom` | **48** | 底 Docker 上沿；`#bottom-bar` 的 `bottom` |
+| `--car-safe-top` | **32** | 顶 inset（状态栏） |
+| `--car-safe-bottom` | **72** | 底 Docker 上沿；`#bottom-bar` / 角钮的 `bottom`（P0 加大） |
+
+底栏 **曲名 24 / 艺人 18** 必须可见（`.control-track` 最小宽 + meta flex 优先）；播放页 **隐藏 APEX/会员** 插件胶囊。
 
 材质统一 Windows 玻璃；**禁止**角区手机 44/48 幽灵按钮。
 

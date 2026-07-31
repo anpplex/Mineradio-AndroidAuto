@@ -617,6 +617,72 @@
     }
   }
 
+  /**
+   * P0: hide plugin-injected APEX / membership pills (not in base HTML).
+   * Keep #car-login-entry, home, playlist, transport.
+   */
+  function hideApexMembershipChrome() {
+    var doc = global.document;
+    if (!doc || !doc.body) return;
+    var keep = {
+      'car-login-entry': 1,
+      'home-btn': 1,
+      'playlist-toggle': 1,
+      'fx-fab': 1,
+      'plugin-fab': 1,
+      'bottom-bar': 1,
+      'play-btn': 1,
+      'control-title': 1,
+      'control-artist': 1,
+    };
+    try {
+      var nodes = doc.body.querySelectorAll(
+        'button, a, div, span, section, aside, [class], [id]',
+      );
+      for (var i = 0; i < nodes.length; i += 1) {
+        var el = nodes[i];
+        if (!el || !el.getAttribute) continue;
+        if (el.id && keep[el.id]) continue;
+        if (el.closest && (el.closest('#bottom-bar') || el.closest('#fx-panel') || el.closest('#playlist-panel'))) {
+          continue;
+        }
+        var id = el.id || '';
+        var cls = (el.className && String(el.className)) || '';
+        var title = el.getAttribute('title') || '';
+        var label = el.getAttribute('aria-label') || '';
+        var text = '';
+        try {
+          // Prefer short leaf labels only (avoid nuking large containers).
+          if ((el.children && el.children.length > 4) || (el.textContent && el.textContent.length > 48)) {
+            text = '';
+          } else {
+            text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+          }
+        } catch (_) {
+          text = '';
+        }
+        var blob = (id + ' ' + cls + ' ' + title + ' ' + label + ' ' + text).toLowerCase();
+        var hit =
+          blob.indexOf('apex') >= 0 ||
+          blob.indexOf('svip') >= 0 ||
+          /会员/.test(text) ||
+          /会员/.test(title) ||
+          /会员/.test(label) ||
+          (blob.indexOf('user-capsule') >= 0 && id !== 'user-capsule-hide-btn');
+        if (!hit) continue;
+        try {
+          el.style.setProperty('display', 'none', 'important');
+          el.style.setProperty('visibility', 'hidden', 'important');
+          el.setAttribute('data-car-apex-hidden', '1');
+        } catch (_) {
+          /* ignore */
+        }
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
   /** Wire search focus + FX fab so secondary surfaces open with car-scale UX. */
   function installCarChromeHooks() {
     if (global.__mineradioCarChromeHooks) return;
@@ -668,6 +734,25 @@
           },
           true,
         );
+      }
+    } catch (_) {
+      /* ignore */
+    }
+
+    // Plugin may inject APEX after boot; sweep periodically for a short window.
+    try {
+      hideApexMembershipChrome();
+      var sweeps = 0;
+      var timer = global.setInterval(function () {
+        hideApexMembershipChrome();
+        sweeps += 1;
+        if (sweeps >= 12) global.clearInterval(timer);
+      }, 1500);
+      if (typeof global.MutationObserver === 'function') {
+        var mo = new global.MutationObserver(function () {
+          hideApexMembershipChrome();
+        });
+        mo.observe(doc.body, { childList: true, subtree: true });
       }
     } catch (_) {
       /* ignore */

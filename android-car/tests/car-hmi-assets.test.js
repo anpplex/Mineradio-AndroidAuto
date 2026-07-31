@@ -53,8 +53,16 @@ test('car HMI stylesheet targets density-scaled WebView CSS px on the landscape 
   assert.match(CAR_HMI_STYLESHEET, /--car-type-title:\s*24px/);
   assert.match(CAR_HMI_STYLESHEET, /--car-type-body:\s*18px/);
   // Corner chrome TL nav + BL FX; safe areas for status/Docker
-  assert.match(CAR_HMI_STYLESHEET, /--car-safe-top:\s*28px/);
-  assert.match(CAR_HMI_STYLESHEET, /--car-safe-bottom:\s*48px/);
+  assert.match(CAR_HMI_STYLESHEET, /--car-safe-top:\s*32px/);
+  assert.match(CAR_HMI_STYLESHEET, /--car-safe-bottom:\s*72px/);
+  // P0: title/artist always visible in transport meta
+  assert.match(CAR_HMI_STYLESHEET, /#bottom-bar #control-title[\s\S]*font-size:\s*24px/);
+  assert.match(CAR_HMI_STYLESHEET, /#bottom-bar #control-artist[\s\S]*font-size:\s*18px/);
+  assert.match(CAR_HMI_STYLESHEET, /#bottom-bar \.control-track[\s\S]*min-width:\s*180px/);
+  assert.match(CAR_HMI_STYLESHEET, /minmax\(280px/);
+  // P0: hide APEX / membership chrome
+  assert.match(CAR_HMI_STYLESHEET, /\[class\*=\"apex\"\]|\[class\*='apex'\]|class\*=\"apex\"/);
+  assert.match(CAR_HMI_STYLESHEET, /user-capsule/);
   assert.match(CAR_HMI_STYLESHEET, /--car-corner-inset:\s*20px/);
   assert.match(CAR_HMI_STYLESHEET, /--car-corner-btn:\s*72px/);
   assert.match(CAR_HMI_STYLESHEET, /--car-corner-icon:\s*30px/);
@@ -151,6 +159,8 @@ test('car visual runtime encodes music-class default and stage maximization prob
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /ensureDiyForStage/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /collapseCarChrome/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /installCarChromeHooks/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /hideApexMembershipChrome/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /data-car-apex-hidden/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /car-fx-open/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /car-search-open/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /setLyricStyle/);
