@@ -661,6 +661,28 @@
     } catch (_) {
       /* ignore */
     }
+    // One soft toast on stage showcase apply (avoid spam on every reassert).
+    try {
+      if (
+        mode === 'stage' &&
+        budget &&
+        budget.showcase &&
+        !global.__mineradioCarStageToastShown &&
+        typeof global.showToast === 'function'
+      ) {
+        var okShelf = health.shelf === 'stage' || health.shelfBtn === 'stage';
+        var okQ = health.quality === 'ultra' || health.qualityBtn === 'ultra' || health.qualityBtn === 'fine';
+        global.showToast(
+          okShelf && okQ ? '舞台 Showcase 已拉满' : '舞台已应用（部分参数待重试）',
+        );
+        global.__mineradioCarStageToastShown = true;
+        global.setTimeout(function () {
+          global.__mineradioCarStageToastShown = false;
+        }, 12000);
+      }
+    } catch (_) {
+      /* ignore */
+    }
     return health;
   }
 
