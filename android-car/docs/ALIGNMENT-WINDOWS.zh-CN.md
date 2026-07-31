@@ -80,9 +80,13 @@
 | 优先级 | 项 | 说明 |
 | --- | --- | --- |
 | P1 | 真车验收播放/登录/SPICa/AF | 不宣称全兼容 |
-| P1 | FX 抽屉内 Windows 控制台密度 | 大字大钮（已部分） |
-| P2 | 弱动效 ↔ drive 预算 | 可选入口（实现见 runtime「弱动效/舞台」） |
-| P2 | 多源搜索 tab 在 focus 时车机化 | 已有 focus-within 规则 |
+| ✅ | 进度条 seek 热区 | `#progress-bar` 视觉 10px + 44px 命中层 |
+| ✅ | 多源搜索 tab / 结果行 | focus 时 64 行高、17px 字 |
+| ✅ | 歌词样式入口 | FX「歌词样式」展开 fold + lsb 大钮 |
+| ✅ | FX 更多热区 + popover 驻留 | 64 钮；宿主揭示至 popover 关闭 |
+| ✅ | 隐藏 FX 内桌面歌词/WE 开关 | CSS + runtime force off |
+| ✅ | 输出接口 / 睡眠定时 | FX 更多「输出」「定时」 |
+| P2 | 自定义封面/上传 | 以 APK 控制台为准，壳不新增 |
 | NG | WE / 桌面歌词 | 永不做 |
 
 ---

@@ -119,12 +119,41 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
   body.car-search-open #search-mode-tabs {
     display: flex !important;
     flex-wrap: wrap !important;
-    gap: 6px !important;
-    margin-top: 8px !important;
+    gap: 8px !important;
+    margin-top: 10px !important;
   }
   #search-area:focus-within #search-close-btn,
   body.car-search-open #search-close-btn {
     display: inline-flex !important;
+    min-width: var(--car-touch-target) !important;
+    min-height: var(--car-touch-target) !important;
+  }
+  /* Multi-source tabs + results — Windows search path at car density */
+  body.car-search-open #search-mode-tabs button,
+  body.car-search-open #search-mode-providers button,
+  #search-area:focus-within #search-mode-tabs button,
+  #search-area:focus-within #search-mode-providers button {
+    min-height: var(--car-touch-target) !important;
+    min-width: 56px !important;
+    padding: 0 14px !important;
+    font-size: 17px !important;
+    font-weight: 650 !important;
+    border-radius: 14px !important;
+  }
+  body.car-search-open #search-results,
+  #search-area:focus-within #search-results {
+    max-height: min(48vh, 360px) !important;
+    overflow-y: auto !important;
+    margin-top: 10px !important;
+  }
+  body.car-search-open #search-results > *,
+  body.car-search-open #search-results .search-result,
+  body.car-search-open #search-results [class*="result"],
+  #search-area:focus-within #search-results > * {
+    min-height: 64px !important;
+    padding: 12px 14px !important;
+    font-size: 17px !important;
+    line-height: 1.35 !important;
   }
   /* Beat analysis / cinema-lock chips are desktop status — never primary car chrome. */
   #beat-chip {
@@ -482,13 +511,31 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     box-shadow: 0 16px 40px rgba(0, 0, 0, .42) !important;
     backdrop-filter: blur(18px) saturate(1.12) !important;
   }
+  /* Progress seek — Windows-like drag, car hit height */
   #bottom-bar #progress-bar {
-    height: 6px !important;
+    position: relative !important;
+    height: 10px !important;
     border-radius: 999px !important;
-    margin-bottom: 8px !important;
+    margin-bottom: 10px !important;
+    cursor: pointer !important;
+  }
+  #bottom-bar #progress-bar::before {
+    content: '' !important;
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    height: 44px !important;
+    /* expand hit without changing visual thickness much */
   }
   #bottom-bar #progress-fill {
     border-radius: 999px !important;
+    height: 100% !important;
+  }
+  #bottom-bar #progress-thumb {
+    width: 18px !important;
+    height: 18px !important;
   }
   #bottom-bar > #controls {
     display: grid !important;
@@ -770,15 +817,69 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     margin-bottom: 2px !important;
   }
   #car-fx-more-bar button {
-    min-height: 48px !important;
-    min-width: 48px !important;
-    padding: 0 14px !important;
+    min-height: var(--car-touch-target) !important;
+    min-width: var(--car-touch-target) !important;
+    padding: 0 16px !important;
     border-radius: 14px !important;
     border: 1px solid rgba(255, 255, 255, .16) !important;
     background: rgba(255, 255, 255, .06) !important;
     color: var(--car-text-primary) !important;
+    font-size: 16px !important;
+    font-weight: 650 !important;
+  }
+  /* Lyric style chips (Windows in-app styles) — car hit size */
+  #fx-panel .lyric-style-btn,
+  #fx-panel #lsb0,
+  #fx-panel #lsb1,
+  #fx-panel #lsb2,
+  #fx-panel #lsb3,
+  #fx-panel [id^="lsb"] {
+    min-height: 48px !important;
+    min-width: 56px !important;
+    padding: 8px 14px !important;
     font-size: 15px !important;
     font-weight: 650 !important;
+    border-radius: 12px !important;
+  }
+  /* NG: hide desktop lyrics / WE toggles inside FX (Windows-only subsystem) */
+  #fx-panel #t-desktopLyrics,
+  #fx-panel #t-desktopLyricsClickThrough,
+  #fx-panel #t-desktopLyricsCinema,
+  #fx-panel #t-desktopLyricsHighlight,
+  #fx-panel [id*="desktopLyrics"],
+  #fx-panel [id*="wallpaperEngine"],
+  #fx-panel [id*="WallpaperEngine"],
+  #fx-panel .fx-toggle[onclick*="desktopLyrics"],
+  #fx-panel .fx-toggle[onclick*="Wallpaper"],
+  #fx-panel .fx-toggle[onclick*="wallpaper"] {
+    display: none !important;
+  }
+  /* Audio output entry (Windows 输出接口) — car density when in panel */
+  #fx-panel #audio-output-panel,
+  #fx-panel .audio-output-entry {
+    min-height: 64px !important;
+    padding: 12px 14px !important;
+  }
+  #fx-panel #audio-output-entry-title {
+    font-size: 17px !important;
+    font-weight: 700 !important;
+  }
+  #fx-panel #audio-output-entry-sub {
+    font-size: 14px !important;
+  }
+  /* Collect / custom lyric modals */
+  #collect-modal .collect-list > *,
+  #collect-modal button,
+  #custom-lyric-modal button,
+  #custom-lyric-modal textarea {
+    font-size: 16px !important;
+  }
+  #custom-lyric-modal textarea {
+    min-height: 200px !important;
+  }
+  #collect-modal .collect-list > * {
+    min-height: 56px !important;
+    padding: 12px !important;
   }
   /* Popovers opened via FX proxy — large car type */
   body.car-fx-open .quality-popover,

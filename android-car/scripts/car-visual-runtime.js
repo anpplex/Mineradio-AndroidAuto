@@ -741,9 +741,89 @@
       '<button type="button" data-car-fx-proxy="quality-btn">音质</button>' +
       '<button type="button" data-car-fx-proxy="eq-btn">调声</button>' +
       '<button type="button" data-car-fx-proxy="volume-btn">音量</button>' +
+      '<button type="button" data-car-fx-proxy="sleep-timer-btn">定时</button>' +
       '<button type="button" data-car-fx-action="lyrics">歌词</button>' +
+      '<button type="button" data-car-fx-action="lyric-fold">歌词样式</button>' +
+      '<button type="button" data-car-fx-action="output">输出</button>' +
       '<button type="button" data-car-fx-action="drive">弱动效</button>' +
       '<button type="button" data-car-fx-action="stage">舞台拉满</button>';
+
+    function restoreHost(host, prev) {
+      try {
+        if (!host || !prev) return;
+        if (prev.display) host.style.display = prev.display;
+        else host.style.removeProperty('display');
+        if (prev.visibility) host.style.visibility = prev.visibility;
+        else host.style.removeProperty('visibility');
+        if (prev.opacity) host.style.opacity = prev.opacity;
+        else host.style.removeProperty('opacity');
+        if (prev.position) host.style.position = prev.position;
+        else host.style.removeProperty('position');
+        host.style.removeProperty('left');
+        host.style.removeProperty('top');
+        host.style.removeProperty('bottom');
+        host.style.removeProperty('transform');
+        host.style.removeProperty('z-index');
+        host.style.removeProperty('pointer-events');
+      } catch (_) {
+        /* ignore */
+      }
+    }
+
+    function revealAndClick(el) {
+      if (!el) return;
+      var host = el.closest
+        ? el.closest(
+            '#quality-control, #eq-control, #volume-control, #audio-effect-control, #sleep-timer-btn',
+          ) || el
+        : el;
+      var prev = {
+        display: host.style.display,
+        visibility: host.style.visibility,
+        opacity: host.style.opacity,
+        position: host.style.position,
+      };
+      host.style.setProperty('display', 'inline-flex', 'important');
+      host.style.setProperty('visibility', 'visible', 'important');
+      host.style.setProperty('opacity', '1', 'important');
+      host.style.setProperty('position', 'fixed', 'important');
+      host.style.setProperty('left', '50%', 'important');
+      host.style.setProperty('bottom', 'calc(var(--car-safe-bottom, 72px) + 120px)', 'important');
+      host.style.setProperty('top', 'auto', 'important');
+      host.style.setProperty('transform', 'translateX(-50%)', 'important');
+      host.style.setProperty('z-index', '60', 'important');
+      host.style.setProperty('pointer-events', 'auto', 'important');
+      el.click();
+      var tries = 0;
+      var timer = global.setInterval(function () {
+        tries += 1;
+        try {
+          var stillOpen =
+            doc.querySelector('.quality-popover.show, .quality-popover.open, .quality-popover[style*="display: block"]') ||
+            doc.querySelector('.volume-popover.show, .volume-popover.open, .volume-popover[style*="display: block"]') ||
+            doc.querySelector('.eq-popover.show, .eq-popover.open') ||
+            doc.querySelector('#sleep-timer-popover.show, #sleep-timer-popover[style*="display: block"]');
+          // Also treat non-empty computed display as open for absolute popovers
+          if (!stillOpen) {
+            var pops = doc.querySelectorAll('.quality-popover, .volume-popover, .eq-popover, #sleep-timer-popover');
+            for (var i = 0; i < pops.length; i += 1) {
+              var st = global.getComputedStyle ? global.getComputedStyle(pops[i]) : null;
+              if (st && st.display !== 'none' && st.visibility !== 'hidden' && st.opacity !== '0') {
+                stillOpen = pops[i];
+                break;
+              }
+            }
+          }
+          if (stillOpen && tries < 40) return;
+          global.clearInterval(timer);
+          restoreHost(host, prev);
+        } catch (_) {
+          global.clearInterval(timer);
+          restoreHost(host, prev);
+        }
+      }, 250);
+    }
+
     bar.addEventListener('click', function (event) {
       var t = event.target;
       if (!t || !t.getAttribute) return;
@@ -753,6 +833,34 @@
           var lyricBtn = doc.querySelector('#bottom-bar .lyrics-toggle-btn');
           if (lyricBtn) lyricBtn.click();
           else if (typeof global.toggleLyricsPanel === 'function') global.toggleLyricsPanel();
+        } catch (_) {
+          /* ignore */
+        }
+        return;
+      }
+      if (action === 'lyric-fold') {
+        try {
+          var fold = doc.getElementById('fx-lyric-fold');
+          if (fold) {
+            fold.classList.add('open');
+            fold.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+          var lsb = doc.getElementById('lsb1');
+          if (lsb) lsb.focus();
+        } catch (_) {
+          /* ignore */
+        }
+        return;
+      }
+      if (action === 'output') {
+        try {
+          var out = doc.getElementById('audio-output-panel');
+          if (out) out.click();
+          else if (typeof global.openAudioOutputWorkflowPanel === 'function') {
+            global.openAudioOutputWorkflowPanel();
+          } else if (typeof global.openAudioOutputPanel === 'function') {
+            global.openAudioOutputPanel();
+          }
         } catch (_) {
           /* ignore */
         }
@@ -779,59 +887,7 @@
       var id = t.getAttribute('data-car-fx-proxy');
       if (!id) return;
       try {
-        var el = doc.getElementById(id);
-        if (!el) return;
-        // Temporarily reveal hidden bottom-bar controls so popovers (音质/调声/音量) can position.
-        var host = el.closest
-          ? el.closest('#quality-control, #eq-control, #volume-control, #audio-effect-control') || el
-          : el;
-        var prev = {
-          display: host.style.display,
-          visibility: host.style.visibility,
-          opacity: host.style.opacity,
-          position: host.style.position,
-          left: host.style.left,
-          top: host.style.top,
-          zIndex: host.style.zIndex,
-          pointerEvents: host.style.pointerEvents,
-        };
-        host.style.setProperty('display', 'inline-flex', 'important');
-        host.style.setProperty('visibility', 'visible', 'important');
-        host.style.setProperty('opacity', '1', 'important');
-        host.style.setProperty('position', 'fixed', 'important');
-        host.style.setProperty('left', '50%', 'important');
-        host.style.setProperty('bottom', 'calc(var(--car-safe-bottom, 72px) + 120px)', 'important');
-        host.style.setProperty('top', 'auto', 'important');
-        host.style.setProperty('transform', 'translateX(-50%)', 'important');
-        host.style.setProperty('z-index', '60', 'important');
-        host.style.setProperty('pointer-events', 'auto', 'important');
-        el.click();
-        global.setTimeout(function () {
-          try {
-            // Keep open while user interacts with popover; restore after idle.
-            var stillOpen =
-              doc.querySelector('.quality-popover:not([style*="display: none"])') ||
-              doc.querySelector('.volume-popover:not([style*="display: none"])') ||
-              doc.querySelector('.eq-popover:not([style*="display: none"])');
-            if (stillOpen) return;
-            if (prev.display) host.style.display = prev.display;
-            else host.style.removeProperty('display');
-            if (prev.visibility) host.style.visibility = prev.visibility;
-            else host.style.removeProperty('visibility');
-            if (prev.opacity) host.style.opacity = prev.opacity;
-            else host.style.removeProperty('opacity');
-            if (prev.position) host.style.position = prev.position;
-            else host.style.removeProperty('position');
-            host.style.removeProperty('left');
-            host.style.removeProperty('top');
-            host.style.removeProperty('bottom');
-            host.style.removeProperty('transform');
-            host.style.removeProperty('z-index');
-            host.style.removeProperty('pointer-events');
-          } catch (_) {
-            /* ignore */
-          }
-        }, 400);
+        revealAndClick(doc.getElementById(id));
       } catch (_) {
         /* ignore */
       }
@@ -1271,8 +1327,11 @@
     ensureDiyForStage(mode);
     collapseCarChrome({ keepFxClosed: true, closeSearch: true });
 
-    // Desktop-only features always off on car.
+    // Desktop-only / WE path always off on car (BOUNDARIES NG).
     ensureFxKey('desktopLyrics', false);
+    ensureFxKey('desktopLyricsClickThrough', false);
+    ensureFxKey('desktopLyricsCinema', false);
+    ensureFxKey('desktopLyricsHighlight', false);
     ensureFxKey('forceSystemWallpaper', false);
     try {
       if (typeof global.applyDesktopLyricsState === 'function') {
