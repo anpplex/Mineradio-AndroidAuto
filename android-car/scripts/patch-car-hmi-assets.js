@@ -45,11 +45,16 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
   /* Car touch: phone 48 is too small at arm's length. */
   --car-touch-target: 64px;
   --car-primary-action: 76px;
+  /* Corner chrome (TL menu / TR home / BR FX) — larger than mid-bar icons. */
+  --car-corner-inset: 20px;
+  --car-corner-btn: 72px;
+  --car-corner-icon: 30px;
+  --car-corner-gap: 12px;
   /* Car type: glanceable at ~50–80cm. */
   --car-type-caption: 16px;
   --car-type-body: 18px;
   --car-type-title: 24px;
-  --car-type-control: 17px;
+  --car-type-control: 18px;
   /* Windows look tokens (color/material — do not restyle to OEM flat). */
   --car-panel: rgba(10, 15, 23, .92);
   --car-panel-strong: rgba(8, 12, 19, .97);
@@ -69,8 +74,8 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
 
   /* ——— Shell / navigation ——— */
   #empty-home, #home-empty, .empty-home, .home-page {
-    top: 88px !important;
-    bottom: 108px !important;
+    top: calc(var(--car-corner-inset) + var(--car-corner-btn) + var(--car-space-16)) !important;
+    bottom: 116px !important;
     width: min(920px, calc(100vw - 48px)) !important;
   }
   .empty-home-shell, .home-shell, .home-layout {
@@ -210,34 +215,127 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     line-height: 1.45 !important;
   }
 
-  /* Login CTA only on empty home — Windows accent button, car placement. */
+  /*
+   * Corner chrome (TL / TR / BR) — car HMI review targets.
+   * Spec: same size, same safe inset, glass Windows look, glyph ≥30px,
+   * edge ≥20px, inter-control gap ≥12px. Not phone 44/48 icon buttons.
+   */
+  #playlist-toggle,
+  #home-btn,
+  #fx-fab {
+    position: fixed !important;
+    z-index: 32 !important;
+    box-sizing: border-box !important;
+    width: var(--car-corner-btn) !important;
+    height: var(--car-corner-btn) !important;
+    min-width: var(--car-corner-btn) !important;
+    min-height: var(--car-corner-btn) !important;
+    max-width: var(--car-corner-btn) !important;
+    max-height: var(--car-corner-btn) !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 50% !important;
+    border: 1px solid rgba(255, 255, 255, .18) !important;
+    background: var(--car-panel-strong) !important;
+    color: var(--car-text-primary) !important;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .36) !important;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* TL — playlist / menu */
+  #playlist-toggle {
+    top: var(--car-corner-inset) !important;
+    left: var(--car-corner-inset) !important;
+    right: auto !important;
+    bottom: auto !important;
+  }
+  /* TR cluster — home (+ optional login on empty home) */
+  #top-right {
+    position: fixed !important;
+    top: var(--car-corner-inset) !important;
+    right: var(--car-corner-inset) !important;
+    left: auto !important;
+    bottom: auto !important;
+    z-index: 32 !important;
+    display: inline-flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: var(--car-corner-gap) !important;
+    width: auto !important;
+    height: var(--car-corner-btn) !important;
+    min-height: var(--car-corner-btn) !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+  #top-right #home-btn {
+    position: static !important;
+    top: auto !important;
+    right: auto !important;
+    left: auto !important;
+    bottom: auto !important;
+  }
+  /* BR — visual console entry; clear transport bar + mode switch height */
+  #fx-fab {
+    top: auto !important;
+    left: auto !important;
+    right: var(--car-corner-inset) !important;
+    bottom: calc(14px + 100px + var(--car-space-12)) !important;
+  }
+  #fx-fab-hide-btn { display: none !important; }
+  #playlist-toggle svg,
+  #home-btn svg,
+  #fx-fab svg,
+  #announcement-entry svg {
+    width: var(--car-corner-icon) !important;
+    height: var(--car-corner-icon) !important;
+    flex-shrink: 0 !important;
+  }
+  #announcement-entry,
+  #bottom-bar-close-btn {
+    width: var(--car-touch-target) !important;
+    height: var(--car-touch-target) !important;
+    min-width: var(--car-touch-target) !important;
+    min-height: var(--car-touch-target) !important;
+  }
+
+  /* Login CTA only on empty home — same row as Home, car height/type. */
   #car-login-entry {
     position: fixed !important;
-    z-index: 24 !important;
-    top: 16px !important;
-    right: 96px !important;
-    min-width: 148px !important;
-    min-height: var(--car-touch-target) !important;
-    padding: 0 18px !important;
+    z-index: 32 !important;
+    top: var(--car-corner-inset) !important;
+    right: calc(var(--car-corner-inset) + var(--car-corner-btn) + var(--car-corner-gap)) !important;
+    left: auto !important;
+    min-width: 160px !important;
+    height: var(--car-corner-btn) !important;
+    min-height: var(--car-corner-btn) !important;
+    padding: 0 20px !important;
     display: none !important;
     align-items: center !important;
     justify-content: center !important;
     border: 1px solid rgba(96, 255, 231, .50) !important;
-    border-radius: 16px !important;
+    border-radius: 999px !important;
     background: var(--car-accent) !important;
     color: var(--car-accent-ink) !important;
     font-size: var(--car-type-control) !important;
     font-weight: 720 !important;
     letter-spacing: .02em !important;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, .34) !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .34) !important;
   }
   body.empty-home-active #car-login-entry {
     display: inline-flex !important;
   }
   #trial-banner {
-    top: 92px !important;
+    top: calc(var(--car-corner-inset) + var(--car-corner-btn) + var(--car-space-12)) !important;
     left: auto !important;
-    right: 20px !important;
+    right: var(--car-corner-inset) !important;
     transform: translateY(-8px) !important;
     min-height: var(--car-touch-target) !important;
     padding: 10px 16px !important;
@@ -257,20 +355,6 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     color: var(--car-accent-ink) !important;
     font-size: var(--car-type-control) !important;
     font-weight: 760 !important;
-  }
-
-  #playlist-toggle, #home-btn, #announcement-entry, #fx-fab, #bottom-bar-close-btn {
-    width: var(--car-touch-target) !important;
-    height: var(--car-touch-target) !important;
-    min-width: var(--car-touch-target) !important;
-    min-height: var(--car-touch-target) !important;
-  }
-  #playlist-toggle { top: 16px !important; left: 16px !important; }
-  #fx-fab { right: 16px !important; bottom: 140px !important; }
-  #fx-fab-hide-btn { display: none !important; }
-  #playlist-toggle svg, #home-btn svg, #announcement-entry svg, #fx-fab svg {
-    width: 26px !important;
-    height: 26px !important;
   }
 
   /* Transport bar: Windows glass look, car height/type. */
@@ -388,32 +472,34 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     text-shadow: 0 2px 18px rgba(0, 0, 0, .55) !important;
   }
 
-  /* Visual mode switcher — Windows glass segment; car-sized hit targets only. */
+  /* BL mode switch — share corner inset; car-sized segments. */
   #car-visual-mode-switch {
     position: fixed !important;
     z-index: 30 !important;
-    left: 16px !important;
-    bottom: 124px !important;
+    left: var(--car-corner-inset) !important;
+    bottom: calc(14px + 100px + var(--car-space-12)) !important;
     display: inline-flex !important;
     align-items: center !important;
-    gap: 4px !important;
+    gap: 6px !important;
     padding: 6px !important;
-    border-radius: 18px !important;
+    border-radius: 20px !important;
     background: var(--car-panel-strong) !important;
     border: 1px solid rgba(255, 255, 255, .16) !important;
     box-shadow: 0 10px 28px rgba(0, 0, 0, .35) !important;
-    max-width: min(300px, calc(100vw - 32px)) !important;
+    max-width: min(320px, calc(100vw - 40px)) !important;
   }
   #car-visual-mode-switch button {
-    min-width: 72px !important;
-    min-height: var(--car-touch-target) !important;
-    padding: 0 16px !important;
+    min-width: 76px !important;
+    min-height: var(--car-corner-btn) !important;
+    padding: 0 18px !important;
     border: 0 !important;
-    border-radius: 14px !important;
+    border-radius: 16px !important;
     background: transparent !important;
     color: var(--car-text-secondary) !important;
     font-size: var(--car-type-control) !important;
     font-weight: 700 !important;
+    letter-spacing: .02em !important;
+    line-height: 1 !important;
   }
   #car-visual-mode-switch button.is-active,
   #car-visual-mode-switch button[aria-pressed="true"] {
@@ -506,12 +592,12 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     background: rgba(8, 12, 19, .7) !important;
     border-color: rgba(12, 205, 191, .28) !important;
   }
-  /* Stage: FX is optional Windows console entry — quiet until tapped. */
+  /* Stage: FX is optional Windows console entry — same corner chrome, not scaled up. */
   html[data-car-visual-mode="stage"] #fx-fab,
   body.car-mode-stage #fx-fab {
-    opacity: .88 !important;
+    opacity: 1 !important;
     transform: none !important;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, .35) !important;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .36) !important;
   }
   /* Car: Windows FX console stays in DOM for probes, hidden until body.car-fx-open. */
   #fx-panel {
@@ -577,7 +663,7 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
   }
   html[data-car-visual-mode="stage"] #shelf-touch-shield,
   body.car-mode-stage #shelf-touch-shield {
-    bottom: 132px !important;
+    bottom: calc(14px + 100px + var(--car-corner-btn) + var(--car-space-16)) !important;
     pointer-events: auto !important;
   }
   html[data-car-visual-mode="stage"] #play-btn,

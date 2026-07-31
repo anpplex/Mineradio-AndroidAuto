@@ -52,15 +52,22 @@ test('car HMI stylesheet targets density-scaled WebView CSS px on the landscape 
   assert.match(CAR_HMI_STYLESHEET, /--car-primary-action:\s*76px/);
   assert.match(CAR_HMI_STYLESHEET, /--car-type-title:\s*24px/);
   assert.match(CAR_HMI_STYLESHEET, /--car-type-body:\s*18px/);
+  // Corner chrome TL/TR/BR car safe zones
+  assert.match(CAR_HMI_STYLESHEET, /--car-corner-inset:\s*20px/);
+  assert.match(CAR_HMI_STYLESHEET, /--car-corner-btn:\s*72px/);
+  assert.match(CAR_HMI_STYLESHEET, /--car-corner-icon:\s*30px/);
+  assert.match(CAR_HMI_STYLESHEET, /--car-corner-gap:\s*12px/);
+  assert.match(CAR_HMI_STYLESHEET, /Corner chrome \(TL \/ TR \/ BR\)/);
   assert.match(CAR_HMI_STYLESHEET, /Keep Windows Mineradio visual language/);
   assert.match(CAR_HMI_STYLESHEET, /#trial-login-btn/);
   assert.match(CAR_HMI_STYLESHEET, /#car-login-entry/);
   assert.match(CAR_HMI_STYLESHEET, /body\.empty-home-active #car-login-entry/);
-  assert.match(CAR_HMI_STYLESHEET, /#fx-fab\s*\{[\s\S]*bottom:\s*140px/);
+  assert.match(CAR_HMI_STYLESHEET, /#playlist-toggle/);
+  assert.match(CAR_HMI_STYLESHEET, /#top-right/);
+  assert.match(CAR_HMI_STYLESHEET, /#fx-fab/);
   assert.match(CAR_HMI_STYLESHEET, /#bottom-bar > #controls > \.control-cluster > \.ctrl-btn/);
   assert.match(CAR_HMI_STYLESHEET, /#audio-effect-control/);
   assert.match(CAR_HMI_STYLESHEET, /#home-recent-panel/);
-  assert.match(CAR_HMI_STYLESHEET, /#playlist-toggle/);
   assert.match(CAR_HMI_STYLESHEET, /#bottom-bar/);
   assert.match(CAR_HMI_STYLESHEET, /min-height:\s*100px/);
   assert.match(CAR_HMI_STYLESHEET, /#canvas-container/);
