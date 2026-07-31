@@ -70,7 +70,8 @@ node --test android-car/tests/*.test.js
 # 2) 脚本语法（若改动了 shell）
 bash -n android-car/scripts/build-car-apk.sh
 bash -n android-car/scripts/install-huawei-car.sh
-bash -n android-car/scripts/verify-huawei-car.sh   # 若存在
+bash -n android-car/scripts/verify-huawei-car.sh
+bash -n android-car/scripts/verify-stage-showcase.sh
 
 # 3) Node 语法（若改动了 js）
 node --check android-car/scripts/patch-car-hmi-assets.js
@@ -142,15 +143,18 @@ export MINERADIO_CAR_KEYSTORE_PASSWORD='…'   # keychain / 环境变量，勿�
 ./android-car/scripts/install-huawei-car.sh LD249H019625 \
   ./android-car/out/Mineradio-1.1.7.0-huawei-android12-car.apk
 ./android-car/scripts/verify-huawei-car.sh LD249H019625
+# 舞台 showcase 实车 smoke（截图/logcat 仅落 verification/，不入库）
+./android-car/scripts/verify-stage-showcase.sh LD249H019625
 ```
 
 构建链顺序（不得擅自调换关键补丁顺序而不更新文档与测试）：
 
 ```text
 apktool d
-  → patch-spica-storage.js
   → patch-apk-manifest.js
-  → patch-car-hmi-assets.js   # MENC CSS + car-visual-runtime
+  → patch-spica-storage.js      # SPICa → Music/SPICaMusic
+  → patch-audio-focus-bridge.js # media3 AF → setAudioDuck JS
+  → patch-car-hmi-assets.js     # MENC CSS + car-visual-runtime
   → apktool b → apksigner
 ```
 

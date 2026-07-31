@@ -113,15 +113,15 @@
      ./android-car/scripts/install-huawei-car.sh LD249H019625 <newly-signed-apk>
    ```
 
-3. 如只需重新验证全屏启动，不需再安装：
+3. 如只需重新验证全屏启动 / 舞台 smoke，不需再安装：
 
    ```sh
-   adb -s LD249H019625 shell am force-stop --user 12 com.mineradio.app
-   adb -s LD249H019625 shell am start --user 12 --windowingMode 1 -W \
-     -n com.mineradio.app/.LandscapeWebActivity
+   ./android-car/scripts/verify-huawei-car.sh LD249H019625
+   # 舞台 showcase：点 mode switch / play，截图与 logcat 仅落 android-car/verification/
+   ./android-car/scripts/verify-stage-showcase.sh LD249H019625
    ```
 
-   直接启动时华为 HMI 可能将应用放到 `hwMultiwindow-secondary` 的右侧区域；先停止应用并指定 `--windowingMode 1` 已在该实车验证为 1920×1080 全屏窗口。
+   直接启动时华为 HMI 可能将应用放到 `hwMultiwindow-secondary` 的右侧区域；验收脚本使用 `--windowingMode 1` 全屏窗口。
 
 ### 已完成的实车验证（2026-07-30）
 
@@ -131,7 +131,7 @@
 
 ### 尚未通过的验收项
 
-不要将以下项目表述为已兼容：OEM Launcher 的图标发现/默认窗口策略、本地音乐或 U 盘扫描、音频焦点/蓝牙媒体通道、熄屏/ACC/休眠恢复、后台播放。
+不要将以下项目表述为已兼容：OEM Launcher 的图标发现/默认窗口策略、本地音乐或 U 盘扫描、**真导航打断/蓝牙媒体通道**（Web duck + native AF bridge 已注入，仍待实车联调）、熄屏/ACC/休眠恢复、后台播放。
 
 实车日志曾显示 Android 12 MediaProvider **拒绝**应用创建共享存储顶级目录 `SPICaMusic`：
 

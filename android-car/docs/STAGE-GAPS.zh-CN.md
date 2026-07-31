@@ -34,6 +34,7 @@
 - `STAGE_RETRY_MS` + 6s 再断言，覆盖 splash 晚绑定。
 - 调用链方向正确：`setPreset` / `toggleFx` / `setShelfMode` / 滑条 `input+change` / quality DOM fallback。
 - 明确不启桌面歌词、WE、手势相机。
+- 实车 smoke 脚本：`android-car/scripts/verify-stage-showcase.sh`（基线 `verify-huawei-car` → 点 stage/play → `verification/` 截图 + logcat soft markers）。
 
 ---
 

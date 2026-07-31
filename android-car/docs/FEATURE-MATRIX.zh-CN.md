@@ -44,11 +44,11 @@
 | **CAR-HMI-DENSITY** | 桌面 DPI / 缩放 | **已交付** | P2-HMI | **密度修复 `90d6884`**：WebView `width=device-width` @ 320dpi → CSS 约 **960×540**，非物理 1920×1080。media query 按 CSS px（≥900×480）。触控 48/64 CSS px；驾驶态隐藏低频控件。 |
 | **CAR-HMI-LOGIN** | 登录模态 | **部分** | P2-HMI | 壳层固定「网易云扫码登录」入口，只调 `showLoginModal()`；不伪造登录、不处理凭据。真车扫码闭环待验收。 |
 | **CAR-VISUAL-MODES** | 单一桌面视觉控制台 | **已交付**（切换真车待验收） | P3-视觉 | 三模式 runtime：`drive`（默认）/ `cruise` / `stage`；`localStorage['mineradio.car.visualMode']`；`data-car-visual-mode`。见 [VISUAL-LAYER.zh-CN.md](./VISUAL-LAYER.zh-CN.md)。 |
-| **CAR-STAGE-MAX** | Showcase 拉满（非默认测试克制） | **已交付** | P3-视觉 | 产品决策 **showcase 拉满**（`66c5450`+`311f270`）：emily、coverRes **2.2**、ultra、FX 全开、粒子歌词/流光、DIY 开控制台、health 报告、perf 护栏、架/底栏 z 序。 |
+| **CAR-STAGE-MAX** | Showcase 拉满（非默认测试克制） | **已交付** | P3-视觉 | 产品决策 **showcase 拉满**（`66c5450`+`311f270`）：emily、coverRes **2.2**、ultra、FX 全开、粒子歌词/流光、DIY 开控制台、health 报告、perf 护栏、架/底栏 z 序。实车 smoke：`verify-stage-showcase.sh`（截图仅 `verification/`）。 |
 | **CAR-MENC-INJECT** | 明文 `public/` 资源 | **已交付** | P0-壳 / P2-HMI | `car-hmi.css` + runtime 按 APK `MENC+IV+AES-256-CBC` 注入 `assets/mineradio/`；构建契约测加解密回环与幂等。 |
 | **CAR-SPICA-STORAGE** | 用户数据目录 / 设置 JSON | **阻塞** | P4-媒体 | Android 12 MediaProvider **拒绝**共享存储顶级目录 `SPICaMusic`（`FileNotFoundException: .../SPICaMusic/mineradio_settings.json`）。适配包**不改**原生 smali；安装/横屏/HMI **不因此阻塞**，但本地设置持久化与依赖该路径的本地库扫描**不得宣称兼容**。修复方向：app-specific 或 `Music/SPICaMusic`，禁止 ADB 强建非法顶层目录。 |
 | **CAR-USB-LOCAL** | 本地文件拖放 / 本地库 | **待验收** | P4-媒体 | 需插入含音乐的 U 盘后单独验收；与 SPICa 路径问题叠加。 |
-| **CAR-AUDIO-FOCUS** | 系统音频会话 / 后台 | **待验收** | P4-媒体 | 音频焦点、蓝牙媒体通道、熄屏/ACC/休眠恢复、后台播放均未宣称通过。 |
+| **CAR-AUDIO-FOCUS** | 系统音频会话 / 后台 | **部分** | P4-媒体 | Web `setAudioDuck` + media3→`CarAudioFocusBridge`→`evaluateJavascript`（`d9e82a0`）已注入；**真导航打断/蓝牙通道/熄屏恢复**仍待实车验收，不得宣称全通过。 |
 | **CAR-OEM-BUS** | （无 Windows 对等） | **非目标** | NG | **不**接 OEM 车速/档位总线；无自动驻车切 stage。 |
 | **CAR-SIGN-OVERLAY** | 代码签名发布 | **已交付**（流程） | P0-壳 | 覆盖安装必须与车机既有 `com.mineradio.app` 同证书；`.signing/` / `out/` / `verification/` Git 忽略。 |
 
