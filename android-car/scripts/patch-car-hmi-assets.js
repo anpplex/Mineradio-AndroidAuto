@@ -177,7 +177,9 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
   }
   /*
    * Account / APEX / membership chrome — plugin injects top-left pills
-   * (e.g. 「大鹏 APEX 会员」). Never on car play surface; login via empty-home CTA.
+   * (e.g. 「大鹏 APEX 会员」). Keep the original account chrome hidden,
+   * but expose the car-sized login entry so Windows' account path remains
+   * reachable from both home and the playing surface.
    */
   #user-btn,
   #user-capsule,
@@ -277,7 +279,7 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
    * Corner chrome — car + Mac play-surface IA:
    *   TL: playlist + home
    *   BL: visual console (FX)  — was BR; mode switch removed
-   *   TR: empty on play (login only on empty home, top-right)
+   *   TR: compact account/login entry; secondary surfaces temporarily yield it
    * Safe top/bottom clear status bar + Docker.
    */
   #playlist-toggle,
@@ -441,7 +443,7 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     min-height: var(--car-touch-target) !important;
   }
 
-  /* Login CTA only on empty home — top-right, clear of TL nav cluster. */
+  /* Compact account/login CTA — top-right, clear of the TL nav cluster. */
   #car-login-entry {
     position: fixed !important;
     z-index: 32 !important;
@@ -452,7 +454,7 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     height: var(--car-corner-btn) !important;
     min-height: var(--car-corner-btn) !important;
     padding: 0 20px !important;
-    display: none !important;
+    display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
     border: 1px solid rgba(96, 255, 231, .50) !important;
@@ -466,8 +468,9 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     white-space: nowrap !important;
     box-shadow: 0 10px 28px rgba(0, 0, 0, .34) !important;
   }
-  body.empty-home-active #car-login-entry {
-    display: inline-flex !important;
+  body.car-search-open #car-login-entry,
+  body.car-fx-open #car-login-entry {
+    display: none !important;
   }
   #trial-banner {
     top: calc(var(--car-safe-top) + var(--car-corner-btn) + var(--car-space-16)) !important;
@@ -826,6 +829,62 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     color: var(--car-text-primary) !important;
     font-size: 16px !important;
     font-weight: 650 !important;
+  }
+  /* Login workflow — preserve the Windows provider/mode path at car density. */
+  #login-modal {
+    z-index: 100 !important;
+    padding: 20px !important;
+  }
+  #login-modal .dual-login-modal {
+    width: min(760px, calc(100vw - 40px)) !important;
+    min-width: 0 !important;
+    max-width: 760px !important;
+    max-height: min(88vh, 520px) !important;
+    overflow-y: auto !important;
+    padding: 20px !important;
+    border-radius: 22px !important;
+  }
+  #login-modal .login-panel-close,
+  #login-modal .login-reset-all-btn,
+  #login-modal #login-platform-tabs button,
+  #login-modal .login-mode-node,
+  #login-modal .modal-btn,
+  #login-modal .qq-login-mark,
+  #login-modal .qq-cookie-save-btn {
+    min-height: 64px !important;
+  }
+  #login-modal .login-panel-close {
+    min-width: 64px !important;
+    font-size: 30px !important;
+  }
+  #login-modal #login-platform-tabs button,
+  #login-modal .login-mode-node {
+    min-width: 112px !important;
+    padding: 10px 14px !important;
+    font-size: 17px !important;
+    border-radius: 14px !important;
+  }
+  #login-modal .login-node-graph {
+    gap: 14px !important;
+  }
+  #login-modal #login-modal-title {
+    font-size: 24px !important;
+    line-height: 1.25 !important;
+  }
+  #login-modal #login-modal-desc,
+  #login-modal #qr-status {
+    font-size: 17px !important;
+    line-height: 1.45 !important;
+  }
+  #login-modal #qr-shell {
+    min-height: 300px !important;
+    padding: 16px !important;
+  }
+  #login-modal #qr-img {
+    width: min(280px, 44vw) !important;
+    height: min(280px, 44vw) !important;
+    min-width: 220px !important;
+    min-height: 220px !important;
   }
   /* Lyric style chips (Windows in-app styles) — car hit size */
   #fx-panel .lyric-style-btn,

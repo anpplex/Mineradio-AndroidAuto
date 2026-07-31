@@ -42,7 +42,7 @@
 - 焦点：触摸外的键盘/旋钮焦点使用高对比描边；真实车机的方向键、旋钮焦点路径仍需实机验收。
 - **视觉层**（见 [docs/VISUAL-LAYER.zh-CN.md](./docs/VISUAL-LAYER.zh-CN.md)）：
   - 车机 **固定 stage showcase**（无 on-screen 行车/巡航/舞台条；`setMode` 仍 API）；
-  - HMI：TL Home+列表+搜索、底中「视觉控制台」抽屉与「播控·更多」、空首页插件/登录、底栏曲名优先、safe-top/bottom 避状态栏/Docker；
+  - HMI：TL Home+列表+搜索、底中「视觉控制台」抽屉与「播控·更多」、全局账号入口、空首页插件、底栏曲名优先、safe-top/bottom 避状态栏/Docker；
   - 运行时 `car-visual-runtime.js`；**不**接 OEM 车速总线，**不**启用桌面歌词 / Wallpaper Engine / 手势相机。
 
 当前静态验证已覆盖 MENC 加解密回环、HTML/CSS/runtime 注入幂等、登录入口、车机尺度 token。连上车机后请重装最新 `out/` APK 做真车验收。

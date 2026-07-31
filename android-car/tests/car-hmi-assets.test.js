@@ -72,7 +72,10 @@ test('car HMI stylesheet targets density-scaled WebView CSS px on the landscape 
   assert.match(CAR_HMI_STYLESHEET, /Keep Windows Mineradio visual language/);
   assert.match(CAR_HMI_STYLESHEET, /#trial-login-btn/);
   assert.match(CAR_HMI_STYLESHEET, /#car-login-entry/);
-  assert.match(CAR_HMI_STYLESHEET, /body\.empty-home-active #car-login-entry/);
+  assert.match(CAR_HMI_STYLESHEET, /#car-login-entry[\s\S]*display: inline-flex/);
+  assert.match(CAR_HMI_STYLESHEET, /body\.car-search-open #car-login-entry/);
+  assert.match(CAR_HMI_STYLESHEET, /#login-modal \.dual-login-modal/);
+  assert.match(CAR_HMI_STYLESHEET, /#login-modal #qr-img/);
   assert.match(CAR_HMI_STYLESHEET, /#playlist-toggle/);
   // Home left, playlist to its right
   assert.match(CAR_HMI_STYLESHEET, /#home-btn[\s\S]*left:\s*var\(--car-corner-inset\)/);

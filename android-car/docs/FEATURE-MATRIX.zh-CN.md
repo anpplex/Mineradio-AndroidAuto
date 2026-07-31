@@ -43,7 +43,7 @@
 | **CAR-LAUNCHER** | 桌面快捷方式 / 托盘 | **已交付** | P0-壳 | Intent 同时含 `LAUNCHER` + `CAR_LAUNCHER`。OEM Launcher 图标策略仍属待验收，不宣称全 OEM 兼容。 |
 | **CAR-INSTALL-LYRA** | NSIS 安装器 | **已交付** | P1-安装 | 普通 `adb install` 被 HMI 拒绝；`install-huawei-car.sh` 按 Lyra：临时停 `PackageInstaller`，以 `com.huawei.appinstaller.car` 对 user 12 `pm install`。破坏性重装需显式 `CLEAN_REINSTALL` + `ALLOW_DATA_LOSS_REINSTALL`。 |
 | **CAR-HMI-DENSITY** | 桌面 DPI / 缩放 | **已交付** | P2-HMI | 密度修复 + 车机 type/touch（64/76、曲名 24）；`--car-safe-top/bottom` 避状态栏/Docker。 |
-| **CAR-HMI-LOGIN** | 登录模态 | **部分** | P2-HMI | 空首页「网易云扫码登录」；播放页藏 APEX/会员胶囊；真车扫码闭环待验收。 |
+| **CAR-HMI-LOGIN** | 登录模态 | **部分** | P2-HMI | 车机右上角全局「网易云扫码登录」入口；复用原生 provider/mode modal，播放页可达；真车扫码闭环待验收。 |
 | **CAR-HMI-IA** | 桌面角区/模式条 | **已交付** | P2-HMI | TL Home+列表；底中「视觉控制台」抽屉；插件 FAB 仅空首页；**无**行车/巡航/舞台常驻条；底栏减负保曲名。见 [VISUAL-LAYER.zh-CN.md](./VISUAL-LAYER.zh-CN.md) §1.3。 |
 | **CAR-VISUAL-MODES** | 单一桌面视觉控制台 | **已交付** | P3-视觉 | runtime 仍含 drive/cruise/stage 预算；**车机 UI 固定 stage showcase**（`setMode` API only）。 |
 | **CAR-STAGE-MAX** | Showcase 拉满（非默认测试克制） | **已交付** | P3-视觉 | emily、coverRes **2.2**、ultra、FX 全开；smoke 曾 PASS。P0 后曲名/safe-bottom/APEX 再收敛，待重装验收。 |
