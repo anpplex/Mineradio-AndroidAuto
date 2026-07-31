@@ -25,6 +25,7 @@
 - 所有声明为 portrait 的 Activity manifest 方向改为 landscape；应用声明为 `resizeableActivity=true`，更适合非手机比例的中控/副屏。
 - 保留原 APK 的包名、媒体播放服务、存储权限、`arm64-v8a` 原生库和应用资源；不改动音频服务或网络接口。
 - **Android 12 scoped storage**：将 smali 中硬编码的顶级目录 `SPICaMusic` 重映射为合法路径 `Music/SPICaMusic`（`mineradio_settings.json` 与 `databases`），避免 MediaProvider 拒绝创建非默认顶级目录。构建时由 `patch-spica-storage.js` 在 apktool 解包后应用；不改 `SPICaMusicTheme` / `SPICaMusic_update.apk` 等非路径字符串。
+- **AudioFocus → JS 桥**：`patch-audio-focus-bridge.js` 注入 `CarAudioFocusBridge`，在 media3 `AudioFocusManager` 焦点变化时 `evaluateJavascript` 调用 `MineradioCarVisual.setAudioDuck`，导航/通话插播可压舞台视觉而不退出 showcase。
 - 解包后的 `assets/mineradio/index.html` 与新建 `car-hmi.css` 会按原 APK 的 `MENC + IV + AES-256-CBC` 资源格式重新加密；不依赖明文资源落入最终 APK。
 
 ## 车机 HMI overlay

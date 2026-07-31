@@ -94,10 +94,14 @@
 
 API：`MineradioCarVisual.setAudioDuck(true|false, reason)`、`isAudioDuckActive()`。
 
-原生 APK `AudioFocusManager`（media3）未改 smali；Web 钩子覆盖 WebView 播放路径。
+原生桥接（构建注入）：
+
+- `patch-audio-focus-bridge.js` 在 `AudioFocusManager.handlePlatformAudioFocusChange` 调用  
+  `CarAudioFocusBridge.onFocusChange(I)` → `WebView.evaluateJavascript` → `MineradioCarVisual.setAudioDuck`  
+- `LandscapeWebActivity` 在 `KeepApp` 注入后 `attachWebView`  
+- focus：`-1/-2/-3` duck，`1` gain unduck；与 Web pause/hide 钩子并存
 
 ## 8. 后续可增强（未做）
 
 - 驻车信号（若未来有合法 Car API）自动建议切 stage  
 - 将 Windows 2.0 模块化视觉预算表完整导入 runtime  
-- smali 监听 `onAudioFocusChange` 经 JS bridge 调 `setAudioDuck`（更准）  

@@ -206,7 +206,7 @@
 
 | 项 | 内容 |
 | --- | --- |
-| **状态** | **Audio duck 已实现（Web 层）** — `setAudioDuck`：pause/hide/blur 时抬 scrim、压 intensity/cinema/歌词；play/focus 恢复 showcase。原生 `AudioFocusManager`（media3）未 smali 改写。 |
+| **状态** | **Web + 原生桥双路径** — Web：`setAudioDuck`（pause/hide/blur）；原生：`patch-audio-focus-bridge.js` 钩 media3 `handlePlatformAudioFocusChange` → `CarAudioFocusBridge` → `evaluateJavascript` → `setAudioDuck('native-af:N')`。 |
 | 驻车自动 stage | 仍无合法车速/档位 API → **不做**。 |
 
 ---
