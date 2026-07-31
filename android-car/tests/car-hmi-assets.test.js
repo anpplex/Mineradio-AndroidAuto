@@ -97,14 +97,27 @@ test('car visual runtime encodes music-class default and stage maximization prob
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /cinema:\s*true/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /applyStageNow/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /STAGE_RETRY_MS/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /applyCoverParticleResolution/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /applyCoverResolutionSharp/);
+  // Preset must run before cover res so emily mesh is not left soft/coarse.
+  assert.match(
+    CAR_VISUAL_RUNTIME_SOURCE,
+    /applyPreset\([\s\S]*applyQuality\([\s\S]*applyCoverResolutionSharp/,
+  );
   assert.doesNotMatch(CAR_VISUAL_RUNTIME_SOURCE, /eval\(/);
 });
 
 test('car stage CSS fully opens the particle canvas and strengthens lyric stage', () => {
+  assert.match(CAR_HMI_STYLESHEET, /Do NOT paint WebGL canvases with CSS opacity/);
+  assert.match(CAR_HMI_STYLESHEET, /#canvas-container[\s\S]*opacity:\s*1\s*!important/);
   assert.match(CAR_HMI_STYLESHEET, /data-car-visual-mode="stage"[\s\S]*#canvas-container[\s\S]*opacity:\s*1/);
   assert.match(CAR_HMI_STYLESHEET, /#lyric-float-curr/);
   assert.match(CAR_HMI_STYLESHEET, /drop-shadow\(0 10px 36px/);
   assert.match(CAR_HMI_STYLESHEET, /#bottom-bar\.stage-mode/);
+  assert.doesNotMatch(
+    CAR_HMI_STYLESHEET,
+    /#canvas-container[\s\S]{0,80}opacity:\s*var\(--car-particle-opacity\)/,
+  );
 });
 
 test('patchCarHmiAssets writes MENC css, runtime and patched index', () => {

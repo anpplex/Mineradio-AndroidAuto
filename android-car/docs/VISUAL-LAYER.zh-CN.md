@@ -47,6 +47,8 @@
   - `setShelfMode('stage')` + `setShelfPresence('always')`
   - `toggleFx` 确保：`floatLayer` / `cinema` / `lyricGlow` / `lyricGlowBeat` / `lyricGlowParticles` / `lyricCameraLock` / `bloom` / `edge` = on
   - 滑条预算：intensity≈0.92、cineshake≈0.55、bloom≈0.72、coverRes=**1.55**（对齐上游默认测试封面粒子）
+  - **清晰度顺序**：`setPreset(0)` → `setRenderQuality('ultra')` → `applyCoverParticleResolution(1.55,{reload:true})`（避免预设把封面网格打回默认导致 emily 发糊）
+  - WebGL 画布 **禁止** 用 CSS `opacity<1` 降粒子（Android WebView 合成发糊）；行车用 scrim 遮罩代替
   - 多次延迟重试（0–8s）等待 splash 后壳层就绪
 - 持久化：`localStorage['mineradio.car.visualMode']`
 - API：`MineradioCarVisual.setMode('stage')` / `applyStageNow()`

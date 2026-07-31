@@ -278,15 +278,54 @@
 
   function applyQuality(quality) {
     if (!quality) return false;
+    var ok = false;
     if (typeof global.setRenderQuality === 'function') {
       try {
         global.setRenderQuality(quality);
+        ok = true;
+      } catch (_) {
+        /* fall through */
+      }
+    }
+    // Always click the segment too — some shells only update UI/DPR via the button path.
+    ok = clickBySelector('#render-quality-seg button[data-rq="' + quality + '"]') || ok;
+    try {
+      if (global.localStorage) {
+        global.localStorage.setItem('mineradio-render-quality-v1', quality);
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    return ok;
+  }
+
+  /**
+   * Emily cover sharpness depends on cover particle grid + texture size.
+   * Slider max is 1.55 → grid ≈183, texture 512. Must call applyCoverParticleResolution
+   * with reload after setPreset, otherwise preset restore leaves a soft/coarse mesh.
+   */
+  function applyCoverResolutionSharp(value) {
+    var v = Number(value);
+    if (!(v > 0)) v = 1.55;
+    setRangeIfPresent('fx-coverres', v);
+    if (typeof global.applyCoverParticleResolution === 'function') {
+      try {
+        global.applyCoverParticleResolution(v, { reload: true });
         return true;
       } catch (_) {
         /* fall through */
       }
     }
-    return clickBySelector('#render-quality-seg button[data-rq="' + quality + '"]');
+    if (typeof global.normalizeCoverResolution === 'function' && global.fx) {
+      try {
+        global.fx.coverResolution = global.normalizeCoverResolution(v);
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    // Trigger the same input pipeline the FX panel uses.
+    setRangeIfPresent('fx-coverres', v);
+    return true;
   }
 
   function applyShelf(budget) {
@@ -341,7 +380,6 @@
     setRangeIfPresent('fx-intensity', budget.intensity);
     setRangeIfPresent('fx-cineshake', budget.cineshake);
     setRangeIfPresent('fx-bloom', budget.bloom);
-    setRangeIfPresent('fx-coverres', budget.coverRes);
     setRangeIfPresent('fx-depth', budget.depth);
     setRangeIfPresent('fx-lyricglow', budget.lyricGlow);
     setRangeIfPresent('fx-point', budget.point);
@@ -366,11 +404,36 @@
     callGlobal('updateFxInputs');
     callGlobal('saveFxState');
     callGlobal('saveLyricLayout');
+    // Force renderer to pick up DPR / pixel budget after quality changes.
+    try {
+      if (typeof global.applyRenderQualityLevels === 'function' && global.currentRenderQuality) {
+        global.applyRenderQualityLevels(global.currentRenderQuality);
+      }
+      if (typeof global.applyRendererPowerMode === 'function') {
+        global.applyRendererPowerMode();
+      }
+    } catch (_) {
+      /* ignore */
+    }
   }
 
   function applyFxProbes(mode, budget) {
-    applySliders(budget);
+    // 1) Preset first — setPreset can reset coverResolution / visual knobs.
+    if (mode === 'stage' || mode === 'cruise') {
+      applyPreset(budget.preset);
+    }
+
+    // 2) Quality before cover rebuild so DPR/texture budget is already high.
     applyQuality(budget.quality);
+
+    // 3) Cover sharpness last among geometry-affecting steps (critical for emily).
+    applyCoverResolutionSharp(budget.coverRes != null ? budget.coverRes : 1.55);
+
+    // 4) Remaining FX budget.
+    applySliders(budget);
+    // Re-assert cover res after sliders in case input handlers clamp oddly.
+    applyCoverResolutionSharp(budget.coverRes != null ? budget.coverRes : 1.55);
+
     applyFxKeyMap(budget.fxOn, true);
     applyFxKeyMap(budget.fxOff, false);
     applyShelf(budget);
@@ -386,10 +449,6 @@
       /* ignore */
     }
 
-    if (mode === 'stage' || mode === 'cruise') {
-      applyPreset(budget.preset);
-    }
-
     // Cam / gesture stays off for cockpit safety even on stage.
     clickBySelector('#cam-seg button[data-cam="off"]');
 
@@ -397,6 +456,14 @@
     clickBySelector('#st-showLyrics-seg button[data-val="true"]');
 
     persistFxIfPossible();
+
+    // 5) Delayed cover reload — cover texture may arrive after first probe.
+    if (mode === 'stage' || mode === 'cruise') {
+      global.setTimeout(function () {
+        applyCoverResolutionSharp(budget.coverRes != null ? budget.coverRes : 1.55);
+        persistFxIfPossible();
+      }, 700);
+    }
   }
 
   function scheduleStageMaximize(mode, budget) {

@@ -241,13 +241,19 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
   }
   #bottom-bar #time-display { min-width: 104px !important; font-size: 13px !important; color: var(--car-text-secondary) !important; }
 
-  /* ——— Visual layer budgets (driven by data-car-visual-mode) ——— */
+  /* ——— Visual layer budgets (driven by data-car-visual-mode) ———
+   * Do NOT paint WebGL canvases with CSS opacity < 1 on stage: intermediate
+   * compositing on Android WebView softens emily cover particles.
+   * Drive dims via scrim only; stage keeps canvas fully opaque. */
   #canvas-container,
   #idle-guide-canvas,
   .particle-background,
   #splash-canvas {
-    opacity: var(--car-particle-opacity) !important;
-    transition: opacity .35s ease !important;
+    opacity: 1 !important;
+    filter: none !important;
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
   }
   #canvas-container::after,
   .particle-background::after {
@@ -257,6 +263,7 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     pointer-events: none;
     background: rgba(0, 0, 0, var(--car-stage-scrim));
     transition: background .35s ease;
+    z-index: 0;
   }
 
   /* Stage lyrics: keep readable hierarchy on density-scaled glass. */
@@ -446,13 +453,25 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     border-color: rgba(12, 205, 191, .2) !important;
   }
 
-  /* Reduced motion: honor drive budget + system preference. */
+  /* Reduced motion: honor drive budget + system preference.
+   * Never soft-composite stage WebGL via opacity — only raise scrim. */
   body.car-reduce-motion *,
   html[data-car-visual-mode="drive"] * {
     scroll-behavior: auto !important;
   }
+  html[data-car-visual-mode="drive"] #canvas-container::after,
+  body.car-mode-drive #canvas-container::after {
+    background: rgba(0, 0, 0, 0.42) !important;
+  }
   @media (prefers-reduced-motion: reduce) {
-    #canvas-container, #idle-guide-canvas, .particle-background { opacity: .08 !important; }
+    html[data-car-visual-mode="drive"] #canvas-container::after,
+    body.car-mode-drive #canvas-container::after {
+      background: rgba(0, 0, 0, 0.55) !important;
+    }
+    html[data-car-visual-mode="stage"] #canvas-container,
+    body.car-mode-stage #canvas-container {
+      opacity: 1 !important;
+    }
     body.empty-home-active .home-card { animation: none !important; }
   }
 
