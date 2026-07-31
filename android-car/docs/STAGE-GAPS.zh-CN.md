@@ -7,7 +7,7 @@
 > 2. **车机当前实现**（`android-car/scripts/car-visual-runtime.js`、`patch-car-hmi-assets.js` 内 `CAR_HMI_STYLESHEET`、`docs/VISUAL-LAYER.zh-CN.md`）
 > 3. **APK 1.1.7.0 能力**（`android-car/work/index.html.dec` 解密壳 + 已注入 overlay 契约）
 >
-> 状态：read-only 审计，**未实现**任何改动。日期：2026-07-31。
+> 状态：P0 已在 runtime/HMI 实现（见 `car-visual-runtime.js` / `patch-car-hmi-assets.js`）。日期：2026-07-31 起持续更新。
 
 ---
 
@@ -38,6 +38,8 @@
 ---
 
 ## P0 — 不修则「舞台」名不副实或探针失效
+
+> **实现状态（2026-07-31）：** P0-1…P0-5 已合入 `car-visual-runtime.js`（data-rq 优先、writeFxBudget、setParticleLyricsSilently、shelf 重断言、visibility/play 再拉满）+ stage 下恢复歌词按钮 CSS；SPICa 路径已由 `patch-spica-storage.js` 处理。下列条文保留为设计说明与回归验收标准。
 
 ### P0-1. 画质 API 名与档位契约错位（`setRenderQuality` 在 APK 中不存在）
 

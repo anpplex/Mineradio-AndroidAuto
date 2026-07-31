@@ -239,6 +239,17 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
   #bottom-bar #volume-control, #bottom-bar #controls-hide-btn, #bottom-bar #immersive-btn {
     display: none !important;
   }
+  /* P0-2: stage needs a reachable lyrics control (particle stage lyrics). */
+  html[data-car-visual-mode="stage"] #bottom-bar .lyrics-toggle-btn,
+  body.car-mode-stage #bottom-bar .lyrics-toggle-btn {
+    display: inline-flex !important;
+    width: var(--car-touch-target) !important;
+    height: var(--car-touch-target) !important;
+    min-width: var(--car-touch-target) !important;
+    min-height: var(--car-touch-target) !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
   #bottom-bar #time-display { min-width: 104px !important; font-size: 13px !important; color: var(--car-text-secondary) !important; }
 
   /* ——— Visual layer budgets (driven by data-car-visual-mode) ———

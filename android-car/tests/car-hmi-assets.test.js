@@ -103,6 +103,15 @@ test('car visual runtime encodes music-class default and stage maximization prob
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /Math\.min\(2\.2,/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /Math\.min\(300,/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /return 1024/);
+  // P0 stage probes
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /writeFxBudget/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /applyParticleLyrics/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /setParticleLyricsSilently/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /shelfLooksApplied/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /reassertIfStageLike/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /data-rq=/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /visibilitychange/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /color:\s*1\.1/);
   // Preset must run before cover res so emily mesh is not left soft/coarse.
   assert.match(
     CAR_VISUAL_RUNTIME_SOURCE,
@@ -121,6 +130,10 @@ test('car stage CSS fully opens the particle canvas and strengthens lyric stage'
   assert.doesNotMatch(
     CAR_HMI_STYLESHEET,
     /#canvas-container[\s\S]{0,80}opacity:\s*var\(--car-particle-opacity\)/,
+  );
+  assert.match(
+    CAR_HMI_STYLESHEET,
+    /data-car-visual-mode="stage"[\s\S]*lyrics-toggle-btn[\s\S]*display:\s*inline-flex/,
   );
 });
 

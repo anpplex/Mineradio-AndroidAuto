@@ -116,6 +116,7 @@
       scatter: 0.48,
       bgfade: 0.28,
       bgopacity: 0.28,
+      color: 1.1,
       quality: 'ultra',
       /** emily专辑封面 — upstream default showcase preset */
       preset: 0,
@@ -225,11 +226,25 @@
   }
 
   function ensureFxKey(key, wantOn) {
+    // P0-3: prefer direct fx write over toggle race.
+    try {
+      if (global.fx && typeof global.fx === 'object') {
+        if (global.fx[key] !== wantOn) {
+          global.fx[key] = !!wantOn;
+          var toggleId =
+            't-' + (key === 'floatLayer' ? 'float' : key === 'aiDepth' ? 'aidepth' : key);
+          var toggle = global.document.getElementById(toggleId);
+          if (toggle) toggle.classList.toggle('on', !!wantOn);
+        }
+        return true;
+      }
+    } catch (_) {
+      /* fall through */
+    }
     var current = readFxFlag(key);
     if (current === wantOn) return true;
     if (typeof global.toggleFx === 'function') {
       try {
-        // toggleFx flips; if unknown state, click once toward desired via DOM class then re-check
         if (current == null) {
           global.toggleFx(key);
           current = readFxFlag(key);
@@ -243,11 +258,11 @@
         return false;
       }
     }
-    var toggleId = 't-' + (key === 'floatLayer' ? 'float' : key);
-    var toggle = global.document.getElementById(toggleId);
-    if (toggle && !!toggle.classList.contains('on') !== wantOn) {
+    var toggleId2 = 't-' + (key === 'floatLayer' ? 'float' : key);
+    var toggle2 = global.document.getElementById(toggleId2);
+    if (toggle2 && !!toggle2.classList.contains('on') !== wantOn) {
       try {
-        toggle.click();
+        toggle2.click();
         return true;
       } catch (_) {
         return false;
@@ -280,22 +295,60 @@
   function applyQuality(quality) {
     if (!quality) return false;
     var ok = false;
+    // P0-1: APK 1.1.7.0 path is data-rq segment (authoritative), then named APIs.
+    try {
+      if (global.fx && typeof global.fx === 'object') {
+        if ('renderQuality' in global.fx) global.fx.renderQuality = quality;
+        if ('rq' in global.fx) global.fx.rq = quality;
+        if ('performanceQuality' in global.fx) global.fx.performanceQuality = quality;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    ok = clickBySelector('#render-quality-seg button[data-rq="' + quality + '"]') || ok;
     if (typeof global.setRenderQuality === 'function') {
       try {
         global.setRenderQuality(quality);
         ok = true;
       } catch (_) {
-        /* fall through */
+        /* ignore */
       }
     }
-    // Always click the segment too — some shells only update UI/DPR via the button path.
-    ok = clickBySelector('#render-quality-seg button[data-rq="' + quality + '"]') || ok;
+    if (typeof global.setPerformanceQualityMode === 'function') {
+      try {
+        // Map car ultra → desktop-style ultra if present.
+        global.setPerformanceQualityMode(quality === 'ultra' ? 'ultra' : quality);
+        ok = true;
+      } catch (_) {
+        /* ignore */
+      }
+    }
     try {
       if (global.localStorage) {
         global.localStorage.setItem('mineradio-render-quality-v1', quality);
       }
+      if (typeof global.currentRenderQuality !== 'undefined') {
+        global.currentRenderQuality = quality;
+      }
+      if (typeof global.applyRenderQualityLevels === 'function') {
+        global.applyRenderQualityLevels(quality);
+        ok = true;
+      }
+      if (typeof global.updateRenderQualityUI === 'function') {
+        global.updateRenderQualityUI();
+      }
+      if (typeof global.applyRendererPowerMode === 'function') {
+        global.applyRendererPowerMode();
+      }
     } catch (_) {
       /* ignore */
+    }
+    // Confirm active class; re-click once if missing.
+    var active = global.document.querySelector(
+      '#render-quality-seg button[data-rq="' + quality + '"].active',
+    );
+    if (!active) {
+      ok = clickBySelector('#render-quality-seg button[data-rq="' + quality + '"]') || ok;
     }
     return ok;
   }
@@ -371,6 +424,22 @@
     return true;
   }
 
+  function shelfLooksApplied(budget) {
+    if (!budget || budget.shelf == null) return true;
+    try {
+      if (global.fx && global.fx.shelf === budget.shelf) return true;
+    } catch (_) {
+      /* ignore */
+    }
+    var btn = global.document.querySelector(
+      '#shelf-seg button[data-shelf="' + budget.shelf + '"].active',
+    );
+    if (btn) return true;
+    var bar = global.document.getElementById('bottom-bar');
+    if (budget.shelf === 'stage' && bar && bar.classList.contains('stage-mode')) return true;
+    return false;
+  }
+
   function applyShelf(budget) {
     exitImmersiveIfBlockingShelf(budget);
     if (budget.shelf != null) {
@@ -383,8 +452,17 @@
       } else {
         clickBySelector('#shelf-seg button[data-shelf="' + budget.shelf + '"]');
       }
+      if (!shelfLooksApplied(budget)) {
+        clickBySelector('#shelf-seg button[data-shelf="' + budget.shelf + '"]');
+        try {
+          if (global.fx) global.fx.shelf = budget.shelf;
+        } catch (_) {
+          /* ignore */
+        }
+      }
     }
     if (budget.shelfPresence) {
+      // APK only always|hover — never write upstream-only "auto".
       if (typeof global.setShelfPresence === 'function') {
         try {
           global.setShelfPresence(budget.shelfPresence);
@@ -399,6 +477,119 @@
         );
       }
     }
+  }
+
+  /** P0-2: force particle / stage lyrics on for stage mode. */
+  function applyParticleLyrics(mode) {
+    if (mode !== 'stage' && mode !== 'cruise') return false;
+    var ok = false;
+    try {
+      if (global.fx && typeof global.fx === 'object') {
+        global.fx.particleLyrics = true;
+      }
+      if (typeof global.lyricsVisible !== 'undefined') {
+        global.lyricsVisible = true;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    if (typeof global.setParticleLyricsSilently === 'function') {
+      try {
+        global.setParticleLyricsSilently(true);
+        ok = true;
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    if (typeof global.toggleLyricsPanel === 'function') {
+      try {
+        // force open 3D lyrics path when available
+        global.toggleLyricsPanel(true);
+        ok = true;
+      } catch (_) {
+        try {
+          if (global.fx && !global.fx.particleLyrics) global.toggleLyricsPanel();
+        } catch (_2) {
+          /* ignore */
+        }
+      }
+    }
+    ok = clickBySelector('#bottom-bar .lyrics-toggle-btn') || ok;
+    ok = clickBySelector('#lyrics-toggle-btn') || ok;
+    if (typeof global.createLyricsParticles === 'function') {
+      try {
+        global.createLyricsParticles();
+        ok = true;
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    // Prefer 流光 style when APK exposes setLyricStyle(0..3)
+    if (mode === 'stage' && typeof global.setLyricStyle === 'function') {
+      try {
+        global.setLyricStyle(1);
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    return ok;
+  }
+
+  /** P0-3: write numeric/bool budget straight into global.fx then sync. */
+  function writeFxBudget(budget) {
+    if (!budget || !global.fx || typeof global.fx !== 'object') return false;
+    var map = {
+      intensity: budget.intensity,
+      cinemaShake: budget.cineshake,
+      bloomStrength: budget.bloom,
+      coverResolution: budget.coverRes,
+      depth: budget.depth,
+      lyricGlowStrength: budget.lyricGlow,
+      point: budget.point,
+      speed: budget.speed,
+      twist: budget.twist,
+      scatter: budget.scatter,
+      bgFade: budget.bgfade,
+      backgroundOpacity: budget.bgopacity,
+      color: budget.color,
+    };
+    Object.keys(map).forEach(function (k) {
+      if (map[k] == null || !isFinite(Number(map[k]))) return;
+      try {
+        if (k in global.fx || true) global.fx[k] = Number(map[k]);
+      } catch (_) {
+        /* ignore */
+      }
+    });
+    // Common alternate field names seen in APK shells
+    try {
+      if ('cineshake' in global.fx && budget.cineshake != null) {
+        global.fx.cineshake = Number(budget.cineshake);
+      }
+      if ('bloom' in global.fx && budget.bloom != null) global.fx.bloom = Number(budget.bloom);
+      if ('lyricGlow' in global.fx && budget.lyricGlow != null) {
+        global.fx.lyricGlow = Number(budget.lyricGlow);
+      }
+      if ('bgopacity' in global.fx && budget.bgopacity != null) {
+        global.fx.bgopacity = Number(budget.bgopacity);
+      }
+      if ('bgfade' in global.fx && budget.bgfade != null) {
+        global.fx.bgfade = Number(budget.bgfade);
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    if (budget.fxOn) {
+      Object.keys(budget.fxOn).forEach(function (k) {
+        if (budget.fxOn[k]) global.fx[k] = true;
+      });
+    }
+    if (budget.fxOff) {
+      Object.keys(budget.fxOff).forEach(function (k) {
+        if (budget.fxOff[k]) global.fx[k] = false;
+      });
+    }
+    return true;
   }
 
   function applyPreset(preset) {
@@ -431,6 +622,7 @@
     setRangeIfPresent('fx-scatter', budget.scatter);
     setRangeIfPresent('fx-bgfade', budget.bgfade);
     setRangeIfPresent('fx-bgopacity', budget.bgopacity);
+    if (budget.color != null) setRangeIfPresent('fx-color', budget.color);
     // Prefer landscape shell on car units when control exists.
     clickBySelector('#startup-orient-seg button[data-orient="landscape"]');
     if (typeof global.setStartupOrientation === 'function') {
@@ -443,17 +635,40 @@
   }
 
   function persistFxIfPossible() {
-    callGlobal('syncFxUniforms');
-    callGlobal('updateFxInputs');
-    callGlobal('saveFxState');
-    callGlobal('saveLyricLayout');
-    // Force renderer to pick up DPR / pixel budget after quality changes.
+    // P0-5: never let save* throw or block stage re-assert (SPICa may still fail).
+    try {
+      callGlobal('syncFxUniforms');
+    } catch (_) {
+      /* ignore */
+    }
+    try {
+      callGlobal('updateFxInputs');
+    } catch (_) {
+      /* ignore */
+    }
+    try {
+      if (typeof global.saveFxState === 'function') global.saveFxState();
+    } catch (_) {
+      /* best-effort only */
+    }
+    try {
+      if (typeof global.saveLyricLayout === 'function') global.saveLyricLayout();
+    } catch (_) {
+      /* best-effort only */
+    }
     try {
       if (typeof global.applyRenderQualityLevels === 'function' && global.currentRenderQuality) {
         global.applyRenderQualityLevels(global.currentRenderQuality);
       }
       if (typeof global.applyRendererPowerMode === 'function') {
         global.applyRendererPowerMode();
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    try {
+      if (global.fx && global.fx.floatLayer && typeof global.createFloatLayer === 'function') {
+        global.createFloatLayer();
       }
     } catch (_) {
       /* ignore */
@@ -469,17 +684,22 @@
     // 2) Quality before cover rebuild so DPR/texture budget is already high.
     applyQuality(budget.quality);
 
-    // 3) Cover sharpness last among geometry-affecting steps (critical for emily).
-    applyCoverResolutionSharp(budget.coverRes != null ? budget.coverRes : 1.55);
-
-    // 4) Remaining FX budget.
+    // 3) Direct fx write (P0-3) then DOM sliders for UI sync.
+    writeFxBudget(budget);
     applySliders(budget);
-    // Re-assert cover res after sliders in case input handlers clamp oddly.
-    applyCoverResolutionSharp(budget.coverRes != null ? budget.coverRes : 1.55);
+
+    // 4) Cover sharpness after preset + quality (emily critical path).
+    applyCoverResolutionSharp(budget.coverRes != null ? budget.coverRes : 2.05);
+    writeFxBudget(budget);
+    applyCoverResolutionSharp(budget.coverRes != null ? budget.coverRes : 2.05);
 
     applyFxKeyMap(budget.fxOn, true);
     applyFxKeyMap(budget.fxOff, false);
+    writeFxBudget(budget);
     applyShelf(budget);
+
+    // P0-2 particle / stage lyrics
+    applyParticleLyrics(mode);
 
     // Desktop-only features always off on car.
     ensureFxKey('desktopLyrics', false);
@@ -500,10 +720,16 @@
 
     persistFxIfPossible();
 
-    // 5) Delayed cover reload — cover texture may arrive after first probe.
+    // 5) Delayed cover + shelf + lyrics reload after late shell bind.
     if (mode === 'stage' || mode === 'cruise') {
       global.setTimeout(function () {
-        applyCoverResolutionSharp(budget.coverRes != null ? budget.coverRes : 1.55);
+        var current = normalizeMode(
+          global.document.documentElement && global.document.documentElement.getAttribute(ATTR),
+        );
+        if (current !== mode) return;
+        applyCoverResolutionSharp(budget.coverRes != null ? budget.coverRes : 2.05);
+        if (!shelfLooksApplied(budget)) applyShelf(budget);
+        applyParticleLyrics(mode);
         persistFxIfPossible();
       }, 700);
     }
@@ -521,8 +747,23 @@
         );
         if (current !== mode) return;
         applyFxProbes(mode, budget);
+        // P0-4: extra shelf re-assert if still not stage
+        if (mode === 'stage' && !shelfLooksApplied(budget)) {
+          applyShelf(budget);
+        }
       }, delay);
     });
+  }
+
+  function reassertIfStageLike(reason) {
+    var mode = normalizeMode(
+      (global.document &&
+        global.document.documentElement &&
+        global.document.documentElement.getAttribute(ATTR)) ||
+        readStoredMode(),
+    );
+    if (mode !== 'stage' && mode !== 'cruise') return;
+    applyFxProbes(mode, MODE_BUDGET[mode]);
   }
 
   function ensureModeSwitch() {
@@ -622,11 +863,27 @@
 
     // After splash → home, re-assert once more for late APK shell bind.
     global.setTimeout(function () {
-      var mode = normalizeMode(global.document.documentElement.getAttribute(ATTR));
-      if (mode === 'stage' || mode === 'cruise') {
-        applyFxProbes(mode, MODE_BUDGET[mode]);
-      }
+      reassertIfStageLike('boot+6s');
     }, 6000);
+
+    // P0-5: re-apply stage FX after resume / tab show / playback start (SPICa may drop FX).
+    try {
+      global.document.addEventListener('visibilitychange', function () {
+        if (!global.document.hidden) reassertIfStageLike('visibility');
+      });
+      global.addEventListener('pageshow', function () {
+        reassertIfStageLike('pageshow');
+      });
+      global.document.addEventListener(
+        'play',
+        function () {
+          reassertIfStageLike('play');
+        },
+        true,
+      );
+    } catch (_) {
+      /* ignore */
+    }
 
     var switchEl = global.document.getElementById('car-visual-mode-switch');
     if (switchEl) {
@@ -651,6 +908,7 @@
     setMode: setMode,
     cycleMode: cycleMode,
     applyStageNow: applyStageNow,
+    reassertIfStageLike: reassertIfStageLike,
     budgets: MODE_BUDGET,
   };
 
