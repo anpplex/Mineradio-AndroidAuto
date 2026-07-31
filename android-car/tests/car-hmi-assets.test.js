@@ -47,20 +47,29 @@ test('car HMI injection requires a real stylesheet link, not a filename in page 
 test('car HMI stylesheet targets density-scaled WebView CSS px on the landscape unit', () => {
   assert.match(CAR_HMI_STYLESHEET, /@media \(min-width: 900px\) and \(min-height: 480px\)/);
   assert.doesNotMatch(CAR_HMI_STYLESHEET, /@media \(min-width: 1548px\)/);
-  assert.match(CAR_HMI_STYLESHEET, /--car-touch-target:\s*48px/);
-  assert.match(CAR_HMI_STYLESHEET, /--car-primary-action:\s*64px/);
-  assert.match(CAR_HMI_STYLESHEET, /font-size:\s*18px/);
+  // Car UX scale (not phone 48 Material minimum)
+  assert.match(CAR_HMI_STYLESHEET, /--car-touch-target:\s*64px/);
+  assert.match(CAR_HMI_STYLESHEET, /--car-primary-action:\s*76px/);
+  assert.match(CAR_HMI_STYLESHEET, /--car-type-title:\s*24px/);
+  assert.match(CAR_HMI_STYLESHEET, /--car-type-body:\s*18px/);
+  assert.match(CAR_HMI_STYLESHEET, /Keep Windows Mineradio visual language/);
   assert.match(CAR_HMI_STYLESHEET, /#trial-login-btn/);
   assert.match(CAR_HMI_STYLESHEET, /#car-login-entry/);
-  assert.match(CAR_HMI_STYLESHEET, /#trial-banner[\s\S]*top:\s*84px/);
-  assert.match(CAR_HMI_STYLESHEET, /#fx-fab\s*\{[\s\S]*bottom:\s*128px/);
+  assert.match(CAR_HMI_STYLESHEET, /body\.empty-home-active #car-login-entry/);
+  assert.match(CAR_HMI_STYLESHEET, /#fx-fab\s*\{[\s\S]*bottom:\s*140px/);
   assert.match(CAR_HMI_STYLESHEET, /#bottom-bar > #controls > \.control-cluster > \.ctrl-btn/);
   assert.match(CAR_HMI_STYLESHEET, /#audio-effect-control/);
   assert.match(CAR_HMI_STYLESHEET, /#home-recent-panel/);
   assert.match(CAR_HMI_STYLESHEET, /#playlist-toggle/);
   assert.match(CAR_HMI_STYLESHEET, /#bottom-bar/);
+  assert.match(CAR_HMI_STYLESHEET, /min-height:\s*100px/);
   assert.match(CAR_HMI_STYLESHEET, /#canvas-container/);
   assert.match(CAR_HMI_STYLESHEET, /grid-template-columns:\s*minmax\(280px/);
+  // Phone-density chrome off the play surface
+  assert.match(CAR_HMI_STYLESHEET, /#beat-chip[\s\S]*display:\s*none/);
+  assert.match(CAR_HMI_STYLESHEET, /#search-mode-tabs/);
+  assert.match(CAR_HMI_STYLESHEET, /body\.car-fx-open #fx-panel/);
+  assert.match(CAR_HMI_STYLESHEET, /body\.car-search-open/);
 });
 
 test('car visual layer defines drive/cruise/stage budgets and mode switcher chrome', () => {
@@ -120,14 +129,21 @@ test('car visual runtime encodes music-class default and stage maximization prob
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /默认测试/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /reportStageHealth/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /ensureDiyForStage/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /collapseCarChrome/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /installCarChromeHooks/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /car-fx-open/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /car-search-open/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /setLyricStyle/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /applyLyricShowcaseColors/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /maybeThrottleShowcaseQuality/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /#fac900/);
+  // Do not invoke the floating color-chip API on car (comment may still name it).
+  assert.doesNotMatch(CAR_VISUAL_RUNTIME_SOURCE, /global\.setLyricHighlightCustom\s*\(/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /setAudioDuck/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /installAudioDuckHooks/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /car-audio-duck/);
   assert.match(CAR_VISUAL_RUNTIME_SOURCE, /media-pause/);
+  assert.match(CAR_VISUAL_RUNTIME_SOURCE, /舞台已就绪/);
   // Preset must run before cover res so emily mesh is not left soft/coarse.
   assert.match(
     CAR_VISUAL_RUNTIME_SOURCE,
@@ -153,6 +169,11 @@ test('car stage CSS fully opens the particle canvas and strengthens lyric stage'
   );
   assert.match(CAR_HMI_STYLESHEET, /car-audio-duck/);
   assert.match(CAR_HMI_STYLESHEET, /body\.car-audio-duck #canvas-container::after/);
+  // Stage must not re-enable long mode hint text
+  assert.match(
+    CAR_HMI_STYLESHEET,
+    /data-car-visual-mode="stage"[\s\S]*car-visual-mode-hint[\s\S]*display:\s*none/,
+  );
 });
 
 test('patchCarHmiAssets writes MENC css, runtime and patched index', () => {

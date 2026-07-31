@@ -550,30 +550,135 @@
     return ok;
   }
 
-  /** P1-5: ensure DIY unlock so #fx-fab can open the visual console on stage. */
+  /**
+   * P1-5: unlock DIY so stage probes / #fx-fab work, but do not leave the
+   * Windows FX console open on the car play surface (phone-density chrome).
+   */
   function ensureDiyForStage(mode) {
     if (mode !== 'stage') return false;
+    var unlocked = false;
     try {
-      if (global.diyPlayerMode === true) return true;
+      if (global.diyPlayerMode === true) unlocked = true;
     } catch (_) {
       /* ignore */
     }
-    if (typeof global.toggleDiyMode === 'function') {
+    if (!unlocked && typeof global.toggleDiyMode === 'function') {
       try {
         if (!global.diyPlayerMode) global.toggleDiyMode();
-        return !!global.diyPlayerMode;
+        unlocked = !!global.diyPlayerMode;
       } catch (_) {
         /* fall through */
       }
     }
-    return (
-      clickBySelector('#diy-mode-btn') ||
-      clickBySelector('[data-diy="on"]') ||
-      clickBySelector('button[onclick*="toggleDiyMode"]')
-    );
+    if (!unlocked) {
+      unlocked = !!(
+        clickBySelector('#diy-mode-btn') ||
+        clickBySelector('[data-diy="on"]') ||
+        clickBySelector('button[onclick*="toggleDiyMode"]')
+      );
+    }
+    collapseCarChrome({ keepFxClosed: true });
+    return unlocked;
   }
 
-  /** P2-5: showcase lyric highlight / glow palette (high presence on glass). */
+  /**
+   * Car UX: keep Windows visual language, but collapse phone-density chrome
+   * that should not sit on the playing surface (search tabs, FX panel, etc.).
+   */
+  function collapseCarChrome(options) {
+    var opts = options || {};
+    try {
+      if (global.document && global.document.body) {
+        if (opts.keepFxClosed !== false) {
+          global.document.body.classList.remove('car-fx-open');
+        }
+        if (opts.closeSearch !== false) {
+          global.document.body.classList.remove('car-search-open');
+        }
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    try {
+      if (opts.closeSearch !== false && typeof global.closeSearchPanel === 'function') {
+        global.closeSearchPanel();
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    try {
+      var panel = global.document && global.document.getElementById('fx-panel');
+      if (panel && opts.keepFxClosed !== false) {
+        panel.classList.remove('open', 'is-open', 'show', 'visible');
+        panel.setAttribute('aria-hidden', 'true');
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  /** Wire search focus + FX fab so secondary surfaces open with car-scale UX. */
+  function installCarChromeHooks() {
+    if (global.__mineradioCarChromeHooks) return;
+    global.__mineradioCarChromeHooks = true;
+    var doc = global.document;
+    if (!doc) return;
+
+    function onSearchFocus() {
+      try {
+        if (doc.body) doc.body.classList.add('car-search-open');
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    function onSearchBlur() {
+      global.setTimeout(function () {
+        try {
+          var area = doc.getElementById('search-area');
+          if (area && area.contains(doc.activeElement)) return;
+          if (doc.body) doc.body.classList.remove('car-search-open');
+        } catch (_) {
+          /* ignore */
+        }
+      }, 120);
+    }
+    try {
+      var input = doc.getElementById('search-input');
+      if (input) {
+        input.addEventListener('focus', onSearchFocus, true);
+        input.addEventListener('blur', onSearchBlur, true);
+      }
+    } catch (_) {
+      /* ignore */
+    }
+
+    try {
+      var fab = doc.getElementById('fx-fab');
+      if (fab) {
+        fab.addEventListener(
+          'click',
+          function () {
+            try {
+              if (!doc.body) return;
+              // Stage/cruise only; drive CSS hides fab.
+              doc.body.classList.toggle('car-fx-open');
+            } catch (_) {
+              /* ignore */
+            }
+          },
+          true,
+        );
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  /**
+   * P2-5: showcase lyric palette via silent FX state only.
+   * Never call setLyricHighlightCustom / color pickers — APK shows a floating
+   * 「高亮颜色」chip that fights car play-surface chrome.
+   */
   function applyLyricShowcaseColors(mode) {
     if (mode !== 'stage') return;
     try {
@@ -588,29 +693,9 @@
       /* ignore */
     }
     try {
-      var hi = global.document.getElementById('lyric-highlight-value');
-      var gl = global.document.getElementById('lyric-glow-value');
-      var hip = global.document.getElementById('lyric-highlight-picker');
-      var glp = global.document.getElementById('lyric-glow-picker');
-      if (hip) {
-        hip.value = '#fac900';
-        hip.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-      if (glp) {
-        glp.value = '#00f5d4';
-        glp.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-      if (hi) hi.textContent = '#FAC900';
-      if (gl) gl.textContent = '#00F5D4';
+      if (typeof global.syncFxUniforms === 'function') global.syncFxUniforms();
     } catch (_) {
       /* ignore */
-    }
-    if (typeof global.setLyricHighlightCustom === 'function') {
-      try {
-        global.setLyricHighlightCustom('#fac900');
-      } catch (_) {
-        /* ignore */
-      }
     }
   }
 
@@ -672,9 +757,7 @@
       ) {
         var okShelf = health.shelf === 'stage' || health.shelfBtn === 'stage';
         var okQ = health.quality === 'ultra' || health.qualityBtn === 'ultra' || health.qualityBtn === 'fine';
-        global.showToast(
-          okShelf && okQ ? '舞台 Showcase 已拉满' : '舞台已应用（部分参数待重试）',
-        );
+        global.showToast(okShelf && okQ ? '舞台已就绪' : '舞台已应用');
         global.__mineradioCarStageToastShown = true;
         global.setTimeout(function () {
           global.__mineradioCarStageToastShown = false;
@@ -929,8 +1012,9 @@
     applyParticleLyrics(mode);
     applyLyricShowcaseColors(mode);
 
-    // P1-5 DIY so FX console is reachable on stage
+    // P1-5 DIY so FX console is reachable on stage (panel stays closed on car).
     ensureDiyForStage(mode);
+    collapseCarChrome({ keepFxClosed: true, closeSearch: true });
 
     // Desktop-only features always off on car.
     ensureFxKey('desktopLyrics', false);
@@ -965,6 +1049,7 @@
         applyParticleLyrics(mode);
         applyLyricShowcaseColors(mode);
         ensureDiyForStage(mode);
+        collapseCarChrome({ keepFxClosed: true, closeSearch: true });
         persistFxIfPossible();
         reportStageHealth(mode, budget);
       }, 700);
@@ -1308,7 +1393,9 @@
     }
     installCoverSharpnessHooks();
     installAudioDuckHooks();
+    installCarChromeHooks();
     ensureModeSwitch();
+    collapseCarChrome({ keepFxClosed: true, closeSearch: true });
     var initial = readStoredMode();
     if (!global.localStorage || global.localStorage.getItem(STORAGE_KEY) == null) {
       initial = 'drive';
