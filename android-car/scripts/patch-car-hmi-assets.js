@@ -242,14 +242,14 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     box-shadow: 0 10px 28px rgba(0, 0, 0, .36) !important;
     -webkit-tap-highlight-color: transparent;
   }
-  /* TL — playlist then home (nav cluster) */
-  #playlist-toggle {
+  /* TL — Home left, playlist/list right (Mac-like nav order) */
+  #home-btn {
     top: calc(var(--car-safe-top) + 8px) !important;
     left: var(--car-corner-inset) !important;
     right: auto !important;
     bottom: auto !important;
   }
-  #home-btn {
+  #playlist-toggle {
     top: calc(var(--car-safe-top) + 8px) !important;
     left: calc(var(--car-corner-inset) + var(--car-corner-btn) + var(--car-corner-gap)) !important;
     right: auto !important;
@@ -280,14 +280,66 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
   #top-right #home-btn {
     pointer-events: auto !important;
   }
-  /* BL — visual console (Mac-aligned entry; no 行车/巡航/舞台 bar) */
+  /*
+   * Visual console — bottom floating capsule (Mac label + car hit size).
+   * Panel opens as bottom sheet (not right dock).
+   */
   #fx-fab {
     top: auto !important;
-    left: var(--car-corner-inset) !important;
+    left: 50% !important;
     right: auto !important;
-    bottom: calc(var(--car-safe-bottom) + 100px + var(--car-space-12)) !important;
+    bottom: calc(var(--car-safe-bottom) + 108px + var(--car-space-12)) !important;
+    width: auto !important;
+    min-width: 172px !important;
+    max-width: none !important;
+    height: 56px !important;
+    min-height: 56px !important;
+    max-height: 56px !important;
+    padding: 0 22px 0 18px !important;
+    gap: 10px !important;
+    border-radius: 999px !important;
+    transform: translateX(-50%) !important;
+    flex-direction: row !important;
+  }
+  #fx-fab::after {
+    content: '视觉控制台';
+    font-size: 16px !important;
+    font-weight: 720 !important;
+    letter-spacing: .02em !important;
+    color: var(--car-text-primary) !important;
+    white-space: nowrap !important;
+    line-height: 1 !important;
+  }
+  body.car-fx-open #fx-fab {
+    bottom: calc(var(--car-safe-bottom) + min(58vh, 480px) + 20px) !important;
   }
   #fx-fab-hide-btn { display: none !important; }
+  /* Plugin install — extreme bottom-right */
+  #plugin-fab {
+    position: fixed !important;
+    z-index: 33 !important;
+    top: auto !important;
+    left: auto !important;
+    right: var(--car-corner-inset) !important;
+    bottom: calc(var(--car-safe-bottom) + 12px) !important;
+    width: var(--car-corner-btn) !important;
+    height: var(--car-corner-btn) !important;
+    min-width: var(--car-corner-btn) !important;
+    min-height: var(--car-corner-btn) !important;
+    padding: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 50% !important;
+    border: 1px solid rgba(255, 255, 255, .18) !important;
+    background: var(--car-panel-strong) !important;
+    color: var(--car-text-primary) !important;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .36) !important;
+  }
+  #plugin-fab svg {
+    width: var(--car-corner-icon) !important;
+    height: var(--car-corner-icon) !important;
+  }
   /* Mode switch permanently off the play surface */
   #car-visual-mode-switch {
     display: none !important;
@@ -304,6 +356,10 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     width: var(--car-corner-icon) !important;
     height: var(--car-corner-icon) !important;
     flex-shrink: 0 !important;
+  }
+  #fx-fab svg {
+    width: 24px !important;
+    height: 24px !important;
   }
   #announcement-entry,
   #bottom-bar-close-btn {
@@ -366,37 +422,91 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     font-weight: 760 !important;
   }
 
-  /* Transport bar: Windows glass look; sit above car Docker. */
+  /*
+   * Transport bar — Mac layout: cover+meta | 臻音/心/+ | transport | 词/音量/调声/时间
+   * Car hit sizes; hide only low-frequency desktop chrome.
+   */
   #bottom-bar {
-    min-height: 100px !important;
-    width: min(920px, calc(100vw - 40px)) !important;
+    min-height: 104px !important;
+    width: min(960px, calc(100vw - 36px)) !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
     bottom: var(--car-safe-bottom) !important;
-    padding: 12px 18px !important;
-    border-radius: 22px !important;
-    background: var(--car-panel-strong) !important;
+    padding: 10px 18px 12px !important;
+    border-radius: 26px !important;
+    background: rgba(8, 12, 19, .88) !important;
+    border: 1px solid rgba(255, 255, 255, .12) !important;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, .42) !important;
+    backdrop-filter: blur(18px) saturate(1.12) !important;
+  }
+  #bottom-bar #progress-bar {
+    height: 6px !important;
+    border-radius: 999px !important;
+    margin-bottom: 8px !important;
+  }
+  #bottom-bar #progress-fill {
+    border-radius: 999px !important;
   }
   #bottom-bar > #controls {
-    grid-template-columns: minmax(0, 1fr) auto auto !important;
-    gap: 14px !important;
+    display: grid !important;
+    grid-template-columns: minmax(160px, 1.1fr) auto minmax(140px, .95fr) !important;
+    gap: 10px 14px !important;
     align-items: center !important;
   }
-  #bottom-bar .control-track, #bottom-bar .control-meta { min-width: 0 !important; }
-  #bottom-bar .control-meta { max-width: none !important; }
+  #bottom-bar .control-track {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    min-width: 0 !important;
+  }
+  #bottom-bar .control-cover {
+    width: 56px !important;
+    height: 56px !important;
+    min-width: 56px !important;
+    border-radius: 12px !important;
+  }
+  #bottom-bar .control-meta { min-width: 0 !important; max-width: none !important; }
   #bottom-bar .control-title, #bottom-bar .control-artist {
     overflow: hidden !important;
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
   }
+  #bottom-bar .control-cluster {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+  #bottom-bar .control-cluster.transport {
+    justify-content: center !important;
+    gap: 10px !important;
+  }
+  #bottom-bar .control-cluster.modes {
+    justify-content: flex-end !important;
+    flex-wrap: nowrap !important;
+  }
   #bottom-bar > #bottom-bar-close-btn,
-  #bottom-bar > #controls > .control-cluster > .ctrl-btn {
+  #bottom-bar > #controls > .control-cluster > .ctrl-btn,
+  #bottom-bar #quality-btn,
+  #bottom-bar #eq-btn,
+  #bottom-bar #audio-effect-btn,
+  #bottom-bar #volume-btn {
     width: var(--car-touch-target) !important;
     height: var(--car-touch-target) !important;
     min-width: var(--car-touch-target) !important;
     min-height: var(--car-touch-target) !important;
     border-radius: 16px !important;
   }
+  #bottom-bar #quality-btn.quality-pill,
+  #bottom-bar #eq-btn.quality-pill {
+    width: auto !important;
+    min-width: 72px !important;
+    padding: 0 14px !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+  }
   #bottom-bar > #bottom-bar-close-btn svg,
-  #bottom-bar > #controls > .control-cluster > .ctrl-btn svg {
+  #bottom-bar > #controls > .control-cluster > .ctrl-btn svg,
+  #bottom-bar #volume-btn svg {
     width: 26px !important;
     height: 26px !important;
   }
@@ -410,37 +520,51 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     color: #031111 !important;
   }
   #play-btn svg { width: 32px !important; height: 32px !important; }
-  .control-title, #song-title, .now-playing-title {
+  .control-title, #song-title, .now-playing-title, #control-title {
     font-size: var(--car-type-title) !important;
     font-weight: 700 !important;
     color: var(--car-text-primary) !important;
   }
-  .control-artist, #artist-name, .now-playing-artist {
+  .control-artist, #artist-name, .now-playing-artist, #control-artist {
     font-size: var(--car-type-body) !important;
     color: var(--car-text-secondary) !important;
   }
-  .control-cluster.actions, .control-cluster.modes { gap: var(--car-space-16) !important; }
-  #bottom-bar #quality-control, #bottom-bar #heart-btn, #bottom-bar #collect-btn,
-  #bottom-bar #refresh-download-btn, #bottom-bar #play-mode-btn, #bottom-bar #sleep-timer-btn,
-  #bottom-bar #audio-effect-control, #bottom-bar #eq-control, #bottom-bar .lyrics-toggle-btn,
-  #bottom-bar #volume-control, #bottom-bar #controls-hide-btn, #bottom-bar #immersive-btn {
-    display: none !important;
+  .lyrics-word-icon {
+    font-size: 18px !important;
+    font-weight: 720 !important;
   }
-  /* P0-2: stage needs a reachable lyrics control (particle stage lyrics). */
-  html[data-car-visual-mode="stage"] #bottom-bar .lyrics-toggle-btn,
-  body.car-mode-stage #bottom-bar .lyrics-toggle-btn {
+  /* Mac-visible set; hide only rare desktop tools */
+  #bottom-bar #quality-control,
+  #bottom-bar #heart-btn,
+  #bottom-bar #collect-btn,
+  #bottom-bar #play-mode-btn,
+  #bottom-bar .lyrics-toggle-btn,
+  #bottom-bar #volume-control,
+  #bottom-bar #eq-control,
+  #bottom-bar #mini-queue-btn {
     display: inline-flex !important;
-    width: var(--car-touch-target) !important;
-    height: var(--car-touch-target) !important;
-    min-width: var(--car-touch-target) !important;
-    min-height: var(--car-touch-target) !important;
     align-items: center !important;
     justify-content: center !important;
   }
+  #bottom-bar #refresh-download-btn,
+  #bottom-bar #sleep-timer-btn,
+  #bottom-bar #audio-effect-control,
+  #bottom-bar #controls-hide-btn,
+  #bottom-bar #immersive-btn,
+  #bottom-bar .fullscreen-toggle-btn,
+  #bottom-bar > #bottom-bar-close-btn {
+    display: none !important;
+  }
   #bottom-bar #time-display {
-    min-width: 120px !important;
+    min-width: 112px !important;
     font-size: var(--car-type-caption) !important;
+    font-variant-numeric: tabular-nums !important;
     color: var(--car-text-secondary) !important;
+    white-space: nowrap !important;
+  }
+  /* Floating thumb (Mac uses bar cover); avoid double chrome on car */
+  #thumb-wrap {
+    display: none !important;
   }
 
   /* ——— Visual layer budgets (driven by data-car-visual-mode) ———
@@ -555,23 +679,105 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
     background: rgba(8, 12, 19, .7) !important;
     border-color: rgba(12, 205, 191, .28) !important;
   }
-  /* Stage: FX is optional Windows console entry — same corner chrome, not scaled up. */
+  /* Stage: keep FX capsule centered (do not reset transform). */
   html[data-car-visual-mode="stage"] #fx-fab,
   body.car-mode-stage #fx-fab {
     opacity: 1 !important;
-    transform: none !important;
+    transform: translateX(-50%) !important;
     box-shadow: 0 10px 28px rgba(0, 0, 0, .36) !important;
   }
-  /* Car: Windows FX console stays in DOM for probes, hidden until body.car-fx-open. */
+  /*
+   * FX panel — bottom sheet (not right rail). Car type scale inside.
+   * Probes can still touch nodes while closed (visibility only).
+   */
   #fx-panel {
+    position: fixed !important;
+    z-index: 46 !important;
+    top: auto !important;
+    left: 50% !important;
+    right: auto !important;
+    bottom: calc(var(--car-safe-bottom) + 8px) !important;
+    width: min(900px, calc(100vw - 32px)) !important;
+    max-width: min(900px, calc(100vw - 32px)) !important;
+    max-height: min(58vh, 480px) !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 16px 18px 20px !important;
+    border-radius: 22px !important;
+    border: 1px solid rgba(255, 255, 255, .14) !important;
+    background: rgba(8, 12, 19, .94) !important;
+    box-shadow: 0 20px 48px rgba(0, 0, 0, .5) !important;
+    backdrop-filter: blur(18px) saturate(1.1) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    transform: translateX(-50%) translateY(120%) !important;
     opacity: 0 !important;
     pointer-events: none !important;
     visibility: hidden !important;
+    transition: transform .28s ease, opacity .2s ease, visibility .2s !important;
   }
   body.car-fx-open #fx-panel {
+    transform: translateX(-50%) translateY(0) !important;
     opacity: 1 !important;
     pointer-events: auto !important;
     visibility: visible !important;
+  }
+  #fx-panel .fx-title {
+    font-size: 20px !important;
+    font-weight: 740 !important;
+    line-height: 1.25 !important;
+  }
+  #fx-panel .fx-sub {
+    font-size: 14px !important;
+    line-height: 1.35 !important;
+    opacity: .72 !important;
+  }
+  #fx-panel .fx-section-label,
+  #fx-panel .fx-fold-title,
+  #fx-panel .fx-fold-title strong {
+    font-size: 15px !important;
+    font-weight: 700 !important;
+  }
+  #fx-panel .fx-fold-title small,
+  #fx-panel .fx-color-row-label,
+  #fx-panel .fx-color-row-label small,
+  #fx-panel label {
+    font-size: 14px !important;
+  }
+  #fx-panel .fx-mini-btn,
+  #fx-panel .fx-seg button,
+  #fx-panel button.fx-mini-btn {
+    min-height: 48px !important;
+    min-width: 48px !important;
+    padding: 0 14px !important;
+    font-size: 15px !important;
+    font-weight: 650 !important;
+    border-radius: 12px !important;
+  }
+  #fx-panel .preset-grid,
+  #fx-panel .user-archive-grid {
+    gap: 10px !important;
+  }
+  #fx-panel .preset-grid > *,
+  #fx-panel .user-archive-grid > * {
+    min-height: 72px !important;
+    font-size: 15px !important;
+  }
+  #fx-panel input[type="text"],
+  #fx-panel input[type="range"] + output,
+  #fx-panel .fx-slider label {
+    font-size: 15px !important;
+  }
+  #fx-panel .fx-slider {
+    min-height: 44px !important;
+    gap: 10px !important;
+  }
+  #fx-panel .fx-slider input[type="range"] {
+    height: 28px !important;
+  }
+  #fx-panel .fx-fold-head {
+    min-height: 52px !important;
+    padding: 10px 8px !important;
   }
   html[data-car-visual-mode="stage"] #stage-lyrics,
   html[data-car-visual-mode="stage"] #lyric-float-stage,
@@ -602,8 +808,8 @@ const CAR_HMI_STYLESHEET = String.raw`/* Mineradio car HMI + visual-mode overlay
   }
   html[data-car-visual-mode="stage"] #fx-panel,
   body.car-mode-stage #fx-panel {
-    background: rgba(8, 12, 19, .9) !important;
-    border-color: rgba(12, 205, 191, .2) !important;
+    background: rgba(8, 12, 19, .94) !important;
+    border-color: rgba(12, 205, 191, .22) !important;
   }
   /* P2-3: keep transport above stage shelf hit layers. */
   html[data-car-visual-mode="stage"] #bottom-bar,

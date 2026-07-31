@@ -59,21 +59,29 @@ test('car HMI stylesheet targets density-scaled WebView CSS px on the landscape 
   assert.match(CAR_HMI_STYLESHEET, /--car-corner-btn:\s*72px/);
   assert.match(CAR_HMI_STYLESHEET, /--car-corner-icon:\s*30px/);
   assert.match(CAR_HMI_STYLESHEET, /--car-corner-gap:\s*12px/);
-  assert.match(CAR_HMI_STYLESHEET, /TL: playlist \+ home/);
-  assert.match(CAR_HMI_STYLESHEET, /BL: visual console/);
+  assert.match(CAR_HMI_STYLESHEET, /Home left, playlist\/list right/);
+  assert.match(CAR_HMI_STYLESHEET, /bottom floating capsule/);
   assert.match(CAR_HMI_STYLESHEET, /Keep Windows Mineradio visual language/);
   assert.match(CAR_HMI_STYLESHEET, /#trial-login-btn/);
   assert.match(CAR_HMI_STYLESHEET, /#car-login-entry/);
   assert.match(CAR_HMI_STYLESHEET, /body\.empty-home-active #car-login-entry/);
   assert.match(CAR_HMI_STYLESHEET, /#playlist-toggle/);
-  assert.match(CAR_HMI_STYLESHEET, /#home-btn[\s\S]*left:\s*calc\(var\(--car-corner-inset\)/);
-  assert.match(CAR_HMI_STYLESHEET, /#fx-fab[\s\S]*left:\s*var\(--car-corner-inset\)/);
+  // Home left, playlist to its right
+  assert.match(CAR_HMI_STYLESHEET, /#home-btn[\s\S]*left:\s*var\(--car-corner-inset\)/);
+  assert.match(CAR_HMI_STYLESHEET, /#playlist-toggle[\s\S]*left:\s*calc\(var\(--car-corner-inset\)/);
+  // FX capsule center-bottom + bottom sheet panel
+  assert.match(CAR_HMI_STYLESHEET, /#fx-fab[\s\S]*left:\s*50%/);
+  assert.match(CAR_HMI_STYLESHEET, /content:\s*'视觉控制台'/);
+  assert.match(CAR_HMI_STYLESHEET, /#fx-panel[\s\S]*bottom sheet|#fx-panel[\s\S]*translateX\(-50%\)/);
+  assert.match(CAR_HMI_STYLESHEET, /#plugin-fab[\s\S]*right:\s*var\(--car-corner-inset\)/);
   assert.match(CAR_HMI_STYLESHEET, /#car-visual-mode-switch[\s\S]*display:\s*none/);
   assert.match(CAR_HMI_STYLESHEET, /#bottom-bar[\s\S]*bottom:\s*var\(--car-safe-bottom\)/);
+  assert.match(CAR_HMI_STYLESHEET, /#bottom-bar #heart-btn/);
+  assert.match(CAR_HMI_STYLESHEET, /#bottom-bar #quality-control/);
   assert.match(CAR_HMI_STYLESHEET, /#bottom-bar > #controls > \.control-cluster > \.ctrl-btn/);
   assert.match(CAR_HMI_STYLESHEET, /#audio-effect-control/);
   assert.match(CAR_HMI_STYLESHEET, /#home-recent-panel/);
-  assert.match(CAR_HMI_STYLESHEET, /min-height:\s*100px/);
+  assert.match(CAR_HMI_STYLESHEET, /min-height:\s*104px/);
   assert.match(CAR_HMI_STYLESHEET, /#canvas-container/);
   assert.match(CAR_HMI_STYLESHEET, /grid-template-columns:\s*minmax\(280px/);
   assert.match(CAR_HMI_STYLESHEET, /#beat-chip[\s\S]*display:\s*none/);
@@ -175,10 +183,7 @@ test('car stage CSS fully opens the particle canvas and strengthens lyric stage'
     CAR_HMI_STYLESHEET,
     /#canvas-container[\s\S]{0,80}opacity:\s*var\(--car-particle-opacity\)/,
   );
-  assert.match(
-    CAR_HMI_STYLESHEET,
-    /data-car-visual-mode="stage"[\s\S]*lyrics-toggle-btn[\s\S]*display:\s*inline-flex/,
-  );
+  assert.match(CAR_HMI_STYLESHEET, /#bottom-bar \.lyrics-toggle-btn[\s\S]*display:\s*inline-flex/);
   assert.match(CAR_HMI_STYLESHEET, /car-audio-duck/);
   assert.match(CAR_HMI_STYLESHEET, /body\.car-audio-duck #canvas-container::after/);
   // Mode switch never visible on car
