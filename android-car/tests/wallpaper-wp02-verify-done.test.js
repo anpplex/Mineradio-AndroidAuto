@@ -35,6 +35,9 @@ const {
   sha256File,
   liveAuthoritativeBaseSha,
   isAncestor,
+  classifyHeadVsLiveBase,
+  isAllowedTaskBranch,
+  readTaskWorktreeIdentity,
   loadWp02CatalogTask,
   readPrerequisiteDone,
   initTempReceipt,
@@ -59,19 +62,28 @@ function validProofs(prNumber = 8) {
 // ---------------------------------------------------------------------------
 
 test('WP-02 VERIFY-DONE RED-0: worktree identity and live base from ls-remote', () => {
-  const branch = git(['branch', '--show-current']);
-  // Any codex/wallpaper-plugin-* task branch (implementation / verify-done / wp03 …).
-  assert.match(
-    branch.stdout,
-    /^codex\/wallpaper-plugin-/,
-    `unexpected task branch: ${branch.stdout}`,
+  // Live base from origin ls-remote; HEAD may equal live or be a descendant (task ahead).
+  const identity = readTaskWorktreeIdentity();
+  assert.equal(identity.ok, true, JSON.stringify(identity));
+  assert.match(identity.branch, /^codex\/wallpaper-plugin-/);
+  assert.match(identity.head, /^[0-9a-f]{40}$/);
+  assert.equal(identity.liveBaseSha, liveAuthoritativeBaseSha());
+  assert.ok(
+    identity.relation === 'equal' || identity.relation === 'ahead',
+    `unexpected relation: ${identity.relation}`,
   );
-  const head = git(['rev-parse', 'HEAD']);
-  assert.match(head.stdout, /^[0-9a-f]{40}$/);
-  const live = liveAuthoritativeBaseSha();
-  // When worktree is branched from origin tip, HEAD equals live base.
-  assert.equal(head.stdout.toLowerCase(), live);
-  assert.match(live, /^[0-9a-f]{40}$/);
+  if (identity.relation === 'ahead') {
+    assert.equal(isAncestor(identity.liveBaseSha, identity.head), true);
+  }
+  assert.equal(isAllowedTaskBranch('main').ok, false);
+  assert.equal(
+    readTaskWorktreeIdentity({ liveBaseSha: '0'.repeat(40) }).failureReason,
+    'CALLER_FORGED_IDENTITY',
+  );
+  assert.equal(
+    classifyHeadVsLiveBase('a'.repeat(40), 'b'.repeat(40), {}).failureReason,
+    'HEAD_DIVERGED_FROM_LIVE_BASE',
+  );
 });
 
 test('WP-02 VERIFY-DONE RED-0.1: prerequisites WP-INFRA/WP-00/WP-01 DONE from real receipts', () => {

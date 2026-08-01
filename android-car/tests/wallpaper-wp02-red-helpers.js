@@ -161,6 +161,109 @@ function git(args, cwd = repoRoot) {
   };
 }
 
+function liveAuthoritativeBaseSha(cwd = repoRoot) {
+  const r = git(['ls-remote', '--refs', 'origin', 'refs/heads/huawei-android12-car'], cwd);
+  if (r.status !== 0) throw new Error(`ls-remote failed: ${r.stderr || r.stdout}`);
+  const sha = (r.stdout.split(/\s+/)[0] || '').toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error(`invalid ls-remote base: ${r.stdout}`);
+  return sha;
+}
+
+const TASK_BRANCH_RE = /^codex\/wallpaper-plugin-/;
+const FORBIDDEN_TASK_BRANCHES = Object.freeze([
+  'main',
+  'master',
+  'huawei-android12-car',
+]);
+
+function isGitAncestor(ancestorSha, descendantSha, cwd = repoRoot) {
+  const r = git(['merge-base', '--is-ancestor', ancestorSha, descendantSha], cwd);
+  return r.status === 0;
+}
+
+function classifyHeadVsLiveBase(headSha, liveSha, flags = {}) {
+  const head = String(headSha || '').toLowerCase();
+  const live = String(liveSha || '').toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(head) || !/^[0-9a-f]{40}$/.test(live)) {
+    return { ok: false, relation: 'invalid', failureReason: 'INVALID_SHA' };
+  }
+  if (head === live) {
+    return { ok: true, relation: 'equal', failureReason: null };
+  }
+  if (flags.liveIsAncestorOfHead === true) {
+    return { ok: true, relation: 'ahead', failureReason: null };
+  }
+  if (flags.headIsAncestorOfLive === true) {
+    return { ok: false, relation: 'behind', failureReason: 'HEAD_BEHIND_LIVE_BASE' };
+  }
+  return { ok: false, relation: 'diverged', failureReason: 'HEAD_DIVERGED_FROM_LIVE_BASE' };
+}
+
+function isAllowedTaskBranch(branchName) {
+  const branch = String(branchName || '');
+  if (!branch || FORBIDDEN_TASK_BRANCHES.includes(branch)) {
+    return { ok: false, failureReason: 'TASK_BRANCH_REJECTED', branch };
+  }
+  if (!TASK_BRANCH_RE.test(branch)) {
+    return { ok: false, failureReason: 'TASK_BRANCH_REJECTED', branch };
+  }
+  return { ok: true, branch, failureReason: null };
+}
+
+function readTaskWorktreeIdentity(options = {}) {
+  if (
+    options.claimedLiveBase != null ||
+    options.claimedHead != null ||
+    options.liveBaseSha != null ||
+    options.headSha != null ||
+    options.REMOTE_VERIFIED != null ||
+    options.merged != null
+  ) {
+    return {
+      ok: false,
+      failureReason: 'CALLER_FORGED_IDENTITY',
+      message: 'caller cannot inject base/HEAD/REMOTE_VERIFIED/merged',
+    };
+  }
+  const branchResult = git(['branch', '--show-current']);
+  if (branchResult.status !== 0) {
+    return { ok: false, failureReason: 'BRANCH_READ_FAILED', message: branchResult.combined };
+  }
+  const branchCheck = isAllowedTaskBranch(branchResult.stdout);
+  if (!branchCheck.ok) return branchCheck;
+  const headResult = git(['rev-parse', 'HEAD']);
+  if (headResult.status !== 0 || !/^[0-9a-f]{40}$/i.test(headResult.stdout)) {
+    return { ok: false, failureReason: 'HEAD_READ_FAILED', message: headResult.combined };
+  }
+  const head = headResult.stdout.toLowerCase();
+  let live;
+  try {
+    live = liveAuthoritativeBaseSha();
+  } catch (err) {
+    return {
+      ok: false,
+      failureReason: 'LIVE_BASE_READ_FAILED',
+      message: String(err && err.message),
+    };
+  }
+  const liveIsAncestorOfHead = isGitAncestor(live, head);
+  const headIsAncestorOfLive = head !== live && isGitAncestor(head, live);
+  const relation = classifyHeadVsLiveBase(head, live, {
+    liveIsAncestorOfHead,
+    headIsAncestorOfLive,
+  });
+  return {
+    ok: relation.ok && branchCheck.ok,
+    branch: branchCheck.branch,
+    head,
+    liveBaseSha: live,
+    relation: relation.relation,
+    failureReason: relation.ok ? null : relation.failureReason,
+    liveIsAncestorOfHead,
+    headIsAncestorOfLive,
+  };
+}
+
 function runPython(scriptPath, args, options = {}) {
   const result = spawnSync('python3', [scriptPath, ...args], {
     cwd: options.cwd || repoRoot,
@@ -581,6 +684,13 @@ module.exports = {
   pathExists,
   readText,
   sha256File,
+  liveAuthoritativeBaseSha,
+  isGitAncestor,
+  classifyHeadVsLiveBase,
+  isAllowedTaskBranch,
+  readTaskWorktreeIdentity,
+  TASK_BRANCH_RE,
+  FORBIDDEN_TASK_BRANCHES,
   pluginRoot,
   productionSourcePath,
   unitTestSourcePath,

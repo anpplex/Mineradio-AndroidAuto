@@ -59,6 +59,11 @@ const {
   catalogToolPath,
   initTempWp02Receipt,
   liveWp02OperationalProgress,
+  liveAuthoritativeBaseSha,
+  classifyHeadVsLiveBase,
+  isAllowedTaskBranch,
+  readTaskWorktreeIdentity,
+  isGitAncestor,
 } = require('./wallpaper-wp02-red-helpers');
 
 // ---------------------------------------------------------------------------
@@ -76,21 +81,41 @@ test('WP-02 RED-01: environment paths and tools are real', () => {
 });
 
 test('WP-02 RED-01: worktree branch and live base identity', () => {
-  const branch = git(['branch', '--show-current']);
-  assert.equal(branch.status, 0, branch.combined);
-  // Any codex/wallpaper-plugin-* task branch (implementation, verify-done, …).
-  assert.match(
-    branch.stdout,
-    /^codex\/wallpaper-plugin-/,
-    `unexpected task branch: ${branch.stdout}`,
+  // Live base from origin ls-remote; HEAD may equal live or be a descendant.
+  const identity = readTaskWorktreeIdentity();
+  assert.equal(identity.ok, true, JSON.stringify(identity));
+  assert.match(identity.branch, /^codex\/wallpaper-plugin-/);
+  assert.match(identity.head, /^[0-9a-f]{40}$/);
+  assert.equal(identity.liveBaseSha, liveAuthoritativeBaseSha());
+  assert.ok(
+    identity.relation === 'equal' || identity.relation === 'ahead',
+    `unexpected relation: ${identity.relation}`,
   );
-  const head = git(['rev-parse', 'HEAD']);
-  assert.match(head.stdout, /^[0-9a-f]{40}$/);
-  const live = git(['ls-remote', 'origin', 'huawei-android12-car']);
-  assert.equal(live.status, 0, live.combined);
-  const liveSha = (live.stdout.split(/\s+/)[0] || '').toLowerCase();
-  // HEAD must equal live base when worktree is branched from origin tip.
-  assert.equal(head.stdout.toLowerCase(), liveSha);
+  if (identity.relation === 'ahead') {
+    assert.equal(isGitAncestor(identity.liveBaseSha, identity.head), true);
+  }
+});
+
+test('WP-02 RED-01: head/live relation and branch/forgery fixtures', () => {
+  const a = 'a'.repeat(40);
+  const b = 'b'.repeat(40);
+  assert.equal(classifyHeadVsLiveBase(a, a, {}).relation, 'equal');
+  assert.equal(classifyHeadVsLiveBase(b, a, { liveIsAncestorOfHead: true }).ok, true);
+  assert.equal(
+    classifyHeadVsLiveBase(a, b, { headIsAncestorOfLive: true }).failureReason,
+    'HEAD_BEHIND_LIVE_BASE',
+  );
+  assert.equal(
+    classifyHeadVsLiveBase(a, b, {}).failureReason,
+    'HEAD_DIVERGED_FROM_LIVE_BASE',
+  );
+  assert.equal(isAllowedTaskBranch('codex/wallpaper-plugin-wp02').ok, true);
+  assert.equal(isAllowedTaskBranch('main').ok, false);
+  assert.equal(isAllowedTaskBranch('huawei-android12-car').ok, false);
+  assert.equal(
+    readTaskWorktreeIdentity({ claimedHead: a, merged: true }).failureReason,
+    'CALLER_FORGED_IDENTITY',
+  );
 });
 
 test('WP-02 RED-01: prerequisites WP-INFRA / WP-00 / WP-01 are EffectiveDone', () => {

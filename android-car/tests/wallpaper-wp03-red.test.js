@@ -36,6 +36,10 @@ const {
   readJson,
   pathExists,
   liveAuthoritativeBaseSha,
+  classifyHeadVsLiveBase,
+  isAllowedTaskBranch,
+  readTaskWorktreeIdentity,
+  isGitAncestor,
   loadWp03CatalogEntry,
   parseWp03CatalogIdentity,
   readPrerequisiteDone,
@@ -74,13 +78,58 @@ test('WP-03 RED-01: environment paths and tools are real', () => {
 });
 
 test('WP-03 RED-01: worktree branch and live base identity', () => {
-  const branch = git(['branch', '--show-current']);
-  assert.equal(branch.status, 0, branch.combined);
-  assert.equal(branch.stdout, 'codex/wallpaper-plugin-wp03');
-  const head = git(['rev-parse', 'HEAD']);
-  assert.match(head.stdout, /^[0-9a-f]{40}$/);
-  const live = liveAuthoritativeBaseSha();
-  assert.equal(head.stdout.toLowerCase(), live);
+  // Live base from origin ls-remote; HEAD may equal live or be a descendant (task ahead).
+  const identity = readTaskWorktreeIdentity();
+  assert.equal(identity.ok, true, JSON.stringify(identity));
+  assert.equal(identity.branch, 'codex/wallpaper-plugin-wp03');
+  assert.match(identity.head, /^[0-9a-f]{40}$/);
+  assert.match(identity.liveBaseSha, /^[0-9a-f]{40}$/);
+  assert.equal(identity.liveBaseSha, liveAuthoritativeBaseSha());
+  assert.ok(
+    identity.relation === 'equal' || identity.relation === 'ahead',
+    `unexpected relation: ${identity.relation}`,
+  );
+  if (identity.relation === 'ahead') {
+    assert.equal(identity.liveIsAncestorOfHead, true);
+    assert.equal(isGitAncestor(identity.liveBaseSha, identity.head), true);
+  } else {
+    assert.equal(identity.head, identity.liveBaseSha);
+  }
+});
+
+test('WP-03 RED-01: head/live relation fixtures (equal/ahead pass; behind/diverged fail)', () => {
+  const a = 'a'.repeat(40);
+  const b = 'b'.repeat(40);
+  assert.equal(classifyHeadVsLiveBase(a, a, {}).ok, true);
+  assert.equal(classifyHeadVsLiveBase(a, a, {}).relation, 'equal');
+  assert.equal(
+    classifyHeadVsLiveBase(b, a, { liveIsAncestorOfHead: true }).ok,
+    true,
+  );
+  assert.equal(
+    classifyHeadVsLiveBase(b, a, { liveIsAncestorOfHead: true }).relation,
+    'ahead',
+  );
+  const behind = classifyHeadVsLiveBase(a, b, { headIsAncestorOfLive: true });
+  assert.equal(behind.ok, false);
+  assert.equal(behind.failureReason, 'HEAD_BEHIND_LIVE_BASE');
+  const diverged = classifyHeadVsLiveBase(a, b, {});
+  assert.equal(diverged.ok, false);
+  assert.equal(diverged.failureReason, 'HEAD_DIVERGED_FROM_LIVE_BASE');
+});
+
+test('WP-03 RED-01: task branch allowlist and caller identity forgery fail-closed', () => {
+  assert.equal(isAllowedTaskBranch('codex/wallpaper-plugin-wp03').ok, true);
+  assert.equal(isAllowedTaskBranch('main').ok, false);
+  assert.equal(isAllowedTaskBranch('master').ok, false);
+  assert.equal(isAllowedTaskBranch('huawei-android12-car').ok, false);
+  assert.equal(isAllowedTaskBranch('feature/other').ok, false);
+  const forged = readTaskWorktreeIdentity({
+    claimedLiveBase: '0'.repeat(40),
+    REMOTE_VERIFIED: true,
+  });
+  assert.equal(forged.ok, false);
+  assert.equal(forged.failureReason, 'CALLER_FORGED_IDENTITY');
 });
 
 test('WP-03 RED-01: prerequisites WP-INFRA / WP-00 / WP-01 / WP-02 EffectiveDone', () => {
