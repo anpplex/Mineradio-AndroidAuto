@@ -1464,9 +1464,13 @@ def cmd_bootstrap_record_test_receipt(args: argparse.Namespace) -> int:
     if kind not in TEST_RECEIPT_FIELD_BY_KIND:
         fail("ILLEGAL_STATE", f"unknown test receipt kind: {kind}")
     field = TEST_RECEIPT_FIELD_BY_KIND[kind]
-    command = args.command
+    # NOTE: args.command is the CLI subcommand; test command is --command / --test-command.
+    command = getattr(args, "test_command", None)
     if not command or not isinstance(command, str):
-        fail("CALLER_INJECTED_TEST_RECEIPT", "missing --command for test receipt")
+        fail(
+            "CALLER_INJECTED_TEST_RECEIPT",
+            "missing --command / --test-command for test receipt",
+        )
     if "forged" in command.lower():
         fail(
             "CALLER_INJECTED_TEST_RECEIPT",
@@ -1525,7 +1529,7 @@ def cmd_bootstrap_record_test_receipt(args: argparse.Namespace) -> int:
         receipt=str(path),
         kind=kind,
         source="node-test",
-        command=command,
+        testCommand=command,
         exitCode=exit_code_i,
         **{"pass": record["pass"]},
     )
@@ -2783,6 +2787,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--expected-base-sha")
     parser.add_argument("--base-ref")
     # Test receipt surface (RED-10 / GREEN-10)
+    # dest must not collide with positional `command` (subcommand name).
+    parser.add_argument("--command", dest="test_command")
+    parser.add_argument("--test-command", dest="test_command")
     parser.add_argument("--from-node-test", action="store_true")
     parser.add_argument("--exit-code", type=int)
     parser.add_argument("--pass", dest="pass_flag")
