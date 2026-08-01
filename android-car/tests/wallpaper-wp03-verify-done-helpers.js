@@ -360,12 +360,43 @@ function computeCoreProgress(doneMap) {
   ]);
 }
 
-function defaultDoneReceipts() {
+/** Baseline through WP-02 only (18%). */
+function defaultDoneReceiptsThroughWp02() {
   return {
     'WP-00': wp00MergeReceipt,
     'WP-01': wp01TxnReceipt,
     'WP-02': wp02TxnReceipt,
+  };
+}
+
+/** Include live WP-03 receipt (elevates only when EffectiveDone truly true). */
+function defaultDoneReceipts() {
+  return {
+    ...defaultDoneReceiptsThroughWp02(),
     'WP-03': wp03TxnReceipt,
+  };
+}
+
+/**
+ * Live operational WP-03 progress from transaction receipt.
+ * WP-00+WP-01+WP-02=18; +WP-03=26 when EffectiveDone.
+ */
+function liveWp03OperationalProgress() {
+  if (!pathExists(wp03TxnReceipt)) {
+    return {
+      exists: false,
+      receipt: null,
+      EffectiveDone: false,
+      expectedCoreProgressPercent: 18,
+    };
+  }
+  const receipt = readJson(wp03TxnReceipt);
+  const done = receipt && receipt.EffectiveDone === true && receipt.state === 'DONE';
+  return {
+    exists: true,
+    receipt,
+    EffectiveDone: done,
+    expectedCoreProgressPercent: done ? 26 : 18,
   };
 }
 
@@ -432,6 +463,8 @@ module.exports = {
   runVerifyDone,
   computeCoreProgress,
   defaultDoneReceipts,
+  defaultDoneReceiptsThroughWp02,
+  liveWp03OperationalProgress,
   productionHasWp03VerifyDonePath,
   lastFailureReason,
 };

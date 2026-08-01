@@ -65,6 +65,8 @@ OUTPUT_APK="$OUTPUT_DIR/Mineradio-${VERSION_NAME}-huawei-android12-car.apk"
 node "$SCRIPT_DIR/patch-apk-manifest.js" "$DECODED_DIR/AndroidManifest.xml"
 node "$SCRIPT_DIR/patch-spica-storage.js" "$DECODED_DIR"
 node "$SCRIPT_DIR/patch-audio-focus-bridge.js" "$DECODED_DIR"
+# WP-04: WallpaperPlugin Smali bridge + trusted WebView policy injection (fail-closed).
+node "$SCRIPT_DIR/patch-wallpaper-plugin-bridge.js" "$DECODED_DIR"
 node "$SCRIPT_DIR/patch-car-hmi-assets.js" "$DECODED_DIR"
 "$JAVA_BIN" -jar "$APKTOOL_JAR" b "$DECODED_DIR" -o "$UNSIGNED_APK"
 "$APKSIGNER" sign \

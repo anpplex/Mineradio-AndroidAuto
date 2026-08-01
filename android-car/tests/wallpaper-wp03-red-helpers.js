@@ -559,8 +559,41 @@ function defaultDoneReceipts() {
 function defaultDoneReceiptsWithForgedWp03() {
   return {
     ...defaultDoneReceipts(),
+    // Mapping live WP-03 receipt only elevates weight when EffectiveDone is truly true.
     'WP-03': wp03TxnReceipt,
   };
+}
+
+/**
+ * Live operational WP-03 progress from transaction receipt (post CLOSE-VERIFY aware).
+ * WP-00(4)+WP-01(6)+WP-02(8)=18; +WP-03(8)=26 when EffectiveDone.
+ */
+function liveWp03OperationalProgress() {
+  if (!pathExists(wp03TxnReceipt)) {
+    return {
+      exists: false,
+      receipt: null,
+      EffectiveDone: false,
+      expectedCoreProgressPercent: 18,
+      expectedCoreProgressWithoutWp03: 18,
+    };
+  }
+  const receipt = readJson(wp03TxnReceipt);
+  const done = receipt && receipt.EffectiveDone === true && receipt.state === 'DONE';
+  return {
+    exists: true,
+    receipt,
+    EffectiveDone: done,
+    expectedCoreProgressPercent: done ? 26 : 18,
+    expectedCoreProgressWithoutWp03: 18,
+  };
+}
+
+function initTempWp03Receipt(taskId = TASK_ID) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wp03-red-'));
+  const receipt = path.join(dir, `${String(taskId).toLowerCase()}.json`);
+  const init = runRunner(['receipt-init', '--task', taskId, '--receipt', receipt]);
+  return { receipt, init, dir };
 }
 
 function parseRunnerJson(result) {
@@ -649,5 +682,7 @@ module.exports = {
   computeCoreProgress,
   defaultDoneReceipts,
   defaultDoneReceiptsWithForgedWp03,
+  liveWp03OperationalProgress,
+  initTempWp03Receipt,
   parseRunnerJson,
 };

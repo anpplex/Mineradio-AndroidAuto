@@ -332,19 +332,25 @@ test('WP-02 VERIFY-DONE GREEN-3.3: full proof chain succeeds with dynamic PR ide
   assert.equal(pathExists(runtimeContractPath), true);
 });
 
-test('WP-02 VERIFY-DONE RED-3.4: WP-02 verify-done path present; WP-03 EffectiveDone not auto-elevated', () => {
-  // After WP-03 GREEN, catalog may contain WP-03; that must not forge WP-02/WP-03 done.
+test('WP-02 VERIFY-DONE RED-3.4: WP-02 verify-done path present; WP-03 DONE only via its own verify-done', () => {
+  // After WP-03 GREEN, catalog may contain WP-03; WP-02 path must not forge WP-03 done.
   const catalog = readJson(catalogPath);
   assert.ok(Array.isArray(catalog.tasks));
   assert.equal(productionHasWp02VerifyDonePath(), true);
-  // Operational WP-03 receipt (if any) must remain non-DONE without its own verify-done.
+  // Operational WP-03 receipt: if DONE, must carry verifyDone proof (not auto-elevated by WP-02).
   const wp03Path = path.join(
     path.dirname(wp02TxnReceipt),
     'wp-03.json',
   );
   if (pathExists(wp03Path)) {
     const wp03 = readJson(wp03Path);
-    assert.notEqual(wp03.EffectiveDone, true);
-    assert.notEqual(wp03.state, 'DONE');
+    if (wp03.EffectiveDone === true || wp03.state === 'DONE') {
+      assert.equal(wp03.EffectiveDone, true);
+      assert.equal(wp03.state, 'DONE');
+      assert.ok(wp03.verifyDone && typeof wp03.verifyDone === 'object');
+    } else {
+      assert.notEqual(wp03.EffectiveDone, true);
+      assert.notEqual(wp03.state, 'DONE');
+    }
   }
 });

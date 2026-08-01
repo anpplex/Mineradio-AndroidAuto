@@ -183,6 +183,56 @@
         "FileProvider plugin_stage",
         "BrowseActivity launch Intent"
       ]
+    },
+    {
+      "taskId": "WP-04",
+      "dependsOn": ["WP-INFRA", "WP-00", "WP-01", "WP-02", "WP-03"],
+      "requiredEffectiveDone": ["WP-INFRA", "WP-00", "WP-01", "WP-02", "WP-03"],
+      "phaseCommands": {
+        "RED": { "commandId": "WP-04-RED", "argv": ["true"] },
+        "GREEN": { "commandId": "WP-04-GREEN", "argv": ["true"] },
+        "REFACTOR": { "commandId": "WP-04-REFACTOR", "argv": ["true"] },
+        "VERIFY": { "commandId": "WP-04-VERIFY", "argv": ["true"] }
+      },
+      "expectedExit": { "RED": 1, "GREEN": 0, "REFACTOR": 0, "VERIFY": 0 },
+      "failureSignaturePolicy": { "RED": { "required": true, "match": "stderr" } },
+      "scopeCheck": {
+        "repo": "mineradio",
+        "exactFiles": [
+          "android-car/scripts/wallpaper-plugin-contract.js",
+          "android-car/scripts/patch-wallpaper-plugin-bridge.js",
+          "android-car/scripts/smali/com/mineradio/app/car/CarWallpaperPluginBridge.smali",
+          "android-car/tests/wallpaper-plugin-bridge.test.js",
+          "android-car/scripts/build-car-apk.sh"
+        ],
+        "product": "Wallpaper Engine",
+        "path": "android-car/scripts/",
+        "jsInterface": "WallpaperPlugin",
+        "actionRegistryMaxEntries": 16,
+        "actionTokenTtlMinutes": 10
+      },
+      "evidenceLevel": "E1",
+      "weight": 10,
+      "product": "Wallpaper Engine",
+      "path": "android-car/scripts/",
+      "requiredEffectiveGate": false,
+      "inputs": [
+        "PluginContract protocolVersion 1",
+        "PluginContract authority com.motif.wallpaperengine.control",
+        "PluginContract methods",
+        "WP-02 claimLaunch / renew_action CAS",
+        "WP-03 staging / engine adapter"
+      ],
+      "outputs": [
+        "wallpaper-plugin-contract.js",
+        "patch-wallpaper-plugin-bridge.js",
+        "CarWallpaperPluginBridge.smali",
+        "action-token registry",
+        "TrustedWallpaperBridgePolicy",
+        "WallpaperPlugin JS interface",
+        "wallpaper-plugin-bridge.test.js",
+        "build-car-apk.sh wire"
+      ]
     }
   ]
 }
