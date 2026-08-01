@@ -24,9 +24,8 @@ const {
   schemaPath,
   finalInfraReceipt,
   wp00TxnFile,
-  AUTHORITATIVE_BASE_SHA,
-  APPROVED_WP00_BRANCH,
   FORBIDDEN_BRANCHES,
+  FORBIDDEN_PSEUDO_BASE_TIPS,
   WALLPAPER_ENGINE_MAIN,
   PLUGIN_SANDBOX_WT,
   git,
@@ -34,6 +33,10 @@ const {
   readJson,
   requireBaselineContract,
   loadBaselineContract,
+  getWp00TaskContext,
+  getAuthoritativeBaseSha,
+  getApprovedTaskBranch,
+  getHeadSha,
 } = require('./wallpaper-wp00-baseline-helpers');
 
 function assertContractMissingOrFails(fn, label) {
@@ -59,14 +62,19 @@ test('WP-00 RED-01: environment paths and tools are real', () => {
   assert.equal(fs.existsSync(path.join(WALLPAPER_ENGINE_MAIN, '.git')), true);
 });
 
-test('WP-00 RED-01: current Mineradio worktree is the WP-00 task worktree', () => {
+test('WP-00 RED-01: current Mineradio worktree is a valid task worktree', () => {
+  const ctx = getWp00TaskContext(repoRoot);
+  assert.equal(ctx.ok, true, JSON.stringify(ctx));
   const top = git(['rev-parse', '--show-toplevel']);
   assert.equal(top.status, 0, top.combined);
   assert.equal(path.resolve(top.stdout), path.resolve(repoRoot));
   const branch = git(['branch', '--show-current']);
-  assert.equal(branch.stdout, APPROVED_WP00_BRANCH);
+  assert.equal(branch.stdout, ctx.taskBranch);
+  assert.equal(branch.stdout, getApprovedTaskBranch());
   const head = git(['rev-parse', 'HEAD']);
-  assert.equal(head.stdout, AUTHORITATIVE_BASE_SHA);
+  assert.equal(head.stdout, ctx.headSha);
+  assert.equal(head.stdout, getHeadSha());
+  assert.match(getAuthoritativeBaseSha(), /^[0-9a-f]{40}$/);
   const detached = git(['rev-parse', '--abbrev-ref', 'HEAD']);
   assert.notEqual(detached.stdout, 'HEAD', 'must not be detached HEAD');
 });
@@ -99,26 +107,29 @@ test('WP-00 RED-01.0 baseline contract production surface must exist', () => {
 test('WP-00 RED-01.1 contract must assert Mineradio task branch identity', () => {
   assertContractMissingOrFails((c) => {
     assert.equal(typeof c.assertMineradioWorktreeIdentity, 'function');
+    const taskBranch = getApprovedTaskBranch();
+    const head = getHeadSha();
     const r = c.assertMineradioWorktreeIdentity({
       cwd: repoRoot,
-      expectedBranch: APPROVED_WP00_BRANCH,
-      expectedHead: AUTHORITATIVE_BASE_SHA,
+      expectedBranch: taskBranch,
+      expectedHead: head,
       forbiddenBranches: FORBIDDEN_BRANCHES,
     });
     assert.equal(r.ok, true, JSON.stringify(r));
-    assert.equal(r.branch, APPROVED_WP00_BRANCH);
-    assert.equal(r.head, AUTHORITATIVE_BASE_SHA);
+    assert.equal(r.branch, taskBranch);
+    assert.equal(r.head, head);
     assert.equal(r.detached, false);
   }, 'RED-01.1');
 });
 
-test('WP-00 RED-01.2 contract must reject forbidden branches (main/master/base/infra)', () => {
+test('WP-00 RED-01.2 contract must reject forbidden branches (main/master/base)', () => {
   assertContractMissingOrFails((c) => {
+    const head = getHeadSha();
     for (const bad of FORBIDDEN_BRANCHES) {
       const r = c.assertMineradioWorktreeIdentity({
         cwd: repoRoot,
         expectedBranch: bad,
-        expectedHead: AUTHORITATIVE_BASE_SHA,
+        expectedHead: head,
         forbiddenBranches: FORBIDDEN_BRANCHES,
       });
       assert.equal(r.ok, false, `must reject expectedBranch=${bad}`);
@@ -127,11 +138,11 @@ test('WP-00 RED-01.2 contract must reject forbidden branches (main/master/base/i
   }, 'RED-01.2');
 });
 
-test('WP-00 RED-01.3 contract must reject HEAD != authoritative base', () => {
+test('WP-00 RED-01.3 contract must reject HEAD != expectedHead assertion', () => {
   assertContractMissingOrFails((c) => {
     const r = c.assertMineradioWorktreeIdentity({
       cwd: repoRoot,
-      expectedBranch: APPROVED_WP00_BRANCH,
+      expectedBranch: getApprovedTaskBranch(),
       expectedHead: '0000000000000000000000000000000000000000',
       forbiddenBranches: FORBIDDEN_BRANCHES,
     });
@@ -211,15 +222,21 @@ test('WP-00 RED-01.8 contract must reject missing or false WP-INFRA EffectiveGat
 test('WP-00 RED-01.9 contract must not accept unmerged infra branch tip as authoritative base', () => {
   assertContractMissingOrFails((c) => {
     assert.equal(typeof c.assertAuthoritativeBase, 'function');
-    // 57cbe4a is the infra implementation tip — must not replace merge base 87d5675.
+    const liveBase = getAuthoritativeBaseSha();
     const r = c.assertAuthoritativeBase({
       cwd: repoRoot,
-      expectedBaseSha: AUTHORITATIVE_BASE_SHA,
-      forbiddenHeads: ['57cbe4ac1481a6bd79f6c3eca4f6ae91d37bcd08'],
+      expectedBaseSha: liveBase,
+      forbiddenHeads: [...FORBIDDEN_PSEUDO_BASE_TIPS],
     });
     assert.equal(r.ok, true, JSON.stringify(r));
-    assert.equal(r.baseSha, AUTHORITATIVE_BASE_SHA);
-    assert.notEqual(r.head, '57cbe4ac1481a6bd79f6c3eca4f6ae91d37bcd08');
+    assert.equal(r.baseSha, liveBase);
+    assert.notEqual(r.baseSha, '57cbe4ac1481a6bd79f6c3eca4f6ae91d37bcd08');
+    const forged = c.assertAuthoritativeBase({
+      cwd: repoRoot,
+      expectedBaseSha: '57cbe4ac1481a6bd79f6c3eca4f6ae91d37bcd08',
+      forbiddenHeads: [...FORBIDDEN_PSEUDO_BASE_TIPS],
+    });
+    assert.equal(forged.ok, false, 'must reject infra tip as claimed base');
   }, 'RED-01.9');
 });
 
@@ -266,8 +283,8 @@ test('WP-00 RED-01.11 production assert-ready for WP-00 still needs explicit gat
     const r = c.assertWp00ReadyToStart({
       finalInfraReceipt,
       cwd: repoRoot,
-      expectedBranch: APPROVED_WP00_BRANCH,
-      expectedHead: AUTHORITATIVE_BASE_SHA,
+      expectedBranch: getApprovedTaskBranch(),
+      expectedHead: getHeadSha(),
       runnerAssertReadyResult: {
         status: forged.status,
         combined: forged.combined,

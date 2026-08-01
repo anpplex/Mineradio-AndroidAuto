@@ -17,6 +17,64 @@
       "evidenceLevel": "E0",
       "weight": 0,
       "requiredEffectiveGate": true
+    },
+    {
+      "taskId": "WP-00",
+      "dependsOn": ["WP-INFRA"],
+      "requiredEffectiveDone": ["WP-INFRA"],
+      "phaseCommands": {
+        "RED": { "commandId": "WP-00-RED", "argv": ["true"] },
+        "GREEN": { "commandId": "WP-00-GREEN", "argv": ["true"] },
+        "REFACTOR": { "commandId": "WP-00-REFACTOR", "argv": ["true"] },
+        "VERIFY": { "commandId": "WP-00-VERIFY", "argv": ["true"] }
+      },
+      "expectedExit": { "RED": 1, "GREEN": 0, "REFACTOR": 0, "VERIFY": 0 },
+      "failureSignaturePolicy": { "RED": { "required": true, "match": "stderr" } },
+      "scopeCheck": { "repo": "mineradio", "exactFiles": [] },
+      "evidenceLevel": "E0",
+      "weight": 4,
+      "requiredEffectiveGate": true
+    },
+    {
+      "taskId": "WP-01",
+      "dependsOn": ["WP-INFRA", "WP-00"],
+      "requiredEffectiveDone": ["WP-INFRA", "WP-00"],
+      "phaseCommands": {
+        "RED": { "commandId": "WP-01-RED", "argv": ["true"] },
+        "GREEN": { "commandId": "WP-01-GREEN", "argv": ["true"] },
+        "REFACTOR": { "commandId": "WP-01-REFACTOR", "argv": ["true"] },
+        "VERIFY": { "commandId": "WP-01-VERIFY", "argv": ["true"] }
+      },
+      "expectedExit": { "RED": 1, "GREEN": 0, "REFACTOR": 0, "VERIFY": 0 },
+      "failureSignaturePolicy": { "RED": { "required": true, "match": "stderr" } },
+      "scopeCheck": {
+        "repo": "mineradio",
+        "exactFiles": ["wallpaper-plugin/"],
+        "product": "Wallpaper Engine",
+        "path": "wallpaper-plugin/"
+      },
+      "evidenceLevel": "E1",
+      "weight": 6,
+      "product": "Wallpaper Engine",
+      "path": "wallpaper-plugin/",
+      "requiredEffectiveGate": false,
+      "proofs": {
+        "importCommit": "363cc82849d57b6f9f43706840a0c286afbef144",
+        "implementationCommits": [
+          "08c60a9fbcb9f3772e1c3c9419523da50118edc4",
+          "363cc82849d57b6f9f43706840a0c286afbef144"
+        ],
+        "prNumber": 5,
+        "mergeSha": "37bfcae9c812b691b68fa8a91ebd0c08b2ec6e30",
+        "authoritativeBaseRef": "refs/heads/huawei-android12-car",
+        "sourceRepository": "local WallpaperEngine sandbox",
+        "sourceCommit": "f117780b0741b6c3807d024ce59dbf629410579c",
+        "requiredTestSuites": [
+          "PluginContractTest",
+          "wallpaper-plugin-monorepo-import",
+          "full-node"
+        ]
+      }
     }
   ]
 }
