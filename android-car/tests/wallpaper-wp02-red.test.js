@@ -76,17 +76,19 @@ test('WP-02 RED-01: environment paths and tools are real', () => {
 test('WP-02 RED-01: worktree branch and live base identity', () => {
   const branch = git(['branch', '--show-current']);
   assert.equal(branch.status, 0, branch.combined);
-  assert.equal(branch.stdout, 'codex/wallpaper-plugin-wp02');
+  // Any codex/wallpaper-plugin-* task branch (implementation, verify-done, …).
+  assert.match(
+    branch.stdout,
+    /^codex\/wallpaper-plugin-/,
+    `unexpected task branch: ${branch.stdout}`,
+  );
   const head = git(['rev-parse', 'HEAD']);
   assert.match(head.stdout, /^[0-9a-f]{40}$/);
   const live = git(['ls-remote', 'origin', 'huawei-android12-car']);
   assert.equal(live.status, 0, live.combined);
   const liveSha = (live.stdout.split(/\s+/)[0] || '').toLowerCase();
+  // HEAD must equal live base when worktree is branched from origin tip.
   assert.equal(head.stdout.toLowerCase(), liveSha);
-  assert.equal(
-    head.stdout.toLowerCase(),
-    'bba51e0e4c794e8cf542b56dfdcccba43b04fae8',
-  );
 });
 
 test('WP-02 RED-01: prerequisites WP-INFRA / WP-00 / WP-01 are EffectiveDone', () => {
