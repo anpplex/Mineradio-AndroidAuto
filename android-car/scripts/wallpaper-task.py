@@ -2668,6 +2668,270 @@ def cmd_bootstrap_base_containment_readback(args: argparse.Namespace) -> int:
     )
 
 
+def load_authoritative_catalog(args: argparse.Namespace) -> dict[str, Any]:
+    catalog_path = Path(args.catalog_path) if args.catalog_path else (
+        Path(__file__).resolve().parent / "wallpaper-plugin-tasks.json"
+    )
+    if not catalog_path.is_file():
+        fail("MISSING_RECEIPT", f"catalog not found: {catalog_path}")
+    try:
+        data = json.loads(catalog_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        fail("ILLEGAL_STATE", f"cannot parse catalog: {exc}")
+    if not isinstance(data, dict) or not isinstance(data.get("tasks"), list):
+        fail("ILLEGAL_STATE", "catalog must be object with tasks[]")
+    return data
+
+
+def catalog_task(catalog: Mapping[str, Any], task_id: str) -> dict[str, Any]:
+    matches = [t for t in catalog.get("tasks", []) if isinstance(t, dict) and t.get("taskId") == task_id]
+    if len(matches) != 1:
+        fail(
+            "CATALOG_WP01_MISSING" if task_id == "WP-01" else "UNKNOWN_TASK",
+            f"catalog must contain exactly one {task_id} entry (found {len(matches)})",
+        )
+    return matches[0]
+
+
+def live_authoritative_base_sha() -> str:
+    out = run_git(
+        ["rev-parse", "origin/huawei-android12-car"],
+        fail_reason="LS_REMOTE_MISMATCH",
+    )
+    return normalize_git_sha40(
+        out,
+        reason="LS_REMOTE_MISMATCH",
+        message="origin/huawei-android12-car is not a 40-char SHA",
+    )
+
+
+def evaluate_wp01_verify_done(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    """Return (ok, reason, message, proof_record). Fail-closed when proofs incomplete."""
+    catalog = load_authoritative_catalog(args)
+    task = catalog_task(catalog, "WP-01")
+    weight = task.get("weight")
+    if weight != 6:
+        return False, "CATALOG_WP01_MISSING", f"WP-01 weight must be 6, got {weight!r}", {}
+
+    proofs = receipt.get("proofs") if isinstance(receipt.get("proofs"), dict) else {}
+    # Optional CLI override is not trusted alone — must match receipt proofs when both set.
+    if args.proofs_json:
+        try:
+            injected = json.loads(args.proofs_json)
+        except json.JSONDecodeError as exc:
+            return False, "WP01_VERIFY_DONE_PROOF_MISSING", f"invalid --proofs-json: {exc}", {}
+        if not isinstance(injected, dict):
+            return False, "WP01_VERIFY_DONE_PROOF_MISSING", "--proofs-json must be object", {}
+        # merge only for missing keys; receipt wins on conflict
+        merged = dict(injected)
+        merged.update(proofs)
+        proofs = merged
+
+    required_keys = (
+        "importCommit",
+        "mergeSha",
+        "prNumber",
+        "authoritativeBaseSha",
+        "pluginContractTest",
+        "monorepoImportTest",
+        "fullNodeTest",
+    )
+    missing = [k for k in required_keys if k not in proofs]
+    if missing:
+        return (
+            False,
+            "WP01_VERIFY_DONE_PROOF_MISSING",
+            f"missing proofs: {','.join(missing)}",
+            {},
+        )
+
+    import_commit = normalize_git_sha40(
+        str(proofs.get("importCommit") or ""),
+        reason="WP01_VERIFY_DONE_PROOF_MISSING",
+        message="importCommit must be 40-char SHA",
+    )
+    merge_sha = normalize_git_sha40(
+        str(proofs.get("mergeSha") or ""),
+        reason="WP01_VERIFY_DONE_PROOF_MISSING",
+        message="mergeSha must be 40-char SHA",
+    )
+    try:
+        pr_number = int(proofs.get("prNumber"))
+    except (TypeError, ValueError):
+        return False, "WP01_VERIFY_DONE_PROOF_MISSING", "prNumber must be int", {}
+    if pr_number != 5:
+        return False, "WP01_VERIFY_DONE_PROOF_MISSING", f"prNumber must be 5, got {pr_number}", {}
+
+    claimed_base = normalize_git_sha40(
+        str(proofs.get("authoritativeBaseSha") or ""),
+        reason="WP01_VERIFY_DONE_PROOF_MISSING",
+        message="authoritativeBaseSha must be 40-char SHA",
+    )
+    live_base = live_authoritative_base_sha()
+    if claimed_base != live_base:
+        return (
+            False,
+            "BASE_CONTAINMENT_REQUIRED",
+            f"proof base {claimed_base} != live origin base {live_base}",
+            {},
+        )
+    # merge must equal live base tip for closed WP-01 monorepo import
+    if merge_sha != live_base:
+        return (
+            False,
+            "BASE_CONTAINMENT_REQUIRED",
+            f"mergeSha {merge_sha} != live base tip {live_base}",
+            {},
+        )
+
+    for suite_key in ("pluginContractTest", "monorepoImportTest", "fullNodeTest"):
+        suite = proofs.get(suite_key)
+        if not isinstance(suite, dict) or suite.get("pass") is not True:
+            return (
+                False,
+                "WP01_VERIFY_DONE_PROOF_MISSING",
+                f"{suite_key}.pass must be true",
+                {},
+            )
+        sha = suite.get("sha256")
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{64}", sha.lower() or ""):
+            return (
+                False,
+                "WP01_VERIFY_DONE_PROOF_MISSING",
+                f"{suite_key}.sha256 must be 64-char hex",
+                {},
+            )
+
+    catalog_proofs = task.get("proofs") if isinstance(task.get("proofs"), dict) else {}
+    if catalog_proofs.get("importCommit") and catalog_proofs["importCommit"] != import_commit:
+        return (
+            False,
+            "WP01_VERIFY_DONE_PROOF_MISSING",
+            "importCommit does not match catalog proofs.importCommit",
+            {},
+        )
+    if catalog_proofs.get("mergeSha") and catalog_proofs["mergeSha"] != merge_sha:
+        return (
+            False,
+            "WP01_VERIFY_DONE_PROOF_MISSING",
+            "mergeSha does not match catalog proofs.mergeSha",
+            {},
+        )
+
+    record = {
+        "importCommit": import_commit,
+        "mergeSha": merge_sha,
+        "prNumber": pr_number,
+        "authoritativeBaseSha": live_base,
+        "weight": 6,
+        "product": task.get("product") or "Wallpaper Engine",
+        "path": task.get("path") or "wallpaper-plugin/",
+        "verifiedAt": utc_now_iso(),
+        "source": "verify-done",
+    }
+    return True, "", "", record
+
+
+def cmd_verify_done(args: argparse.Namespace) -> int:
+    """Fail-closed DONE only when catalog + proofs + live base containment hold."""
+    task_id = require_task(args.task)
+    path = resolve_receipt_path(args)
+
+    with receipt_lock(path):
+        current = load_locked_receipt(path)
+        if current.get("taskId") not in (None, task_id) and current.get("taskId") != task_id:
+            fail(
+                "ILLEGAL_STATE",
+                f"receipt taskId {current.get('taskId')} != {task_id}",
+            )
+
+        if task_id != "WP-01":
+            fail(
+                "WP01_VERIFY_DONE_UNAVAILABLE",
+                f"verify-done production path currently implemented for WP-01 only (got {task_id})",
+            )
+
+        ok_gate, reason, message, proof_record = evaluate_wp01_verify_done(current, args)
+        if not ok_gate:
+            fail(reason or "WP01_VERIFY_DONE_PROOF_MISSING", message or "verify-done proofs incomplete")
+
+        next_value = dict(current)
+        next_value["taskId"] = "WP-01"
+        next_value["state"] = "DONE"
+        next_value["EffectiveDone"] = True
+        next_value["revision"] = bump_revision(current)
+        next_value["verifyDone"] = proof_record
+        store_task_receipt_with_readback(path, next_value)
+
+    # Independent re-read + hash (response-loss safe)
+    again = load_task_receipt(path, check_mode=True)
+    if again.get("EffectiveDone") is not True or again.get("state") != "DONE":
+        fail("RECEIPT_READBACK_MISMATCH", "verify-done readback did not retain DONE")
+    receipt_sha = hashlib.sha256(canonical_receipt_bytes(again)).hexdigest()
+    return emit_ok(
+        "verify-done",
+        taskId="WP-01",
+        EffectiveDone=True,
+        state="DONE",
+        revision=again.get("revision"),
+        receipt=str(path),
+        receiptSha256=receipt_sha,
+        coreProgressWeight=6,
+    )
+
+
+def cmd_compute_core_progress(args: argparse.Namespace) -> int:
+    """Sum catalog weights for tasks with EffectiveDone proven by receipts (not caller)."""
+    catalog = load_authoritative_catalog(args)
+    # Optional JSON map taskId -> receipt path
+    done_map: dict[str, str] = {}
+    if args.done_receipts_json:
+        try:
+            raw = json.loads(args.done_receipts_json)
+        except json.JSONDecodeError as exc:
+            fail("ILLEGAL_STATE", f"invalid --done-receipts-json: {exc}")
+        if not isinstance(raw, dict):
+            fail("ILLEGAL_STATE", "--done-receipts-json must be object")
+        done_map = {str(k): str(v) for k, v in raw.items()}
+
+    total = 0
+    breakdown: list[dict[str, Any]] = []
+    for task in catalog.get("tasks", []):
+        if not isinstance(task, dict):
+            continue
+        task_id = task.get("taskId")
+        weight = task.get("weight", 0)
+        try:
+            weight_i = int(weight)
+        except (TypeError, ValueError):
+            weight_i = 0
+        effective = False
+        if task_id in done_map:
+            rpath = Path(done_map[task_id])
+            if rpath.is_file():
+                data = load_task_receipt(rpath, check_mode=True)
+                effective = data.get("EffectiveDone") is True and data.get("taskId") == task_id
+        if effective:
+            total += weight_i
+        breakdown.append(
+            {
+                "taskId": task_id,
+                "weight": weight_i,
+                "EffectiveDone": effective,
+            }
+        )
+
+    return emit_ok(
+        "compute-core-progress",
+        coreProgressPercent=total,
+        breakdown=breakdown,
+        source="catalog-weights+receipts",
+    )
+
+
 def cmd_assert_ready(args: argparse.Namespace) -> int:
     task_id = args.task
     if not task_id:
@@ -2746,6 +3010,8 @@ COMMANDS = {
     "bootstrap-pr-merge-readback": cmd_bootstrap_pr_merge_readback,
     "bootstrap-base-containment-readback": cmd_bootstrap_base_containment_readback,
     "assert-ready": cmd_assert_ready,
+    "verify-done": cmd_verify_done,
+    "compute-core-progress": cmd_compute_core_progress,
 }
 
 
@@ -2818,6 +3084,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--expected-head-sha")
     parser.add_argument("--expected-base-sha")
     parser.add_argument("--base-ref")
+    # WP-01 verify-done / progress (CONTEXT-CATALOG-REPAIR)
+    parser.add_argument("--proofs-json")
+    parser.add_argument("--done-receipts-json")
     # Test receipt surface (RED-10 / GREEN-10)
     # dest must not collide with positional `command` (subcommand name).
     parser.add_argument("--command", dest="test_command")
