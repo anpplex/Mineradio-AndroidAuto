@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * Helpers for WP-00 RED-01 baseline / worktree / WP-INFRA gate contracts.
- * Uses real git, real paths, real final receipt — no forged SHAs.
+ * Helpers for WP-00 baseline / worktree / WP-INFRA gate contracts.
+ * Uses real git, real paths, real final receipt — and unified task context.
  */
 
 const fs = require('node:fs');
@@ -11,11 +11,16 @@ const { spawnSync } = require('node:child_process');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const contractPath = path.join(repoRoot, 'android-car', 'scripts', 'wp00-baseline-contract.js');
+const contextProviderPath = path.join(
+  repoRoot,
+  'android-car',
+  'scripts',
+  'wallpaper-task-context.js',
+);
 const runnerPath = path.join(repoRoot, 'android-car', 'scripts', 'wallpaper-task.py');
 const catalogPath = path.join(repoRoot, 'android-car', 'scripts', 'wallpaper-plugin-tasks.json');
 const schemaPath = path.join(repoRoot, 'android-car', 'scripts', 'wallpaper-task.schema.json');
 
-// Shared verification tree (gitignored) lives with the primary clone.
 const verificationRoot = path.join(
   '/Users/anpple/Codex/Mineradio',
   'android-car',
@@ -30,14 +35,16 @@ const finalInfraReceipt = path.join(
 const wp00TxnRoot = path.join(verificationRoot, 'transactions');
 const wp00TxnFile = path.join(wp00TxnRoot, 'wp-00.json');
 
-const AUTHORITATIVE_BASE_SHA = '87d5675b135c5f0e94ec94007667e81866a76984';
-const APPROVED_WP00_BRANCH = 'codex/wallpaper-plugin-wp00';
-const FORBIDDEN_BRANCHES = Object.freeze([
-  'main',
-  'master',
-  'huawei-android12-car',
-  'codex/wallpaper-plugin-infra',
-]);
+const {
+  resolveTaskContext,
+  FORBIDDEN_TASK_BRANCHES,
+  FORBIDDEN_PSEUDO_BASE_TIPS,
+  AUTHORITATIVE_BASE_REF,
+} = require(contextProviderPath);
+
+/** Forbidden as WP-00 task branch (includes integration base). */
+const FORBIDDEN_BRANCHES = Object.freeze([...FORBIDDEN_TASK_BRANCHES]);
+
 const WALLPAPER_ENGINE_MAIN = '/Users/anpple/Codex/WallpaperEngine';
 const PLUGIN_SANDBOX_WT = path.join(
   WALLPAPER_ENGINE_MAIN,
@@ -80,41 +87,85 @@ function loadBaselineContract() {
   if (!fs.existsSync(contractPath)) {
     return null;
   }
-  // Clear require cache so GREEN iterations reload.
   delete require.cache[require.resolve(contractPath)];
   return require(contractPath);
 }
 
 function requireBaselineContract() {
-  const c = loadBaselineContract();
-  if (!c) {
-    const err = new Error(
-      'WP-00 baseline contract surface not implemented: ' + contractPath,
-    );
-    err.code = 'WP00_BASELINE_NOT_IMPLEMENTED';
-    throw err;
+  const surface = loadBaselineContract();
+  if (!surface) {
+    throw new Error(`WP-00 baseline contract missing: ${contractPath}`);
   }
-  return c;
+  return surface;
+}
+
+/**
+ * Live task context for this worktree (branch, HEAD, authoritative base).
+ * Does not hardcode wp00 branch or frozen base SHAs.
+ */
+function getWp00TaskContext(cwd = repoRoot) {
+  const ctx = resolveTaskContext({ cwd, taskId: 'WP-00' });
+  if (!ctx.ok) {
+    throw new Error(
+      `resolveTaskContext failed: ${ctx.failureReason || ''} ${ctx.message || ''}`,
+    );
+  }
+  return ctx;
+}
+
+function fieldFromContext(field, cwd = repoRoot) {
+  return getWp00TaskContext(cwd)[field];
+}
+
+/** Live authoritative base SHA from origin (never caller-forged). */
+function liveAuthoritativeBaseSha(cwd = repoRoot) {
+  return fieldFromContext('authoritativeBaseSha', cwd);
+}
+
+/** Current allowed task branch from git. */
+function liveTaskBranch(cwd = repoRoot) {
+  return fieldFromContext('taskBranch', cwd);
+}
+
+/** Current HEAD from git. */
+function liveHeadSha(cwd = repoRoot) {
+  return fieldFromContext('headSha', cwd);
 }
 
 module.exports = {
   repoRoot,
   contractPath,
+  contextProviderPath,
   runnerPath,
   catalogPath,
   schemaPath,
-  verificationRoot,
   finalInfraReceipt,
-  wp00TxnRoot,
   wp00TxnFile,
-  AUTHORITATIVE_BASE_SHA,
-  APPROVED_WP00_BRANCH,
   FORBIDDEN_BRANCHES,
+  FORBIDDEN_PSEUDO_BASE_TIPS,
+  AUTHORITATIVE_BASE_REF,
   WALLPAPER_ENGINE_MAIN,
   PLUGIN_SANDBOX_WT,
   git,
   runPython,
   readJson,
-  loadBaselineContract,
   requireBaselineContract,
+  loadBaselineContract,
+  resolveTaskContext,
+  getWp00TaskContext,
+  liveAuthoritativeBaseSha,
+  liveTaskBranch,
+  liveHeadSha,
+  getAuthoritativeBaseSha: liveAuthoritativeBaseSha,
+  getApprovedTaskBranch: liveTaskBranch,
+  getHeadSha: liveHeadSha,
 };
+
+Object.defineProperty(module.exports, 'AUTHORITATIVE_BASE_SHA', {
+  enumerable: true,
+  get: liveAuthoritativeBaseSha,
+});
+Object.defineProperty(module.exports, 'APPROVED_WP00_BRANCH', {
+  enumerable: true,
+  get: liveTaskBranch,
+});
