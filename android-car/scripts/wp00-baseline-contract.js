@@ -16,15 +16,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const DEFAULT_AUTHORITATIVE_BASE =
-  '87d5675b135c5f0e94ec94007667e81866a76984';
+// Historical tips kept only as forbidden pseudo-base markers (never sole facts).
 const FORBIDDEN_INFRA_TIP =
   '57cbe4ac1481a6bd79f6c3eca4f6ae91d37bcd08';
+/** @deprecated Never use as sole authoritative base — always resolve live origin. */
+const DEFAULT_AUTHORITATIVE_BASE = null;
 const DEFAULT_FORBIDDEN_BRANCHES = Object.freeze([
   'main',
   'master',
   'huawei-android12-car',
-  'codex/wallpaper-plugin-infra',
 ]);
 const DEFAULT_PLUGIN_SANDBOX = path.join(
   '/Users/anpple/Codex/WallpaperEngine',
@@ -365,8 +365,9 @@ function assertWpInfraGateFromFinalReceipt(options = {}) {
 }
 
 /**
- * Authoritative base: live HEAD must equal expected base; forbid pseudo-base tips.
- * Reads git HEAD / origin/huawei-android12-car — never trusts caller as fact source.
+ * Authoritative base from live origin/huawei-android12-car only.
+ * Caller expectedBaseSha is an assertion against live remote — never a fact override.
+ * HEAD may differ from base (task work on top of base is allowed).
  */
 function assertAuthoritativeBase(options = {}) {
   const cwd = options.cwd;
@@ -379,42 +380,64 @@ function assertAuthoritativeBase(options = {}) {
     return fail('HEAD_UNREADABLE', 'cannot read HEAD');
   }
 
-  let remoteBase = null;
   const remoteRes = git(['rev-parse', 'origin/huawei-android12-car'], cwd);
-  if (remoteRes.status === 0) {
-    remoteBase = normalizeSha(remoteRes.stdout);
-  }
-
-  const expected =
-    normalizeSha(options.expectedBaseSha) || DEFAULT_AUTHORITATIVE_BASE.toLowerCase();
-
-  if (head !== expected) {
+  if (remoteRes.status !== 0) {
     return fail(
-      'HEAD_NOT_AUTHORITATIVE_BASE',
-      `HEAD ${head} != authoritative base ${expected}`,
-      { head, baseSha: remoteBase || expected },
+      'REMOTE_BASE_UNREADABLE',
+      'cannot read origin/huawei-android12-car; fetch authoritative base first',
+      { head },
     );
   }
-  if (remoteBase && remoteBase !== expected) {
+  const remoteBase = normalizeSha(remoteRes.stdout);
+  if (!remoteBase) {
     return fail(
-      'REMOTE_BASE_DRIFT',
-      `origin/huawei-android12-car ${remoteBase} != expected ${expected}`,
-      { head, baseSha: remoteBase },
+      'REMOTE_BASE_INVALID',
+      'origin/huawei-android12-car is not a 40-char SHA',
     );
   }
 
   const forbidden = Array.isArray(options.forbiddenHeads)
     ? options.forbiddenHeads.map((s) => String(s).toLowerCase())
-    : [];
-  if (forbidden.includes(head)) {
+    : [FORBIDDEN_INFRA_TIP];
+
+  // Caller claim must match live remote base if provided.
+  if (options.expectedBaseSha != null) {
+    const claimed = normalizeSha(options.expectedBaseSha);
+    if (!claimed) {
+      return fail('BASE_SHA_INVALID', 'expectedBaseSha is not a 40-char git SHA');
+    }
+    if (forbidden.includes(claimed)) {
+      return fail(
+        'FORBIDDEN_HEAD_AS_BASE',
+        `expectedBaseSha ${claimed} is a forbidden pseudo-base (unmerged infra tip)`,
+        { head, baseSha: remoteBase },
+      );
+    }
+    if (claimed !== remoteBase) {
+      return fail(
+        'CALLER_FORGED_BASE',
+        `expectedBaseSha ${claimed} != live origin base ${remoteBase}`,
+        { head, baseSha: remoteBase },
+      );
+    }
+  }
+
+  if (forbidden.includes(remoteBase)) {
+    return fail(
+      'FORBIDDEN_HEAD_AS_BASE',
+      `live base ${remoteBase} is a forbidden pseudo-base (unmerged infra tip)`,
+      { head, baseSha: remoteBase },
+    );
+  }
+  if (forbidden.includes(head) && head === remoteBase) {
     return fail(
       'FORBIDDEN_HEAD_AS_BASE',
       `HEAD ${head} is a forbidden pseudo-base (unmerged infra tip)`,
-      { head, baseSha: expected },
+      { head, baseSha: remoteBase },
     );
   }
 
-  return ok({ head, baseSha: expected });
+  return ok({ head, baseSha: remoteBase });
 }
 
 /** Refuse caller-injected WP-00 EffectiveDone / coreProgress claims. */
@@ -471,7 +494,8 @@ function assertWp00ReadyToStart(options = {}) {
 
   const base = assertAuthoritativeBase({
     cwd: options.cwd,
-    expectedBaseSha: options.expectedHead || DEFAULT_AUTHORITATIVE_BASE,
+    // expectedBaseSha only when caller asserts; never default to frozen tip
+    expectedBaseSha: options.expectedBaseSha,
     forbiddenHeads: [FORBIDDEN_INFRA_TIP],
   });
   if (!base.ok) return layerFail(base, 'base');

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Wallpaper Engine monorepo import (WP-01 protocol module only).
+  No Activity, Service, Provider, or WallpaperManager wiring in this phase.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="false"
+        android:label="Wallpaper Engine"
+        android:supportsRtl="true" />
+
+</manifest>

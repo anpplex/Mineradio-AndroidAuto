@@ -4,6 +4,9 @@
  * Helpers for WP-INFRA exact push + origin ls-remote contracts (RED-06 / RED-07).
  * Uses production wallpaper-task.py only. Temp receipts only — does not
  * mutate the live verification/bootstrap/WP-INFRA.json from VERIFY-05.
+ *
+ * Approved push branch/ref resolve from unified task context (live git),
+ * not a frozen codex/wallpaper-plugin-infra constant.
  */
 
 const fs = require('node:fs');
@@ -11,10 +14,41 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const base = require('./wallpaper-task-bootstrap-ledger-helpers');
+const contextProvider = require(path.join(
+  base.repoRoot,
+  'android-car',
+  'scripts',
+  'wallpaper-task-context.js',
+));
 
-const APPROVED_INFRA_BRANCH = 'codex/wallpaper-plugin-infra';
-const APPROVED_INFRA_REF = `refs/heads/${APPROVED_INFRA_BRANCH}`;
 const APPROVED_PUSH_REMOTE = 'origin';
+
+/**
+ * Live approved push target = current wallpaper task branch (from git context).
+ * Single entry for exact-push / exact-sync tests.
+ */
+function resolveApprovedPushTarget(cwd = base.repoRoot) {
+  const ctx = contextProvider.resolveTaskContext({ cwd, taskId: 'WP-INFRA' });
+  if (!ctx.ok) {
+    throw new Error(
+      `resolveTaskContext failed: ${ctx.failureReason || ''} ${ctx.message || ''}`,
+    );
+  }
+  return {
+    branch: ctx.taskBranch,
+    ref: ctx.targetRef,
+    headSha: ctx.headSha,
+    remote: ctx.remote || contextProvider.APPROVED_REMOTE,
+  };
+}
+
+function approvedInfraBranch(cwd = base.repoRoot) {
+  return resolveApprovedPushTarget(cwd).branch;
+}
+
+function approvedInfraRef(cwd = base.repoRoot) {
+  return resolveApprovedPushTarget(cwd).ref;
+}
 
 /** Forbidden push remotes (must never be accepted for WP-INFRA exact-push). */
 const FORBIDDEN_PUSH_REMOTES = Object.freeze([
@@ -48,7 +82,6 @@ const ExactSyncFailureReason = Object.freeze({
   CALLER_INJECTED_REMOTE_SHA: 'CALLER_INJECTED_REMOTE_SHA',
   PUSH_IN_FLIGHT_RECOVERY_REQUIRED: 'PUSH_IN_FLIGHT_RECOVERY_REQUIRED',
   UNKNOWN_TASK: 'UNKNOWN_TASK',
-  // RED-07 guard reasons (GREEN-07 must emit one of these or equivalent)
   REMOTE_NOT_ALLOWED: 'REMOTE_NOT_ALLOWED',
   BRANCH_NOT_ALLOWED: 'BRANCH_NOT_ALLOWED',
   REF_NOT_ALLOWED: 'REF_NOT_ALLOWED',
@@ -63,10 +96,6 @@ function runExact(args, options = {}) {
   return base.runRunner(args, options);
 }
 
-/**
- * Real local HEAD of the Mineradio worktree (40-char). Used only as an
- * assertion target for RED-07 HEAD-binding tests — never as a push input.
- */
 function localHeadSha(cwd = base.repoRoot) {
   const result = spawnSync('git', ['rev-parse', 'HEAD'], {
     cwd,
@@ -93,12 +122,9 @@ function localBranchName(cwd = base.repoRoot) {
   return String(result.stdout || '').trim();
 }
 
-/**
- * Populate a temp receipt to the post-ledger, pre-exact-push layer so RED-06
- * can isolate exact-sync gaps without going through full RED-04/05 setup.
- */
 function seedPreExactSyncReceipt(file) {
   const infra = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  const ref = approvedInfraRef();
   base.writeJson(
     file,
     base.red04CompleteReceipt({
@@ -110,7 +136,7 @@ function seedPreExactSyncReceipt(file) {
       baseContainment: null,
       INFRA_SHA: infra,
       originReadback: {
-        ref: APPROVED_INFRA_REF,
+        ref,
         expectedSha: infra,
         observedSha: infra,
       },
@@ -120,10 +146,6 @@ function seedPreExactSyncReceipt(file) {
   return infra;
 }
 
-/**
- * Seed a receipt that has never been origin-verified (INIT), for RED-07
- * caller-only REMOTE_VERIFIED promotion tests.
- */
 function seedUnverifiedBootstrapReceipt(file, overrides = {}) {
   const head = localHeadSha();
   base.writeJson(
@@ -146,7 +168,6 @@ function seedUnverifiedBootstrapReceipt(file, overrides = {}) {
   return head;
 }
 
-/** Matchers for RED-07 fail-closed reasons (broad until GREEN freezes tokens). */
 const RED07 = Object.freeze({
   remoteReject: /REMOTE_NOT_ALLOWED|remote not allowed|unknown remote|not origin|ORIGIN_REMOTE|INVALID_REMOTE|upstream/i,
   branchReject: /BRANCH_NOT_ALLOWED|REF_NOT_ALLOWED|branch not allowed|ref not allowed|forbidden ref|not approved|APPROVED_INFRA/i,
@@ -156,11 +177,9 @@ const RED07 = Object.freeze({
   originMismatch: /ORIGIN_SHA_MISMATCH|LS_REMOTE_MISMATCH/i,
 });
 
-module.exports = {
+const exportsObject = {
   ...base,
   ExactSyncFailureReason,
-  APPROVED_INFRA_BRANCH,
-  APPROVED_INFRA_REF,
   APPROVED_PUSH_REMOTE,
   FORBIDDEN_PUSH_REMOTES,
   FORBIDDEN_PUSH_REFS,
@@ -170,4 +189,24 @@ module.exports = {
   localBranchName,
   seedPreExactSyncReceipt,
   seedUnverifiedBootstrapReceipt,
+  resolveApprovedPushTarget,
+  resolveTaskContext: contextProvider.resolveTaskContext,
+  approvedInfraBranch,
+  approvedInfraRef,
+  getAuthoritativePushBranch: approvedInfraBranch,
+  getAuthoritativePushRef: approvedInfraRef,
 };
+
+// Live getters for destructured APPROVED_INFRA_BRANCH / APPROVED_INFRA_REF
+Object.defineProperty(exportsObject, 'APPROVED_INFRA_BRANCH', {
+  enumerable: true,
+  configurable: true,
+  get: () => approvedInfraBranch(),
+});
+Object.defineProperty(exportsObject, 'APPROVED_INFRA_REF', {
+  enumerable: true,
+  configurable: true,
+  get: () => approvedInfraRef(),
+});
+
+module.exports = exportsObject;
