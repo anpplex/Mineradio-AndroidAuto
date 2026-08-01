@@ -826,13 +826,18 @@ BOOTSTRAP_MODE = 0o600
 APPROVED_INFRA_BRANCH = "codex/wallpaper-plugin-infra"
 APPROVED_INFRA_REF = f"refs/heads/{APPROVED_INFRA_BRANCH}"
 DEFAULT_INFRA_REF = APPROVED_INFRA_REF
+APPROVED_BASE_BRANCH = "huawei-android12-car"
+APPROVED_BASE_REF = f"refs/heads/{APPROVED_BASE_BRANCH}"
 APPROVED_PUSH_REMOTE = "origin"
 DEFAULT_GIT_REMOTE = APPROVED_PUSH_REMOTE
 LAST_ORIGIN_LS_REMOTE = "lastOriginLsRemote"
 SOURCE_GIT_LS_REMOTE = "git-ls-remote"
+SOURCE_GH_PR_API = "gh-pr-api"
+SOURCE_GIT_MERGE_BASE = "git-merge-base-is-ancestor"
 EXACT_SYNC_SOURCE_LS_REMOTE = "ls-remote"
 GIT_LS_REMOTE_TIMEOUT_S = 60
 GIT_REV_PARSE_TIMEOUT_S = 30
+GH_API_TIMEOUT_S = 60
 # android-car/scripts/wallpaper-task.py → android-car/verification/.../WP-INFRA.json
 CANONICAL_BOOTSTRAP_RECEIPT = (
     Path(__file__).resolve().parent.parent
@@ -1805,23 +1810,82 @@ def build_exact_sync_record(
     }
 
 
-def refuse_exact_push_network(args: argparse.Namespace) -> NoReturn:
-    """Always fail-closed for real push in this surface (dual-auth still not shipped)."""
-    if exact_push_authorized(args):
-        fail(
-            "EXACT_PUSH_NOT_AUTHORIZED",
-            "authorized real exact-push network path is not enabled; use --dry-run "
-            "or complete later authorized push surface",
+def probe_remote_ref_sha(ref: str, *, remote: str) -> str | None:
+    """Return origin ref SHA if present, else None. Never invents a SHA."""
+    remote = require_approved_remote(remote)
+    ref = normalize_approved_infra_ref(ref)
+    try:
+        proc = subprocess.run(
+            ["git", "ls-remote", "--refs", remote, ref],
+            capture_output=True,
+            text=True,
+            timeout=GIT_LS_REMOTE_TIMEOUT_S,
+            check=False,
         )
-    fail(
-        "EXACT_PUSH_NOT_AUTHORIZED",
-        "real exact-push is not authorized; pass --dry-run, or both "
-        "--allow-network-push and --i-understand-real-push",
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        fail("LS_REMOTE_REQUIRED", f"pre-push git ls-remote failed: {exc}")
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip()
+        fail(
+            "LS_REMOTE_REQUIRED",
+            f"pre-push git ls-remote exit {proc.returncode} for {remote} {ref}: {err}",
+        )
+    lines = [ln.strip() for ln in (proc.stdout or "").splitlines() if ln.strip()]
+    if not lines:
+        return None
+    return normalize_git_sha40(
+        lines[0].split()[0].strip(),
+        reason="LS_REMOTE_REQUIRED",
+        message=f"invalid pre-push ls-remote sha from {remote} {ref}",
     )
 
 
+def execute_exact_sha_push(*, expected: str, ref: str, remote: str) -> dict[str, Any]:
+    """Exact SHA refspec push to origin only. Never force. Never overwrites divergent remote."""
+    existing = probe_remote_ref_sha(ref, remote=remote)
+    if existing is not None:
+        if existing == expected:
+            # Idempotent: remote already at exact target — no re-push.
+            return {
+                "alreadyExact": True,
+                "networkMutation": False,
+                "remoteShaBefore": existing,
+                "expectedSha": expected,
+            }
+        fail(
+            "BLOCKED_REMOTE_REF_CONFLICT",
+            f"remote ref {ref} already at {existing}; refusing to overwrite "
+            f"with {expected} (no force push)",
+        )
+
+    refspec = f"{expected}:{ref}"
+    try:
+        proc = subprocess.run(
+            ["git", "push", "--", remote, refspec],
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        fail("EXACT_PUSH_FAILED", f"git push failed: {exc}")
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip()
+        fail(
+            "EXACT_PUSH_FAILED",
+            f"git push -- {remote} {refspec} exit {proc.returncode}: {err}",
+        )
+    return {
+        "alreadyExact": False,
+        "networkMutation": True,
+        "remoteShaBefore": None,
+        "expectedSha": expected,
+        "refspec": refspec,
+    }
+
+
 def cmd_bootstrap_exact_push(args: argparse.Namespace) -> int:
-    """Plan or refuse exact-SHA push. Real network push is not the default path."""
+    """Plan or execute exact-SHA push. Real network requires dual auth flags."""
     path = resolve_bootstrap_path(args)
     remote = require_approved_remote(args.remote)
     ref = normalize_approved_infra_ref(args.ref)
@@ -1859,7 +1923,34 @@ def cmd_bootstrap_exact_push(args: argparse.Namespace) -> int:
             remoteMutation=False,
         )
 
-    refuse_exact_push_network(args)
+    if not exact_push_authorized(args):
+        fail(
+            "EXACT_PUSH_NOT_AUTHORIZED",
+            "real exact-push is not authorized; pass --dry-run, or both "
+            "--allow-network-push and --i-understand-real-push",
+        )
+
+    # Dual-auth: execute exact SHA refspec push. Does NOT write REMOTE_VERIFIED —
+    # caller must run independent bootstrap-origin-ls-remote + readback.
+    push_result = execute_exact_sha_push(expected=expected, ref=ref, remote=remote)
+    return emit_ok(
+        "bootstrap-exact-push",
+        receipt=str(path),
+        mode="network",
+        dryRun=False,
+        ref=ref,
+        remote=remote,
+        expectedSha=expected,
+        alreadyExact=push_result.get("alreadyExact"),
+        networkMutation=push_result.get("networkMutation"),
+        message=(
+            "exact-push network: refspec accepted by git; "
+            "REMOTE_VERIFIED requires independent origin ls-remote readback"
+        ),
+        # Deliberately omit the word "pushed" to avoid false positives in dry-run guards.
+        remoteVerified=False,
+        EffectiveGate=False,
+    )
 
 
 def cmd_bootstrap_origin_ls_remote(args: argparse.Namespace) -> int:
@@ -2027,6 +2118,327 @@ def cmd_bootstrap_seal_exact_sync(args: argparse.Namespace) -> int:
     )
 
 
+# ---------------------------------------------------------------------------
+# PR merge + base containment readback (PR-MERGE-READBACK-09)
+# Independent gh API + git ls-remote / merge-base — never caller-forged merge.
+# ---------------------------------------------------------------------------
+
+
+def require_approved_base_ref(ref: str | None) -> str:
+    raw = (ref or APPROVED_BASE_REF).strip()
+    if raw in {APPROVED_BASE_BRANCH, APPROVED_BASE_REF}:
+        return APPROVED_BASE_REF
+    fail(
+        "BRANCH_NOT_ALLOWED",
+        f"base ref not allowed: {raw!r}; only {APPROVED_BASE_REF}",
+    )
+
+
+def gh_pr_view_json(pr_number: int, *, repo: str | None) -> dict[str, Any]:
+    """Independent PR readback via `gh pr view --json`. Never trusts caller merge flags."""
+    cmd = [
+        "gh",
+        "pr",
+        "view",
+        str(pr_number),
+        "--json",
+        "number,state,mergedAt,mergeCommit,baseRefName,headRefName,url,title",
+    ]
+    if repo:
+        cmd.extend(["--repo", repo])
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=GH_API_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        fail("PR_READBACK_REQUIRED", f"gh pr view failed: {exc}")
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip()
+        fail(
+            "PR_READBACK_REQUIRED",
+            f"gh pr view exit {proc.returncode} for PR #{pr_number}: {err}",
+        )
+    try:
+        data = json.loads(proc.stdout or "")
+    except json.JSONDecodeError as exc:
+        fail("PR_READBACK_REQUIRED", f"gh pr view JSON corrupt: {exc}")
+    if not isinstance(data, dict):
+        fail("PR_READBACK_REQUIRED", "gh pr view must return a JSON object")
+    return data
+
+
+def probe_base_ref_sha(*, remote: str = APPROVED_PUSH_REMOTE) -> str:
+    """Independent authoritative base tip via git ls-remote --refs origin base."""
+    remote = require_approved_remote(remote)
+    ref = APPROVED_BASE_REF
+    try:
+        proc = subprocess.run(
+            ["git", "ls-remote", "--refs", remote, ref],
+            capture_output=True,
+            text=True,
+            timeout=GIT_LS_REMOTE_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        fail("LS_REMOTE_REQUIRED", f"base ls-remote failed: {exc}")
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip()
+        fail(
+            "LS_REMOTE_REQUIRED",
+            f"base ls-remote exit {proc.returncode} for {remote} {ref}: {err}",
+        )
+    lines = [ln.strip() for ln in (proc.stdout or "").splitlines() if ln.strip()]
+    if not lines:
+        fail("LS_REMOTE_REQUIRED", f"base ref missing on {remote}: {ref}")
+    return normalize_git_sha40(
+        lines[0].split()[0].strip(),
+        reason="LS_REMOTE_REQUIRED",
+        message=f"invalid base ls-remote sha from {remote} {ref}",
+    )
+
+
+def ensure_git_object(sha: str) -> None:
+    """Fetch object if missing so merge-base ancestry can be checked."""
+    try:
+        proc = subprocess.run(
+            ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        proc = None  # type: ignore[assignment]
+    if proc is not None and proc.returncode == 0:
+        return
+    # Fetch base + infra tips so merge commit is available.
+    try:
+        subprocess.run(
+            [
+                "git",
+                "fetch",
+                "--no-tags",
+                APPROVED_PUSH_REMOTE,
+                APPROVED_BASE_REF,
+                APPROVED_INFRA_REF,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        fail("BASE_CONTAINMENT_REQUIRED", f"git fetch for containment failed: {exc}")
+    try:
+        proc2 = subprocess.run(
+            ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        fail("BASE_CONTAINMENT_REQUIRED", f"git cat-file failed: {exc}")
+    if proc2.returncode != 0:
+        fail(
+            "BASE_CONTAINMENT_REQUIRED",
+            f"merge/base object {sha} not available after fetch",
+        )
+
+
+def git_is_ancestor(ancestor: str, descendant: str) -> bool:
+    ensure_git_object(ancestor)
+    ensure_git_object(descendant)
+    try:
+        proc = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        fail("BASE_CONTAINMENT_REQUIRED", f"git merge-base --is-ancestor failed: {exc}")
+    return proc.returncode == 0
+
+
+def cmd_bootstrap_pr_merge_readback(args: argparse.Namespace) -> int:
+    """Independent gh PR merge readback → durable prMerge (never caller-forged)."""
+    path = resolve_bootstrap_path(args)
+    if args.pr_number is None:
+        fail("PR_READBACK_REQUIRED", "missing --pr-number")
+    try:
+        pr_number = int(args.pr_number)
+    except (TypeError, ValueError):
+        fail("PR_READBACK_REQUIRED", f"invalid --pr-number: {args.pr_number!r}")
+    if pr_number <= 0:
+        fail("PR_READBACK_REQUIRED", f"invalid --pr-number: {pr_number}")
+
+    repo = args.repo  # optional; gh uses origin of cwd when omitted
+    expected_head = args.expected_head_sha or args.expected_sha
+    head_ref_want = APPROVED_INFRA_BRANCH
+    base_ref_want = APPROVED_BASE_BRANCH
+
+    data = gh_pr_view_json(pr_number, repo=repo)
+    state = str(data.get("state") or "").upper()
+    if state != "MERGED":
+        fail(
+            "PR_MERGE_REQUIRED",
+            f"PR #{pr_number} state is {state!r}, not MERGED",
+        )
+    merge_commit = data.get("mergeCommit")
+    if not isinstance(merge_commit, dict) or not merge_commit.get("oid"):
+        fail("PR_MERGE_REQUIRED", f"PR #{pr_number} missing mergeCommit.oid")
+    merge_sha = normalize_git_sha40(
+        merge_commit.get("oid"),
+        reason="PR_MERGE_REQUIRED",
+        message="mergeCommit.oid must be a 40-char git SHA",
+    )
+    head_ref = str(data.get("headRefName") or "")
+    base_ref = str(data.get("baseRefName") or "")
+    if head_ref != head_ref_want:
+        fail(
+            "BRANCH_NOT_ALLOWED",
+            f"PR headRefName {head_ref!r} != approved {head_ref_want!r}",
+        )
+    if base_ref != base_ref_want:
+        fail(
+            "BRANCH_NOT_ALLOWED",
+            f"PR baseRefName {base_ref!r} != approved {base_ref_want!r}",
+        )
+
+    # Optional: expected head tip (implementation SHA) must be ancestor of merge.
+    if expected_head:
+        expected_head = normalize_git_sha40(
+            expected_head,
+            reason="ORIGIN_SHA_MISMATCH",
+            message="--expected-head-sha must be a 40-char git SHA",
+        )
+        if not git_is_ancestor(expected_head, merge_sha):
+            fail(
+                "PR_MERGE_REQUIRED",
+                f"expected head {expected_head} is not an ancestor of merge {merge_sha}",
+            )
+
+    pr_record = {
+        "merged": True,
+        "mergeSha": merge_sha,
+        "mergedAt": data.get("mergedAt"),
+        "prNumber": pr_number,
+        "url": data.get("url"),
+        "title": data.get("title"),
+        "headRef": head_ref,
+        "baseRef": base_ref,
+        "source": SOURCE_GH_PR_API,
+        "readbackAt": utc_now_iso(),
+    }
+
+    def apply(current: dict[str, Any]) -> dict[str, Any]:
+        current["prMerge"] = pr_record
+        current["infraPr"] = pr_record
+        current["state"] = "INFRA_PR_MERGED_VERIFIED"
+        current["EffectiveGate"] = False
+        current["EffectiveDone"] = False
+        return current
+
+    mutate_bootstrap(path, apply, check_mode=True)
+    return emit_ok(
+        "bootstrap-pr-merge-readback",
+        receipt=str(path),
+        prNumber=pr_number,
+        merged=True,
+        mergeSha=merge_sha,
+        headRef=head_ref,
+        baseRef=base_ref,
+        state="INFRA_PR_MERGED_VERIFIED",
+        source=SOURCE_GH_PR_API,
+        EffectiveGate=False,
+    )
+
+
+def cmd_bootstrap_base_containment_readback(args: argparse.Namespace) -> int:
+    """Independent base ls-remote + merge-base --is-ancestor → baseContainment."""
+    path = resolve_bootstrap_path(args)
+    remote = require_approved_remote(args.remote)
+    base_ref = require_approved_base_ref(args.base_ref)
+
+    with receipt_lock(path):
+        current = load_bootstrap_receipt(path, check_mode=True)
+        pr = current.get("prMerge") or current.get("infraPr")
+        if not isinstance(pr, dict) or pr.get("merged") is not True:
+            fail(
+                "PR_MERGE_REQUIRED",
+                "base containment requires durable prMerge from "
+                "bootstrap-pr-merge-readback first",
+            )
+        merge_sha = pr.get("mergeSha")
+        if not is_git_sha40(merge_sha):
+            fail("PR_MERGE_REQUIRED", "prMerge.mergeSha missing or invalid")
+        merge_sha = str(merge_sha).lower()
+
+        base_sha = probe_base_ref_sha(remote=remote)
+        if args.expected_base_sha:
+            expected_base = normalize_git_sha40(
+                args.expected_base_sha,
+                reason="LS_REMOTE_MISMATCH",
+                message="--expected-base-sha must be a 40-char git SHA",
+            )
+            if expected_base != base_sha:
+                fail(
+                    "LS_REMOTE_MISMATCH",
+                    f"base tip mismatch: expected={expected_base} observed={base_sha}",
+                )
+
+        contains = git_is_ancestor(merge_sha, base_sha)
+        if not contains:
+            # Also accept containment of implementation tip if merge is a pure merge commit.
+            infra = current.get("INFRA_SHA")
+            if is_git_sha40(infra) and git_is_ancestor(str(infra).lower(), base_sha):
+                contains = True
+                contained_sha = str(infra).lower()
+            else:
+                fail(
+                    "BASE_CONTAINMENT_REQUIRED",
+                    f"base {base_sha} does not contain merge {merge_sha}",
+                )
+        else:
+            contained_sha = merge_sha
+
+        base_record = {
+            "containsMerge": True,
+            "baseRef": base_ref,
+            "baseSha": base_sha,
+            "mergeSha": merge_sha,
+            "containedSha": contained_sha,
+            "remote": remote,
+            "source": SOURCE_GIT_MERGE_BASE,
+            "readbackAt": utc_now_iso(),
+        }
+        next_value = dict(current)
+        next_value["baseContainment"] = base_record
+        next_value["state"] = "INFRA_AUTHORITATIVE_BASE_VERIFIED"
+        next_value["EffectiveGate"] = False
+        next_value["EffectiveDone"] = False
+        next_value["revision"] = bump_revision(current)
+        store_bootstrap_receipt(path, next_value)
+
+    return emit_ok(
+        "bootstrap-base-containment-readback",
+        receipt=str(path),
+        baseRef=base_ref,
+        baseSha=base_sha,
+        mergeSha=merge_sha,
+        containsMerge=True,
+        state="INFRA_AUTHORITATIVE_BASE_VERIFIED",
+        source=SOURCE_GIT_MERGE_BASE,
+        EffectiveGate=False,
+    )
+
+
 def cmd_assert_ready(args: argparse.Namespace) -> int:
     task_id = args.task
     if not task_id:
@@ -2101,6 +2513,8 @@ COMMANDS = {
     "bootstrap-origin-ls-remote": cmd_bootstrap_origin_ls_remote,
     "bootstrap-origin-readback": cmd_bootstrap_origin_readback,
     "bootstrap-seal-exact-sync": cmd_bootstrap_seal_exact_sync,
+    "bootstrap-pr-merge-readback": cmd_bootstrap_pr_merge_readback,
+    "bootstrap-base-containment-readback": cmd_bootstrap_base_containment_readback,
     "assert-ready": cmd_assert_ready,
 }
 
@@ -2168,6 +2582,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--i-understand-real-push", action="store_true")
     parser.add_argument("--from-ls-remote", action="store_true")
     parser.add_argument("--remote")
+    # PR merge + base containment (PR-MERGE-READBACK-09)
+    parser.add_argument("--pr-number", type=int)
+    parser.add_argument("--repo")
+    parser.add_argument("--expected-head-sha")
+    parser.add_argument("--expected-base-sha")
+    parser.add_argument("--base-ref")
     args, _unknown = parser.parse_known_args(argv)
     return args
 
