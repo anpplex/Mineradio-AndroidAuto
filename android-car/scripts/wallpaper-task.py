@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Mineradio wallpaper plugin transaction runner (WP-INFRA minimal core).
 
-Fail-closed gates for task identity, receipt state, caller-supplied identity,
-evidence path containment/no-clobber, and writer leases.
+Fail-closed gates for:
+  - task identity / caller-supplied identity
+  - evidence path containment and no-clobber
+  - writer leases
+  - durable receipt init, revision/state CAS, atomic fsync replace, readback
+  - IN_FLIGHT recovery and append-only attempts
 
 Does not yet implement catalog-bound phases, exact origin sync, or PR flow.
 """
@@ -10,13 +14,15 @@ Does not yet implement catalog-bound phases, exact origin sync, or PR flow.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import fcntl
 import json
 import os
 import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Mapping, NoReturn
+from typing import Any, Iterator, Mapping, NoReturn
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -68,6 +74,9 @@ ILLEGAL_BEGIN_STATES = frozenset(
 
 FAILED_ATTEMPT_STATUSES = frozenset({"ATTEMPT_FAILED", "FAILED"})
 LEASE_FIELDS = ("leaseNonce", "leaseUntil", "collectorPid")
+
+RECEIPT_SCHEMA = "wallpaper-task-receipt/v1"
+RECEIPT_MODE = 0o600
 
 
 # ---------------------------------------------------------------------------
@@ -134,14 +143,20 @@ def atomic_write_bytes(path: Path, payload: bytes, mode: int = 0o600) -> None:
                 pass
 
 
-def exclusive_create_bytes(path: Path, payload: bytes, mode: int = 0o600) -> None:
+def exclusive_create_bytes(
+    path: Path,
+    payload: bytes,
+    mode: int = 0o600,
+    *,
+    exists_reason: str = "EVIDENCE_PATH_EXISTS",
+) -> None:
     """no-clobber exclusive create with fsync; fails if path already exists."""
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     try:
         fd = os.open(path, flags, mode)
     except FileExistsError:
-        fail("EVIDENCE_PATH_EXISTS", f"refusing to clobber existing path: {path}")
+        fail(exists_reason, f"refusing to clobber existing path: {path}")
     try:
         with os.fdopen(fd, "wb") as stream:
             stream.write(payload)
@@ -155,6 +170,25 @@ def exclusive_create_bytes(path: Path, payload: bytes, mode: int = 0o600) -> Non
             except OSError:
                 pass
         raise
+
+
+def canonical_receipt_bytes(value: Mapping[str, Any]) -> bytes:
+    return (json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode()
+
+
+@contextlib.contextmanager
+def receipt_lock(receipt: Path) -> Iterator[None]:
+    """Advisory exclusive lock on <receipt>.lock (mode 0600)."""
+    lock_path = receipt.with_name(receipt.name + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    lock_fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        os.fchmod(lock_fd, 0o600)
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
 
 
 # ---------------------------------------------------------------------------
@@ -470,6 +504,306 @@ def cmd_open_attempt(args: argparse.Namespace) -> int:
     return emit_ok("open-attempt", taskId=task_id)
 
 
+# ---------------------------------------------------------------------------
+# Receipt surface: exclusive-create, 0600, lock, revision/state CAS,
+# atomic fsync replace, independent readback, IN_FLIGHT recovery, append-only.
+# ---------------------------------------------------------------------------
+
+
+def is_in_flight_state(state: Any) -> bool:
+    return isinstance(state, str) and state.endswith("_IN_FLIGHT")
+
+
+def require_receipt_arg(args: argparse.Namespace) -> Path:
+    if not args.receipt:
+        fail("MISSING_RECEIPT", "missing --receipt")
+    return Path(args.receipt)
+
+
+def enforce_receipt_containment(path: Path, args: argparse.Namespace) -> None:
+    if not args.require_contained:
+        return
+    if not args.receipts_root:
+        fail("RECEIPT_PATH_ESCAPE", "missing --receipts-root with --require-contained")
+    root = Path(args.receipts_root).resolve()
+    target = path.resolve() if path.exists() else Path(os.path.abspath(str(path)))
+    if is_under(target, root):
+        return
+    fail("RECEIPT_PATH_ESCAPE", f"receipt path escapes receipts root: {target}")
+
+
+def resolve_receipt_path(args: argparse.Namespace) -> Path:
+    path = require_receipt_arg(args)
+    enforce_receipt_containment(path, args)
+    return path
+
+
+def assert_receipt_mode(path: Path) -> None:
+    mode = path.stat().st_mode & 0o777
+    if mode != RECEIPT_MODE:
+        fail(
+            "RECEIPT_MODE_INVALID",
+            f"receipt mode must be 0o600, got {oct(mode)}",
+        )
+
+
+def load_task_receipt(path: Path, *, check_mode: bool = False) -> dict[str, Any]:
+    if not path.is_file():
+        fail("MISSING_RECEIPT", f"receipt not found: {path}")
+    if check_mode:
+        assert_receipt_mode(path)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        fail("RECEIPT_CORRUPT", f"receipt JSON corrupt: {exc}")
+    except OSError as exc:
+        fail("RECEIPT_CORRUPT", f"receipt unreadable: {exc}")
+    if not isinstance(data, dict):
+        fail("RECEIPT_CORRUPT", "receipt must be a JSON object")
+    return data
+
+
+def store_task_receipt(path: Path, value: Mapping[str, Any]) -> None:
+    atomic_write_bytes(path, canonical_receipt_bytes(value), mode=RECEIPT_MODE)
+
+
+def store_task_receipt_with_readback(path: Path, value: Mapping[str, Any]) -> dict[str, Any]:
+    store_task_receipt(path, value)
+    readback = load_task_receipt(path, check_mode=True)
+    if readback != value:
+        fail("RECEIPT_READBACK_MISMATCH", "post-write independent readback mismatch")
+    return readback
+
+
+def parse_json_object(raw: str | None, *, label: str, required: bool) -> dict[str, Any]:
+    if raw is None or raw == "":
+        if required:
+            fail("ILLEGAL_STATE", f"missing {label}")
+        return {}
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        fail("ILLEGAL_STATE", f"invalid {label}: {exc}")
+    if not isinstance(value, dict):
+        fail("ILLEGAL_STATE", f"{label} must be a JSON object")
+    return value
+
+
+def reject_if_in_flight(receipt: Mapping[str, Any], *, action: str) -> None:
+    state = receipt.get("state")
+    if is_in_flight_state(state):
+        fail(
+            "RECEIPT_IN_FLIGHT_RECOVERY_REQUIRED",
+            f"state {state} requires resume/readback before {action}",
+        )
+
+
+def assert_revision_matches(receipt: Mapping[str, Any], expected: int | None) -> None:
+    if expected is None:
+        fail("RECEIPT_REVISION_CAS", "missing --expected-revision")
+    if receipt.get("revision") != expected:
+        fail(
+            "RECEIPT_REVISION_CAS",
+            f"revision mismatch: expected {expected}, got {receipt.get('revision')}",
+        )
+
+
+def assert_state_matches(receipt: Mapping[str, Any], expected: str | None) -> None:
+    if not expected:
+        fail("RECEIPT_STATE_CAS", "missing --expected-state")
+    if receipt.get("state") != expected:
+        fail(
+            "RECEIPT_STATE_CAS",
+            f"state mismatch: expected {expected}, got {receipt.get('state')}",
+        )
+
+
+def reject_caller_effective_done(patch: Mapping[str, Any]) -> None:
+    if patch.get("EffectiveDone") is True:
+        fail(
+            "ONLY_VERIFY_DONE_MAY_ENABLE_EFFECTIVE_DONE",
+            "only verify-done may set EffectiveDone=true",
+        )
+
+
+def bump_revision(receipt: Mapping[str, Any]) -> int:
+    return int(receipt.get("revision", 0)) + 1
+
+
+def load_locked_receipt(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        fail("MISSING_RECEIPT", f"receipt not found: {path}")
+    return load_task_receipt(path, check_mode=True)
+
+
+def cmd_receipt_init(args: argparse.Namespace) -> int:
+    path = resolve_receipt_path(args)
+    if path.exists():
+        fail("RECEIPT_EXISTS", f"receipt already exists (no-clobber): {path}")
+
+    task_id = args.task or "WP-INFRA"
+    if task_id not in KNOWN_TASKS:
+        fail("UNKNOWN_TASK", f"unknown task id: {task_id}")
+
+    initial = {
+        "schema": args.schema or RECEIPT_SCHEMA,
+        "taskId": task_id,
+        "state": "INIT",
+        "revision": 1,
+        "EffectiveDone": False,
+        "attempts": [],
+        "phaseEvents": [],
+    }
+    exclusive_create_bytes(
+        path,
+        canonical_receipt_bytes(initial),
+        mode=RECEIPT_MODE,
+        exists_reason="RECEIPT_EXISTS",
+    )
+    return emit_ok("receipt-init", receipt=str(path), taskId=task_id, revision=1)
+
+
+def cmd_receipt_cas(args: argparse.Namespace) -> int:
+    path = resolve_receipt_path(args)
+    if not args.state:
+        fail("ILLEGAL_STATE", "missing --state")
+    patch = parse_json_object(args.set_json, label="--set-json", required=False)
+
+    with receipt_lock(path):
+        current = load_locked_receipt(path)
+        reject_if_in_flight(current, action="cas")
+        reject_caller_effective_done(patch)
+        assert_revision_matches(current, args.expected_revision)
+        assert_state_matches(current, args.expected_state)
+
+        next_value = dict(current)
+        next_value.update(patch)
+        next_value["state"] = args.state
+        next_value["revision"] = bump_revision(current)
+        # Safety net: receipt-cas must never newly enable EffectiveDone.
+        if next_value.get("EffectiveDone") is True and current.get("EffectiveDone") is not True:
+            fail(
+                "ONLY_VERIFY_DONE_MAY_ENABLE_EFFECTIVE_DONE",
+                "only verify-done may set EffectiveDone=true",
+            )
+
+        store_task_receipt_with_readback(path, next_value)
+
+    return emit_ok(
+        "receipt-cas",
+        receipt=str(path),
+        revision=next_value["revision"],
+        state=next_value["state"],
+    )
+
+
+def cmd_receipt_read(args: argparse.Namespace) -> int:
+    path = resolve_receipt_path(args)
+    data = load_task_receipt(path, check_mode=True)
+    if args.field:
+        cursor: Any = data
+        for part in args.field.split("."):
+            if not isinstance(cursor, dict) or part not in cursor:
+                fail("ILLEGAL_STATE", f"field not found: {args.field}")
+            cursor = cursor[part]
+        if isinstance(cursor, (dict, list)):
+            print(json.dumps(cursor, ensure_ascii=False, separators=(",", ":")))
+        else:
+            print(cursor)
+        return 0
+    print(canonical_receipt_bytes(data).decode(), end="")
+    return 0
+
+
+def cmd_receipt_readback(args: argparse.Namespace) -> int:
+    path = resolve_receipt_path(args)
+    data = load_task_receipt(path, check_mode=True)
+    again = load_task_receipt(path, check_mode=True)
+    if again != data:
+        fail("RECEIPT_READBACK_MISMATCH", "independent readback mismatch")
+    return emit_ok(
+        "receipt-readback",
+        receipt=str(path),
+        revision=data.get("revision"),
+        state=data.get("state"),
+    )
+
+
+def cmd_receipt_append_attempt(args: argparse.Namespace) -> int:
+    path = resolve_receipt_path(args)
+    attempt = parse_json_object(args.attempt_json, label="--attempt-json", required=True)
+
+    with receipt_lock(path):
+        current = load_locked_receipt(path)
+        reject_if_in_flight(current, action="append-attempt")
+        assert_revision_matches(current, args.expected_revision)
+
+        if attempt.get("overwrite") is True:
+            fail("ATTEMPT_APPEND_ONLY", "overwrite of attempts is forbidden")
+
+        attempts = current.get("attempts") or []
+        if not isinstance(attempts, list):
+            fail("RECEIPT_CORRUPT", "attempts must be an array")
+
+        attempt_no = attempt.get("attemptNo")
+        for existing in attempts:
+            if isinstance(existing, dict) and existing.get("attemptNo") == attempt_no:
+                fail(
+                    "ATTEMPT_APPEND_ONLY",
+                    f"attemptNo {attempt_no} already exists; append-only",
+                )
+
+        next_value = dict(current)
+        next_value["attempts"] = [*attempts, dict(attempt)]
+        next_value["revision"] = bump_revision(current)
+        store_task_receipt_with_readback(path, next_value)
+
+    return emit_ok(
+        "receipt-append-attempt",
+        receipt=str(path),
+        revision=next_value["revision"],
+        attemptNo=attempt_no,
+    )
+
+
+def cmd_receipt_resume(args: argparse.Namespace) -> int:
+    path = resolve_receipt_path(args)
+    with receipt_lock(path):
+        current = load_locked_receipt(path)
+        if not is_in_flight_state(current.get("state")):
+            return emit_ok(
+                "receipt-resume",
+                receipt=str(path),
+                state=current.get("state"),
+                revision=current.get("revision"),
+            )
+
+        # Response-loss recovery: independent remote/API readback first, then
+        # --confirm-readback may clear IN_FLIGHT back to resumeState.
+        if not getattr(args, "confirm_readback", False):
+            fail(
+                "RECEIPT_IN_FLIGHT_RECOVERY_REQUIRED",
+                "IN_FLIGHT resume requires independent readback first "
+                "(pass --confirm-readback after readback)",
+            )
+        resume_state = current.get("resumeState")
+        if not resume_state:
+            fail(
+                "RECEIPT_IN_FLIGHT_RECOVERY_REQUIRED",
+                "missing resumeState for IN_FLIGHT recovery",
+            )
+        next_value = dict(current)
+        next_value["state"] = resume_state
+        next_value["revision"] = bump_revision(current)
+        store_task_receipt_with_readback(path, next_value)
+        return emit_ok(
+            "receipt-resume",
+            receipt=str(path),
+            state=resume_state,
+            revision=next_value["revision"],
+        )
+
+
 COMMANDS = {
     "reconcile": cmd_reconcile,
     "assert-state": cmd_assert_state,
@@ -480,6 +814,12 @@ COMMANDS = {
     "collect-raw": cmd_collect_raw,
     "collector-write": cmd_collector_write,
     "open-attempt": cmd_open_attempt,
+    "receipt-init": cmd_receipt_init,
+    "receipt-cas": cmd_receipt_cas,
+    "receipt-read": cmd_receipt_read,
+    "receipt-readback": cmd_receipt_readback,
+    "receipt-append-attempt": cmd_receipt_append_attempt,
+    "receipt-resume": cmd_receipt_resume,
 }
 
 
@@ -510,6 +850,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--lease-until")
     parser.add_argument("--require-parent-effective-done", action="store_true")
     parser.add_argument("--single-line", action="store_true")
+    # Receipt surface (RED-03 / GREEN-03)
+    parser.add_argument("--receipt")
+    parser.add_argument("--schema")
+    parser.add_argument("--expected-revision", type=int)
+    parser.add_argument("--expected-state")
+    parser.add_argument("--state")
+    parser.add_argument("--set-json")
+    parser.add_argument("--field")
+    parser.add_argument("--attempt-json")
+    parser.add_argument("--require-contained", action="store_true")
+    parser.add_argument("--receipts-root")
+    parser.add_argument("--confirm-readback", action="store_true")
     args, _unknown = parser.parse_known_args(argv)
     return args
 
