@@ -89,6 +89,51 @@
           "full-node"
         ]
       }
+    },
+    {
+      "taskId": "WP-02",
+      "dependsOn": ["WP-INFRA", "WP-00", "WP-01"],
+      "requiredEffectiveDone": ["WP-INFRA", "WP-00", "WP-01"],
+      "phaseCommands": {
+        "RED": { "commandId": "WP-02-RED", "argv": ["true"] },
+        "GREEN": { "commandId": "WP-02-GREEN", "argv": ["true"] },
+        "REFACTOR": { "commandId": "WP-02-REFACTOR", "argv": ["true"] },
+        "VERIFY": { "commandId": "WP-02-VERIFY", "argv": ["true"] }
+      },
+      "expectedExit": { "RED": 1, "GREEN": 0, "REFACTOR": 0, "VERIFY": 0 },
+      "failureSignaturePolicy": { "RED": { "required": true, "match": "stderr" } },
+      "scopeCheck": {
+        "repo": "mineradio",
+        "exactFiles": [
+          "wallpaper-plugin/app/src/main/java/com/motif/wallpaperengine/plugin/",
+          "wallpaper-plugin/app/src/main/AndroidManifest.xml"
+        ],
+        "product": "Wallpaper Engine",
+        "path": "wallpaper-plugin/",
+        "process": ":we_runtime",
+        "authority": "com.motif.wallpaperengine.control"
+      },
+      "evidenceLevel": "E1",
+      "weight": 8,
+      "product": "Wallpaper Engine",
+      "path": "wallpaper-plugin/",
+      "requiredEffectiveGate": false,
+      "inputs": [
+        "PluginContract",
+        "PluginResult",
+        "mineradioCallerCertSha256"
+      ],
+      "outputs": [
+        "PluginControlProvider",
+        "CallerPolicy",
+        "RequestLedger",
+        "PluginOperationRepository",
+        "PluginRuntimeService",
+        "PluginActionActivity",
+        "claimLaunch",
+        "renewAction CAS",
+        "one-shot PendingIntent"
+      ]
     }
   ]
 }

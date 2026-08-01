@@ -34,6 +34,9 @@ const {
   isExecutable,
   assertMonorepoPluginImported,
   assertMonorepoPluginContent,
+  WP01_TXN,
+  readWp01EffectiveDone,
+  readLiveCoreProgressPercent,
 } = require('./wallpaper-plugin-monorepo-import-helpers');
 
 // ---------------------------------------------------------------------------
@@ -64,22 +67,44 @@ test('MONOREPO-IMPORT RED-02: WP-INFRA remains DONE and WP-00 EffectiveDone', ()
 
   const wp00 = readJson(WP00_MERGE);
   assert.equal(wp00.EffectiveDone, true);
+  // WP-00 merge receipt still records its own weight snapshot (4); not total core %.
   assert.equal(wp00.coreProgressPercent, 4);
 
-  // WP-01 not weighted yet
-  if (pathExists(WP01_COMMIT)) {
-    const wp01 = readJson(WP01_COMMIT);
-    assert.equal(wp01.EffectiveDone, false);
+  // Live WP-01 EffectiveDone from transaction (authoritative), not a hardcoded false.
+  const wp01 = readWp01EffectiveDone();
+  if (wp01.source === 'missing') {
+    assert.fail('WP-01 receipt missing: expected transaction or bootstrap snapshot');
+  }
+  // After WP-01 close, transaction is DONE; pre-close snapshots may still be false.
+  if (wp01.source === 'transaction') {
+    assert.equal(wp01.EffectiveDone, true, JSON.stringify(wp01));
+    assert.equal(wp01.taskId, 'WP-01');
+    assert.equal(wp01.state, 'DONE');
+  } else if (pathExists(WP01_TXN)) {
+    // Transaction exists — must dominate any stale bootstrap snapshot.
+    const txn = readJson(WP01_TXN);
+    assert.equal(txn.EffectiveDone, true);
   }
 });
 
-test('MONOREPO-IMPORT RED-02: progress must stay at 4% and WP-01 not EffectiveDone', () => {
+test('MONOREPO-IMPORT RED-02: core progress tracks live EffectiveDone receipts', () => {
   const wp00 = readJson(WP00_MERGE);
-  assert.equal(wp00.coreProgressPercent, 4);
-  // No monorepo receipt may claim progress bump in RED
   assert.equal(wp00.EffectiveDone, true);
-  if (pathExists(WP01_COMMIT)) {
-    assert.equal(readJson(WP01_COMMIT).EffectiveDone, false);
+  // Historical WP-00 receipt field remains 4 (its own weight at merge time).
+  assert.equal(wp00.coreProgressPercent, 4);
+
+  const wp01 = readWp01EffectiveDone();
+  const liveProgress = readLiveCoreProgressPercent();
+  assert.equal(typeof liveProgress, 'number', 'compute-core-progress must return a number');
+
+  if (wp01.EffectiveDone) {
+    // WP-00(4) + WP-01(6) = 10; WP-02 must not be counted while EffectiveDone=false.
+    assert.equal(liveProgress, 10);
+    assert.equal(wp01.EffectiveDone, true);
+  } else {
+    // Pre-close monorepo RED era: only WP-00 weighted.
+    assert.equal(liveProgress, 4);
+    assert.equal(wp01.EffectiveDone, false);
   }
 });
 

@@ -1,13 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Wallpaper Engine monorepo import (WP-01 protocol module only).
-  No Activity, Service, Provider, or WallpaperManager wiring in this phase.
+  Wallpaper Engine monorepo plugin (WP-02 runtime).
+  Provider/Service on :we_runtime; Action Activity on default process.
+  No MAIN/LAUNCHER car-default entry.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="false"
         android:label="Wallpaper Engine"
-        android:supportsRtl="true" />
+        android:supportsRtl="true">
+
+        <meta-data
+            android:name="mineradioCallerCertSha256"
+            android:value="${mineradioCallerCertSha256}" />
+
+        <provider
+            android:name=".plugin.PluginControlProvider"
+            android:authorities="com.motif.wallpaperengine.control"
+            android:directBootAware="false"
+            android:exported="true"
+            android:process=":we_runtime" />
+
+        <service
+            android:name=".plugin.PluginRuntimeService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:process=":we_runtime" />
+
+        <activity
+            android:name=".plugin.PluginActionActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+    </application>
 
 </manifest>
