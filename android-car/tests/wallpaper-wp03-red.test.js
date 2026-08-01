@@ -81,7 +81,12 @@ test('WP-03 RED-01: worktree branch and live base identity', () => {
   // Live base from origin ls-remote; HEAD may equal live or be a descendant (task ahead).
   const identity = readTaskWorktreeIdentity();
   assert.equal(identity.ok, true, JSON.stringify(identity));
-  assert.equal(identity.branch, 'codex/wallpaper-plugin-wp03');
+  // Task branches: implementation / verify-done / close-verify, etc.
+  assert.match(
+    identity.branch,
+    /^codex\/wallpaper-plugin-/,
+    `unexpected task branch: ${identity.branch}`,
+  );
   assert.match(identity.head, /^[0-9a-f]{40}$/);
   assert.match(identity.liveBaseSha, /^[0-9a-f]{40}$/);
   assert.equal(identity.liveBaseSha, liveAuthoritativeBaseSha());
