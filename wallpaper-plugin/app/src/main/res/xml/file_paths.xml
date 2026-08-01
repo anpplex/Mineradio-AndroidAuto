@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  WP-03 FileProvider paths: only expose files/plugin_stage/ for engineUri grants.
+  Authority: com.motif.wallpaperengine.files
+-->
+<paths>
+    <files-path
+        name="plugin_stage"
+        path="plugin_stage/" />
+</paths>

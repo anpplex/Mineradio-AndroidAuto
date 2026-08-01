@@ -134,6 +134,55 @@
         "renewAction CAS",
         "one-shot PendingIntent"
       ]
+    },
+    {
+      "taskId": "WP-03",
+      "dependsOn": ["WP-INFRA", "WP-00", "WP-01", "WP-02"],
+      "requiredEffectiveDone": ["WP-INFRA", "WP-00", "WP-01", "WP-02"],
+      "phaseCommands": {
+        "RED": { "commandId": "WP-03-RED", "argv": ["true"] },
+        "GREEN": { "commandId": "WP-03-GREEN", "argv": ["true"] },
+        "REFACTOR": { "commandId": "WP-03-REFACTOR", "argv": ["true"] },
+        "VERIFY": { "commandId": "WP-03-VERIFY", "argv": ["true"] }
+      },
+      "expectedExit": { "RED": 1, "GREEN": 0, "REFACTOR": 0, "VERIFY": 0 },
+      "failureSignaturePolicy": { "RED": { "required": true, "match": "stderr" } },
+      "scopeCheck": {
+        "repo": "mineradio",
+        "exactFiles": [
+          "wallpaper-plugin/app/src/main/java/com/motif/wallpaperengine/plugin/",
+          "wallpaper-plugin/app/src/main/AndroidManifest.xml",
+          "wallpaper-plugin/app/src/main/res/xml/file_paths.xml"
+        ],
+        "product": "Wallpaper Engine",
+        "path": "wallpaper-plugin/",
+        "process": ":we_runtime",
+        "stagingRoot": "files/plugin_stage/",
+        "fileProviderAuthority": "com.motif.wallpaperengine.files"
+      },
+      "evidenceLevel": "E1",
+      "weight": 8,
+      "product": "Wallpaper Engine",
+      "path": "wallpaper-plugin/",
+      "requiredEffectiveGate": false,
+      "inputs": [
+        "PluginContract",
+        "PluginResult",
+        "PluginRuntimeService",
+        "PluginActionActivity",
+        "PluginOperationRepository",
+        "sourceUri grant from Mineradio"
+      ],
+      "outputs": [
+        "StagingPolicy",
+        "MpkgStager",
+        "EngineAdapter",
+        "StagedMpkg",
+        "engineUri",
+        "sourceConsumed",
+        "FileProvider plugin_stage",
+        "BrowseActivity launch Intent"
+      ]
     }
   ]
 }

@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Wallpaper Engine monorepo plugin (WP-02 runtime).
+  Wallpaper Engine monorepo plugin (WP-02 runtime + WP-03 staging).
   Provider/Service on :we_runtime; Action Activity on default process.
+  FileProvider exposes only files/plugin_stage/ for engineUri.
   No MAIN/LAUNCHER car-default entry.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -25,6 +26,16 @@
             android:directBootAware="false"
             android:exported="true"
             android:process=":we_runtime" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.motif.wallpaperengine.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <service
             android:name=".plugin.PluginRuntimeService"

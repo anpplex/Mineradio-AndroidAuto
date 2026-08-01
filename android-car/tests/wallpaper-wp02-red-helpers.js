@@ -429,7 +429,8 @@ function requireRuntimeContract() {
 
 /**
  * Attempt to treat WP-02 as ready-to-done with caller-forged fields.
- * Must fail-closed via runner; never elevates EffectiveDone.
+ * Must fail-closed via runner; never elevates EffectiveDone on a non-DONE receipt.
+ * Prefer a temp INIT receipt when operational txn is already DONE post-close.
  */
 function attemptCallerForgeEffectiveDone(receiptPath = wp02TxnReceipt) {
   const cas = runRunner([
@@ -452,6 +453,7 @@ function attemptCallerForgeEffectiveDone(receiptPath = wp02TxnReceipt) {
     '--receipt',
     receiptPath,
   ]);
+  // declare/cas-state always hit operational transactions root (gate remains fail-closed).
   const declare = runRunner([
     'assert-state',
     '--task',
@@ -470,6 +472,27 @@ function attemptCallerForgeEffectiveDone(receiptPath = wp02TxnReceipt) {
     transactionsRoot,
   ]);
   return { cas, verify, declare, casState };
+}
+
+/** Fresh INIT receipt for anti-forgery probes (independent of operational DONE). */
+function initTempWp02Receipt() {
+  const dir = makeTempReceiptDir();
+  const receipt = path.join(dir, 'wp-02.json');
+  const init = runRunner(['receipt-init', '--task', TASK_ID, '--receipt', receipt]);
+  return { receipt, init, dir };
+}
+
+/** Live operational WP-02 EffectiveDone + expected core % from catalog weights. */
+function liveWp02OperationalProgress() {
+  const receipt = readJson(wp02TxnReceipt);
+  const done = receipt && receipt.EffectiveDone === true && receipt.state === 'DONE';
+  // WP-00(4)+WP-01(6)=10; +WP-02(8)=18 when operational verify-done closed.
+  return {
+    receipt,
+    EffectiveDone: done,
+    expectedCoreProgressPercent: done ? 18 : 10,
+    expectedCoreProgressWithoutWp02: 10,
+  };
 }
 
 function attemptSkipInfraGate() {
@@ -581,5 +604,7 @@ module.exports = {
   defaultDoneReceiptsWithForgedWp02,
   parseRunnerJson,
   makeTempReceiptDir,
+  initTempWp02Receipt,
+  liveWp02OperationalProgress,
   resolveTaskContext,
 };

@@ -60,10 +60,16 @@ function validProofs(prNumber = 8) {
 
 test('WP-02 VERIFY-DONE RED-0: worktree identity and live base from ls-remote', () => {
   const branch = git(['branch', '--show-current']);
-  assert.equal(branch.stdout, 'codex/wallpaper-plugin-wp02-verify-done');
+  // Any codex/wallpaper-plugin-* task branch (implementation / verify-done / wp03 …).
+  assert.match(
+    branch.stdout,
+    /^codex\/wallpaper-plugin-/,
+    `unexpected task branch: ${branch.stdout}`,
+  );
   const head = git(['rev-parse', 'HEAD']);
   assert.match(head.stdout, /^[0-9a-f]{40}$/);
   const live = liveAuthoritativeBaseSha();
+  // When worktree is branched from origin tip, HEAD equals live base.
   assert.equal(head.stdout.toLowerCase(), live);
   assert.match(live, /^[0-9a-f]{40}$/);
 });
@@ -131,12 +137,21 @@ test('WP-02 VERIFY-DONE GREEN-1.1: verify-done with valid identity proofs succee
   assert.ok(vd.implementationMergeSha);
 });
 
-test('WP-02 VERIFY-DONE GREEN-1.2: production wp-02 txn remains non-DONE without operational CLOSE', () => {
-  // Success-path tests use temp receipts; operational txn is not auto-closed here.
+test('WP-02 VERIFY-DONE GREEN-1.2: operational wp-02 txn DONE only via verify-done (dynamic live)', () => {
+  // Success-path tests use temp receipts; operational txn reflects live CLOSE-VERIFY state.
   assert.equal(pathExists(wp02TxnReceipt), true);
   const before = readJson(wp02TxnReceipt);
-  assert.equal(before.EffectiveDone, false);
-  assert.notEqual(before.state, 'DONE');
+  assert.equal(before.taskId, 'WP-02');
+  if (before.EffectiveDone === true) {
+    // Post operational CLOSE-VERIFY: must carry verifyDone proof (not caller CAS).
+    assert.equal(before.state, 'DONE');
+    assert.ok(before.verifyDone && typeof before.verifyDone === 'object');
+    assert.equal(before.verifyDone.weight, EXPECTED_WEIGHT);
+    assert.match(String(before.verifyDone.liveBaseSha || ''), /^[0-9a-f]{40}$/);
+  } else {
+    assert.equal(before.EffectiveDone, false);
+    assert.notEqual(before.state, 'DONE');
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -259,16 +274,19 @@ test('WP-02 VERIFY-DONE RED-2.7: must not require mergeSha == live tip (ancestry
 // Progress guards
 // ---------------------------------------------------------------------------
 
-test('WP-02 VERIFY-DONE RED-3.1: Core progress stays 10% while operational WP-02 EffectiveDone=false', () => {
+test('WP-02 VERIFY-DONE RED-3.1: Core progress tracks live operational WP-02 EffectiveDone', () => {
+  const live = readJson(wp02TxnReceipt);
   const progress = computeCoreProgress(defaultDoneReceipts());
   assert.equal(progress.status, 0, progress.combined);
   const body = parseRunnerJson(progress);
-  assert.equal(body.coreProgressPercent, 10);
   const wp02 = (body.breakdown || []).find((r) => r.taskId === TASK_ID);
   assert.ok(wp02);
   assert.equal(wp02.weight, EXPECTED_WEIGHT);
-  assert.equal(wp02.EffectiveDone, false);
-  assert.equal(readJson(wp02TxnReceipt).EffectiveDone, false);
+  assert.equal(wp02.EffectiveDone, live.EffectiveDone === true);
+  assert.equal(readJson(wp02TxnReceipt).EffectiveDone, live.EffectiveDone === true);
+  // WP-00(4)+WP-01(6)=10; +WP-02(8)=18 only when operational EffectiveDone=true.
+  const expected = live.EffectiveDone === true ? EXPECTED_PROGRESS_WHEN_DONE : 10;
+  assert.equal(body.coreProgressPercent, expected);
 });
 
 test('WP-02 VERIFY-DONE RED-3.2: GREEN success target is progress 18% from catalog weights', () => {
@@ -302,8 +320,19 @@ test('WP-02 VERIFY-DONE GREEN-3.3: full proof chain succeeds with dynamic PR ide
   assert.equal(pathExists(runtimeContractPath), true);
 });
 
-test('WP-02 VERIFY-DONE RED-3.4: WP-03 not started', () => {
+test('WP-02 VERIFY-DONE RED-3.4: WP-02 verify-done path present; WP-03 EffectiveDone not auto-elevated', () => {
+  // After WP-03 GREEN, catalog may contain WP-03; that must not forge WP-02/WP-03 done.
   const catalog = readJson(catalogPath);
-  assert.ok(!catalog.tasks.some((t) => t.taskId === 'WP-03'));
+  assert.ok(Array.isArray(catalog.tasks));
   assert.equal(productionHasWp02VerifyDonePath(), true);
+  // Operational WP-03 receipt (if any) must remain non-DONE without its own verify-done.
+  const wp03Path = path.join(
+    path.dirname(wp02TxnReceipt),
+    'wp-03.json',
+  );
+  if (pathExists(wp03Path)) {
+    const wp03 = readJson(wp03Path);
+    assert.notEqual(wp03.EffectiveDone, true);
+    assert.notEqual(wp03.state, 'DONE');
+  }
 });
