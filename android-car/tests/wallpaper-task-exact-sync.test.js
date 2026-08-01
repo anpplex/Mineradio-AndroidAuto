@@ -22,6 +22,7 @@ const {
   readJson,
   runExact,
   seedPreExactSyncReceipt,
+  localHeadSha,
   assertEffectiveGate,
   assertProductionFailed,
   assertFailClosed,
@@ -51,7 +52,9 @@ test('RED-06.1 live verification receipt must not be the only path (temp isolati
 test('RED-06.2 exact-push command must exist as production surface', () => {
   const { bootstrap } = makeBootstrapSandbox();
   const file = bootstrapReceiptPath(bootstrap);
-  const infra = seedPreExactSyncReceipt(file);
+  seedPreExactSyncReceipt(file);
+  // GREEN-07: expectedSha must assert real local HEAD (not a fixture override).
+  const head = localHeadSha();
   const result = runExact([
     'bootstrap-exact-push',
     '--receipt',
@@ -59,7 +62,7 @@ test('RED-06.2 exact-push command must exist as production surface', () => {
     '--ref',
     REF,
     '--expected-sha',
-    infra,
+    head,
     '--dry-run',
   ]);
   // GREEN-06 must accept dry-run exact push planning without network mutation.
@@ -74,7 +77,8 @@ test('RED-06.2 exact-push command must exist as production surface', () => {
 test('RED-06.3 exact-push without authorization must refuse real push', () => {
   const { bootstrap } = makeBootstrapSandbox();
   const file = bootstrapReceiptPath(bootstrap);
-  const infra = seedPreExactSyncReceipt(file);
+  seedPreExactSyncReceipt(file);
+  const head = localHeadSha();
   const result = runExact([
     'bootstrap-exact-push',
     '--receipt',
@@ -82,7 +86,7 @@ test('RED-06.3 exact-push without authorization must refuse real push', () => {
     '--ref',
     REF,
     '--expected-sha',
-    infra,
+    head,
     // deliberately no --allow-network-push / --i-understand-real-push
   ]);
   assertProductionFailed(
@@ -244,7 +248,8 @@ test('RED-06.8 EffectiveGate stays false without PR merge even if exactSync forg
 test('RED-06.9 exact-push dry-run must not mutate git remotes', () => {
   const { bootstrap } = makeBootstrapSandbox();
   const file = bootstrapReceiptPath(bootstrap);
-  const infra = seedPreExactSyncReceipt(file);
+  seedPreExactSyncReceipt(file);
+  const head = localHeadSha();
   const before = runExact(['bootstrap-write-status', '--receipt', file]);
   assert.equal(before.status, 0, before.combined);
 
@@ -255,7 +260,7 @@ test('RED-06.9 exact-push dry-run must not mutate git remotes', () => {
     '--ref',
     REF,
     '--expected-sha',
-    infra,
+    head,
     '--dry-run',
   ]);
   // Until implemented, this fails; when implemented, dry-run must not require network.
@@ -301,7 +306,7 @@ test('RED-06.11 must not mark WP-INFRA DONE or EffectiveGate true from local-onl
     '--ref',
     REF,
     '--expected-sha',
-    readJson(file).INFRA_SHA,
+    localHeadSha(),
     '--dry-run',
   ]);
   runExact([

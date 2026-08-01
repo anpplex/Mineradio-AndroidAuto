@@ -9,8 +9,9 @@ Fail-closed gates for:
   - IN_FLIGHT recovery and append-only attempts
   - bootstrap receipt (canonical path, transaction identity, phase ledger)
   - blob SHA freeze, test receipts, exactSync, PR merge / base containment
-  - exact-push dry-run / dual-auth refuse; origin ls-remote; seal-from-ls-remote only
-  - EffectiveGate derivation (forged DONE rejected)
+  - exact-push dry-run / dual-auth refuse; origin-only remote; approved infra ref
+  - expectedSha bound to local HEAD; REMOTE_VERIFIED only after durable ls-remote
+  - seal-from-ls-remote only; EffectiveGate derivation (forged DONE rejected)
 
 Does not yet execute authorized network exact-push or write production-closed
 PR merge / base-containment evidence.
@@ -821,7 +822,17 @@ def cmd_receipt_resume(args: argparse.Namespace) -> int:
 
 BOOTSTRAP_SCHEMA = "wallpaper-infra-bootstrap/v1"
 BOOTSTRAP_MODE = 0o600
-DEFAULT_INFRA_REF = "refs/heads/codex/wallpaper-plugin-infra"
+# Exact-push / ls-remote allowlists (GREEN-07). Single source of truth.
+APPROVED_INFRA_BRANCH = "codex/wallpaper-plugin-infra"
+APPROVED_INFRA_REF = f"refs/heads/{APPROVED_INFRA_BRANCH}"
+DEFAULT_INFRA_REF = APPROVED_INFRA_REF
+APPROVED_PUSH_REMOTE = "origin"
+DEFAULT_GIT_REMOTE = APPROVED_PUSH_REMOTE
+LAST_ORIGIN_LS_REMOTE = "lastOriginLsRemote"
+SOURCE_GIT_LS_REMOTE = "git-ls-remote"
+EXACT_SYNC_SOURCE_LS_REMOTE = "ls-remote"
+GIT_LS_REMOTE_TIMEOUT_S = 60
+GIT_REV_PARSE_TIMEOUT_S = 30
 # android-car/scripts/wallpaper-task.py → android-car/verification/.../WP-INFRA.json
 CANONICAL_BOOTSTRAP_RECEIPT = (
     Path(__file__).resolve().parent.parent
@@ -1055,13 +1066,18 @@ def apply_origin_remote_verified(
     expected: str,
     observed: str,
     ref: str,
+    source: str = SOURCE_GIT_LS_REMOTE,
 ) -> dict[str, Any]:
-    """Write INFRA_SHA + originReadback and advance to INFRA_REMOTE_VERIFIED."""
+    """Write INFRA_SHA + originReadback and advance to INFRA_REMOTE_VERIFIED.
+
+    source must identify independent ls-remote evidence — never caller-only.
+    """
     current["INFRA_SHA"] = expected
     current["originReadback"] = {
         "ref": ref,
         "expectedSha": expected,
         "observedSha": observed,
+        "source": source,
     }
     current["state"] = "INFRA_REMOTE_VERIFIED"
     return current
@@ -1383,31 +1399,41 @@ def cmd_bootstrap_record_origin(args: argparse.Namespace) -> int:
 
 
 def cmd_bootstrap_readback(args: argparse.Namespace) -> int:
+    """Promote REMOTE_VERIFIED only from durable ls-remote — never caller-only SHAs."""
     path = resolve_bootstrap_path(args)
-    infra = args.infra_sha
-    remote = args.remote_sha
-    if not infra or not remote:
+    ref = normalize_approved_infra_ref(args.ref)
+    if not args.infra_sha or not args.remote_sha:
         fail("ORIGIN_SHA_MISMATCH", "missing --infra-sha or --remote-sha")
+    infra = normalize_git_sha40(
+        args.infra_sha,
+        reason="ORIGIN_SHA_MISMATCH",
+        message="--infra-sha must be a 40-char git SHA",
+    )
+    remote = normalize_git_sha40(
+        args.remote_sha,
+        reason="ORIGIN_SHA_MISMATCH",
+        message="--remote-sha must be a 40-char git SHA",
+    )
+    # Mismatch is still ORIGIN_SHA_MISMATCH (RED-04.5) before ls-remote checks.
     if infra != remote:
         fail(
             "ORIGIN_SHA_MISMATCH",
             f"exact origin readback failed: infra={infra} remote={remote}",
         )
-    ref = args.ref or DEFAULT_INFRA_REF
-
-    def apply(current: dict[str, Any]) -> dict[str, Any]:
-        return apply_origin_remote_verified(
-            current, expected=infra, observed=remote, ref=ref
-        )
-
-    # Readback is the recovery path that may run while SYNC_IN_FLIGHT.
-    mutate_bootstrap(path, apply, check_mode=True, allow_in_flight=True)
+    observed = promote_remote_verified_from_ls_remote(
+        path,
+        expected=infra,
+        ref=ref,
+        caller_observed=remote,
+        caller_field="--remote-sha",
+    )
     return emit_ok(
         "bootstrap-readback",
         receipt=str(path),
         infraSha=infra,
-        remoteSha=remote,
+        remoteSha=observed,
         state="INFRA_REMOTE_VERIFIED",
+        source=SOURCE_GIT_LS_REMOTE,
     )
 
 
@@ -1540,39 +1566,134 @@ def cmd_bootstrap_sync_resume(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Exact push + origin ls-remote (RED-06 / GREEN-06)
-# Fail-closed: no real network push without dual auth; seal only from ls-remote.
+# Exact push + origin ls-remote (RED-06 / GREEN-06 / GREEN-07)
+# Fail-closed: origin-only remote, approved infra ref, HEAD==expectedSha,
+# no real network push without dual auth; seal / REMOTE_VERIFIED only from ls-remote.
+# Allowlist constants live with bootstrap constants above.
 # ---------------------------------------------------------------------------
-
-LAST_ORIGIN_LS_REMOTE = "lastOriginLsRemote"
-EXACT_SYNC_SOURCE_LS_REMOTE = "ls-remote"
-DEFAULT_GIT_REMOTE = "origin"
-GIT_LS_REMOTE_TIMEOUT_S = 60
 
 
 def exact_push_authorized(args: argparse.Namespace) -> bool:
     return bool(args.allow_network_push and args.i_understand_real_push)
 
 
-def git_ls_remote_sha(ref: str, *, remote: str = DEFAULT_GIT_REMOTE) -> str:
-    """Independent origin readback via `git ls-remote --refs`. Never trusts caller SHA."""
+def run_git(
+    argv: list[str],
+    *,
+    fail_reason: str,
+    timeout: int = GIT_REV_PARSE_TIMEOUT_S,
+) -> str:
+    """Run git and return stdout strip, or fail-closed with fail_reason."""
     try:
         proc = subprocess.run(
-            ["git", "ls-remote", "--refs", remote, ref],
+            ["git", *argv],
             capture_output=True,
             text=True,
-            timeout=GIT_LS_REMOTE_TIMEOUT_S,
+            timeout=timeout,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        fail("LS_REMOTE_REQUIRED", f"git ls-remote failed: {exc}")
+        fail(fail_reason, f"git {' '.join(argv)} failed: {exc}")
     if proc.returncode != 0:
         err = (proc.stderr or proc.stdout or "").strip()
+        fail(fail_reason, f"git {' '.join(argv)} exit {proc.returncode}: {err}")
+    return (proc.stdout or "").strip()
+
+
+def require_approved_remote(remote: str | None) -> str:
+    """WP-INFRA exact-push / ls-remote may only use remote=origin."""
+    if remote is None:
+        return APPROVED_PUSH_REMOTE
+    token = str(remote).strip()
+    if token == "":
         fail(
-            "LS_REMOTE_REQUIRED",
-            f"git ls-remote exit {proc.returncode} for {remote} {ref}: {err}",
+            "REMOTE_NOT_ALLOWED",
+            "empty remote not allowed; only origin is approved for WP-INFRA",
         )
-    lines = [ln.strip() for ln in (proc.stdout or "").splitlines() if ln.strip()]
+    if token != APPROVED_PUSH_REMOTE:
+        fail(
+            "REMOTE_NOT_ALLOWED",
+            f"remote not allowed: {token!r}; only origin is approved "
+            f"(upstream and other remotes are forbidden)",
+        )
+    return token
+
+
+def normalize_approved_infra_ref(ref: str | None) -> str:
+    """Only refs/heads/codex/wallpaper-plugin-infra is an approved push/readback target."""
+    raw = (ref or DEFAULT_INFRA_REF).strip()
+    if not raw:
+        fail("REF_NOT_ALLOWED", "missing --ref; approved ref required")
+    if raw.startswith("refs/heads/"):
+        full = raw
+        branch = raw[len("refs/heads/") :]
+    elif raw.startswith("refs/"):
+        fail(
+            "REF_NOT_ALLOWED",
+            f"ref not allowed: {raw!r}; only {APPROVED_INFRA_REF}",
+        )
+    else:
+        branch = raw
+        full = f"refs/heads/{branch}"
+    if branch != APPROVED_INFRA_BRANCH or full != APPROVED_INFRA_REF:
+        fail(
+            "BRANCH_NOT_ALLOWED",
+            f"branch/ref not allowed: {raw!r}; only {APPROVED_INFRA_BRANCH} "
+            f"({APPROVED_INFRA_REF}). main/master/huawei-android12-car/"
+            f"upstream/plan branch are forbidden push targets",
+        )
+    return full
+
+
+def local_git_head_sha() -> str:
+    return normalize_git_sha40(
+        run_git(["rev-parse", "HEAD"], fail_reason="LOCAL_HEAD_MISMATCH"),
+        reason="LOCAL_HEAD_MISMATCH",
+        message="local HEAD is not a 40-char git SHA",
+    )
+
+
+def local_git_branch_name() -> str:
+    branch = run_git(
+        ["rev-parse", "--abbrev-ref", "HEAD"],
+        fail_reason="BRANCH_NOT_ALLOWED",
+    )
+    if not branch or branch == "HEAD":
+        fail(
+            "BRANCH_NOT_ALLOWED",
+            "detached HEAD is not an approved WP-INFRA push branch",
+        )
+    return branch
+
+
+def require_expected_is_local_head(expected: str) -> str:
+    """expectedSha is an assertion on real local HEAD — never an override input."""
+    head = local_git_head_sha()
+    if expected != head:
+        fail(
+            "LOCAL_HEAD_MISMATCH",
+            f"expectedSha must equal local HEAD: expected={expected} HEAD={head}",
+        )
+    branch = local_git_branch_name()
+    if branch != APPROVED_INFRA_BRANCH:
+        fail(
+            "BRANCH_NOT_ALLOWED",
+            f"current branch {branch!r} is not approved; must be on "
+            f"{APPROVED_INFRA_BRANCH} with HEAD == expectedSha",
+        )
+    return head
+
+
+def git_ls_remote_sha(ref: str, *, remote: str = DEFAULT_GIT_REMOTE) -> str:
+    """Independent origin readback via `git ls-remote --refs`. Never trusts caller SHA."""
+    remote = require_approved_remote(remote)
+    ref = normalize_approved_infra_ref(ref)
+    out = run_git(
+        ["ls-remote", "--refs", remote, ref],
+        fail_reason="LS_REMOTE_REQUIRED",
+        timeout=GIT_LS_REMOTE_TIMEOUT_S,
+    )
+    lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
     if not lines:
         fail("LS_REMOTE_REQUIRED", f"git ls-remote returned no refs for {ref}")
     return normalize_git_sha40(
@@ -1594,17 +1715,24 @@ def record_last_origin_ls_remote(
         "observedSha": observed,
         "remoteSha": observed,
         "capturedAt": utc_now_iso(),
-        "source": "git-ls-remote",
+        "source": SOURCE_GIT_LS_REMOTE,
     }
 
 
-def durable_ls_remote_observed(receipt: Mapping[str, Any], ref: str) -> str:
+def durable_ls_remote_observed(
+    receipt: Mapping[str, Any],
+    ref: str,
+    *,
+    missing_reason: str = "LS_REMOTE_REQUIRED",
+    missing_message: str | None = None,
+) -> str:
     """Return observedSha from durable lastOriginLsRemote for the given ref."""
     last = receipt.get(LAST_ORIGIN_LS_REMOTE)
     if not isinstance(last, dict) or not is_git_sha40(last.get("observedSha")):
         fail(
-            "LS_REMOTE_REQUIRED",
-            "no durable lastOriginLsRemote; run bootstrap-origin-ls-remote first",
+            missing_reason,
+            missing_message
+            or "no durable lastOriginLsRemote; run bootstrap-origin-ls-remote first",
         )
     last_ref = last.get("ref") or ref
     if isinstance(last_ref, str) and last_ref != ref:
@@ -1613,6 +1741,52 @@ def durable_ls_remote_observed(receipt: Mapping[str, Any], ref: str) -> str:
             f"ls-remote ref mismatch: sealed-for={ref} recorded={last_ref}",
         )
     return str(last["observedSha"]).lower()
+
+
+def promote_remote_verified_from_ls_remote(
+    path: Path,
+    *,
+    expected: str,
+    ref: str,
+    caller_observed: str,
+    caller_field: str,
+) -> str:
+    """Require durable ls-remote, match expected/caller, store INFRA_REMOTE_VERIFIED.
+
+    Returns the durable observed SHA. Never trusts caller as the source of truth.
+    """
+    with receipt_lock(path):
+        current = load_bootstrap_receipt(path, check_mode=True)
+        observed = durable_ls_remote_observed(
+            current,
+            ref,
+            missing_reason="CALLER_INJECTED_REMOTE_SHA",
+            missing_message=(
+                f"cannot set INFRA_REMOTE_VERIFIED from caller-only {caller_field}; "
+                "run bootstrap-origin-ls-remote first (independent git ls-remote)"
+            ),
+        )
+        if expected != observed:
+            fail(
+                "LS_REMOTE_MISMATCH",
+                f"expected does not match durable ls-remote: "
+                f"expected={expected} observed={observed}",
+            )
+        if caller_observed != observed:
+            fail(
+                "CALLER_INJECTED_REMOTE_SHA",
+                f"caller {caller_field} disagrees with durable ls-remote observedSha",
+            )
+        next_value = apply_origin_remote_verified(
+            dict(current),
+            expected=expected,
+            observed=observed,
+            ref=ref,
+            source=SOURCE_GIT_LS_REMOTE,
+        )
+        next_value["revision"] = bump_revision(current)
+        store_bootstrap_receipt(path, next_value)
+        return observed
 
 
 def build_exact_sync_record(
@@ -1649,7 +1823,8 @@ def refuse_exact_push_network(args: argparse.Namespace) -> NoReturn:
 def cmd_bootstrap_exact_push(args: argparse.Namespace) -> int:
     """Plan or refuse exact-SHA push. Real network push is not the default path."""
     path = resolve_bootstrap_path(args)
-    ref = args.ref or DEFAULT_INFRA_REF
+    remote = require_approved_remote(args.remote)
+    ref = normalize_approved_infra_ref(args.ref)
     dry_run = bool(args.dry_run)
 
     if not args.expected_sha:
@@ -1659,6 +1834,8 @@ def cmd_bootstrap_exact_push(args: argparse.Namespace) -> int:
         reason="ORIGIN_SHA_MISMATCH",
         message="exact-push requires 40-char --expected-sha",
     )
+    # expectedSha asserts real local HEAD; never an override of local state.
+    expected = require_expected_is_local_head(expected)
 
     receipt = load_bootstrap_receipt(path, check_mode=True)
     reject_forged_effective_claims(receipt)
@@ -1672,10 +1849,11 @@ def cmd_bootstrap_exact_push(args: argparse.Namespace) -> int:
             mode="dry-run",
             dryRun=True,
             ref=ref,
+            remote=remote,
             expectedSha=expected,
             message=(
                 "exact-push dry-run: plan exact SHA refspec "
-                f"{expected} -> {ref}; no network"
+                f"{expected} -> {ref} on {remote}; no network"
             ),
             network=False,
             remoteMutation=False,
@@ -1687,8 +1865,8 @@ def cmd_bootstrap_exact_push(args: argparse.Namespace) -> int:
 def cmd_bootstrap_origin_ls_remote(args: argparse.Namespace) -> int:
     """Independent origin readback; records lastOriginLsRemote (does not seal exactSync)."""
     path = resolve_bootstrap_path(args)
-    ref = args.ref or DEFAULT_INFRA_REF
-    remote = args.remote or DEFAULT_GIT_REMOTE
+    ref = normalize_approved_infra_ref(args.ref)
+    remote = require_approved_remote(args.remote)
     dry_run = bool(args.dry_run)
 
     # Ensure receipt is loadable; ls-remote is allowed during SYNC_IN_FLIGHT (recovery).
@@ -1724,28 +1902,40 @@ def cmd_bootstrap_origin_ls_remote(args: argparse.Namespace) -> int:
         remote=remote,
         observedSha=observed,
         remoteSha=observed,
-        source="git-ls-remote",
+        source=SOURCE_GIT_LS_REMOTE,
         message="ls-remote observed origin SHA recorded (exactSync not sealed)",
     )
 
 
 def cmd_bootstrap_origin_readback(args: argparse.Namespace) -> int:
-    """Compare expected vs observed origin SHAs; fail-closed on mismatch."""
+    """Promote REMOTE_VERIFIED only after durable ls-remote; never caller-only SHAs."""
     path = resolve_bootstrap_path(args)
-    ref = args.ref or DEFAULT_INFRA_REF
-    expected, observed = require_matching_git_shas(
+    ref = normalize_approved_infra_ref(args.ref)
+    if not args.expected_sha or not args.observed_sha:
+        fail("ORIGIN_SHA_MISMATCH", "missing --expected-sha or --observed-sha")
+    expected = normalize_git_sha40(
         args.expected_sha,
+        reason="ORIGIN_SHA_MISMATCH",
+        message="origin expected must be 40-char git SHA",
+    )
+    observed_caller = normalize_git_sha40(
         args.observed_sha,
         reason="ORIGIN_SHA_MISMATCH",
-        label="origin",
+        message="origin observed must be 40-char git SHA",
     )
-
-    def apply(current: dict[str, Any]) -> dict[str, Any]:
-        return apply_origin_remote_verified(
-            current, expected=expected, observed=observed, ref=ref
+    # Caller pair mismatch fails first (stable ORIGIN_SHA_MISMATCH).
+    if expected != observed_caller:
+        fail(
+            "ORIGIN_SHA_MISMATCH",
+            f"origin mismatch: expected={expected} observed={observed_caller}",
         )
-
-    mutate_bootstrap(path, apply, check_mode=True, allow_in_flight=True)
+    observed = promote_remote_verified_from_ls_remote(
+        path,
+        expected=expected,
+        ref=ref,
+        caller_observed=observed_caller,
+        caller_field="--observed-sha",
+    )
     return emit_ok(
         "bootstrap-origin-readback",
         receipt=str(path),
@@ -1753,13 +1943,14 @@ def cmd_bootstrap_origin_readback(args: argparse.Namespace) -> int:
         expectedSha=expected,
         observedSha=observed,
         state="INFRA_REMOTE_VERIFIED",
+        source=SOURCE_GIT_LS_REMOTE,
     )
 
 
 def cmd_bootstrap_seal_exact_sync(args: argparse.Namespace) -> int:
     """Seal exactSync only from durable ls-remote evidence — never caller-only SHA."""
     path = resolve_bootstrap_path(args)
-    ref = args.ref or DEFAULT_INFRA_REF
+    ref = normalize_approved_infra_ref(args.ref)
     from_ls = bool(args.from_ls_remote)
     caller_observed = args.observed_sha
 
