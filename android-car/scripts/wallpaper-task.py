@@ -9,12 +9,11 @@ Fail-closed gates for:
   - IN_FLIGHT recovery and append-only attempts
   - bootstrap receipt (canonical path, transaction identity, phase ledger)
   - blob SHA freeze, test receipts, exactSync, PR merge / base containment
-  - exact-push dry-run / dual-auth refuse; origin-only remote; approved infra ref
+  - exact-push (dual-auth network); origin-only remote; approved infra ref
   - expectedSha bound to local HEAD; REMOTE_VERIFIED only after durable ls-remote
-  - seal-from-ls-remote only; EffectiveGate derivation (forged DONE rejected)
-
-Does not yet execute authorized network exact-push or write production-closed
-PR merge / base-containment evidence.
+  - PR merge / base containment independent readback
+  - blob SHA path-bound + always recompute; authentic node --test receipts
+  - EffectiveGate derivation (forged DONE / caller test receipts rejected)
 """
 
 from __future__ import annotations
@@ -855,6 +854,33 @@ REQUIRED_GATE_VALUE_FIELDS = (
     "originReadback",
     "phaseEvents",
 )
+# catalogTestReceipt / schemaTestReceipt are required later with BOOTSTRAP_MISSING_FIELD
+# (after phase/origin/blob layers) so ordered gate failures stay stable.
+# Frozen blob paths relative to this runner (GREEN-10 always recompute against these).
+_FROZEN_SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_RUNNER_BLOB_PATH = Path(__file__).resolve()
+DEFAULT_CATALOG_BLOB_PATH = _FROZEN_SCRIPT_DIR / "wallpaper-plugin-tasks.json"
+DEFAULT_SCHEMA_BLOB_PATH = _FROZEN_SCRIPT_DIR / "wallpaper-task.schema.json"
+AUTHENTIC_TEST_RECEIPT_SOURCES = frozenset(
+    {
+        "node-test",
+        "production-test",
+        "bootstrap-record-test-receipt",
+    }
+)
+CALLER_FORGED_TEST_SOURCES = frozenset(
+    {
+        "caller",
+        "forged",
+        "caller-forged",
+        "caller-forged-cli-success",
+    }
+)
+TEST_RECEIPT_FIELD_BY_KIND = {
+    "catalog": "catalogTestReceipt",
+    "schema": "schemaTestReceipt",
+    "runner": "runnerTestReceipt",
+}
 SHA_KIND_TO_FIELD = {
     "runner": "runnerSha256",
     "catalog": "catalogSha256",
@@ -1126,6 +1152,19 @@ def missing_gate_fields(receipt: Mapping[str, Any]) -> list[str]:
     return missing
 
 
+def resolve_blob_recompute_paths(
+    *,
+    runner_path: str | None,
+    catalog_path: str | None,
+    schema_path: str | None,
+) -> tuple[str, str, str]:
+    """Frozen implementation paths; CLI overrides must still be real files."""
+    runner = runner_path or str(DEFAULT_RUNNER_BLOB_PATH)
+    catalog = catalog_path or str(DEFAULT_CATALOG_BLOB_PATH)
+    schema = schema_path or str(DEFAULT_SCHEMA_BLOB_PATH)
+    return runner, catalog, schema
+
+
 def recompute_blob_mismatches(
     receipt: Mapping[str, Any],
     *,
@@ -1133,19 +1172,27 @@ def recompute_blob_mismatches(
     catalog_path: str | None,
     schema_path: str | None,
 ) -> tuple[str | None, str]:
+    runner, catalog, schema = resolve_blob_recompute_paths(
+        runner_path=runner_path,
+        catalog_path=catalog_path,
+        schema_path=schema_path,
+    )
     checks = (
-        ("runner", runner_path, receipt.get("runnerSha256")),
-        ("catalog", catalog_path, receipt.get("catalogSha256")),
-        ("schema", schema_path, receipt.get("schemaSha256")),
+        ("runner", runner, receipt.get("runnerSha256")),
+        ("catalog", catalog, receipt.get("catalogSha256")),
+        ("schema", schema, receipt.get("schemaSha256")),
     )
     for kind, file_path, recorded in checks:
-        if not file_path:
-            continue
         path = Path(file_path)
         if not path.is_file():
             return (
                 "BOOTSTRAP_SHA_MISMATCH",
                 f"{kind} path missing for recompute: {path}",
+            )
+        if not is_sha256_hex(recorded):
+            return (
+                "BOOTSTRAP_SHA_MISMATCH",
+                f"{kind} recorded sha256 missing or invalid",
             )
         actual = sha256_file(path)
         if actual != recorded:
@@ -1158,6 +1205,77 @@ def recompute_blob_mismatches(
 
 def test_receipt_pass(value: Any) -> bool:
     return isinstance(value, dict) and value.get("pass") is True
+
+
+def test_receipt_authentic(value: Any) -> bool:
+    """Test receipts must prove node --test provenance — not caller pass:true."""
+    if not test_receipt_pass(value):
+        return False
+    assert isinstance(value, dict)
+    source = value.get("source")
+    command = value.get("command")
+    if isinstance(source, str) and source in CALLER_FORGED_TEST_SOURCES:
+        return False
+    if isinstance(command, str) and "forged" in command.lower():
+        return False
+    if isinstance(source, str) and source in AUTHENTIC_TEST_RECEIPT_SOURCES:
+        return True
+    # Legacy authentic shape: explicit node --test command without forged tokens.
+    if isinstance(command, str) and "node --test" in command:
+        return True
+    # Bare {pass:true} without provenance is not authentic.
+    return False
+
+
+def evaluate_test_receipt_layer(
+    receipt: Mapping[str, Any],
+) -> tuple[str | None, str]:
+    """Return (failure_reason, message) or (None, '') when catalog+schema authentic."""
+    catalog_tr = receipt.get("catalogTestReceipt")
+    schema_tr = receipt.get("schemaTestReceipt")
+    missing_tr = [
+        name
+        for name, value in (
+            ("catalogTestReceipt", catalog_tr),
+            ("schemaTestReceipt", schema_tr),
+        )
+        if value is None
+    ]
+    if missing_tr:
+        return (
+            "BOOTSTRAP_MISSING_FIELD",
+            f"missing required bootstrap fields: {','.join(missing_tr)}",
+        )
+    if not test_receipt_authentic(catalog_tr) or not test_receipt_authentic(schema_tr):
+        return (
+            "CALLER_INJECTED_TEST_RECEIPT",
+            "catalog/schema test receipts must come from authentic node --test "
+            "provenance (source=node-test), not caller pass=true",
+        )
+    return None, ""
+
+
+def require_path_bound_sha256(path_raw: str | None, sha: str) -> Path:
+    """Require --path and exact file digest match for bootstrap-record-sha."""
+    if not path_raw:
+        fail(
+            "PATH_REQUIRED",
+            "bootstrap-record-sha requires --path to bind sha256 to a real file digest",
+        )
+    file_path = Path(path_raw)
+    if not file_path.is_file():
+        fail("BOOTSTRAP_SHA_MISMATCH", f"blob path missing: {file_path}")
+    actual = sha256_file(file_path)
+    if actual != sha:
+        fail(
+            "BOOTSTRAP_SHA_MISMATCH",
+            f"provided sha256 does not match file digest: {path_raw}",
+        )
+    return file_path
+
+
+def cli_truthy(value: Any) -> bool:
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def exact_sync_verified(receipt: Mapping[str, Any]) -> bool:
@@ -1204,10 +1322,14 @@ def evaluate_bootstrap_gate(
     """Return (gate, failure_reason_if_false, message).
 
     Ordered layers (first failure wins):
-      state → required fields → phase ledger → origin →
-      optional blob recompute → test receipts → exactSync →
-      PR merge → base containment.
+      state → required value fields → phase ledger → origin →
+      always blob recompute (frozen paths) → authentic test receipts →
+      exactSync → PR merge → base containment.
+
+    recompute_paths is reserved for CLI hard-fail policy on evaluate; blob
+    digests are always recomputed here against frozen (or overridden) paths.
     """
+    _ = recompute_paths  # CLI hard-fail policy only; digests always recomputed.
     state = receipt.get("state")
     if not isinstance(state, str) or state not in LEGAL_BOOTSTRAP_STATES:
         msg = f"illegal bootstrap state: {state!r}"
@@ -1234,24 +1356,18 @@ def evaluate_bootstrap_gate(
             "origin expectedSha/observedSha missing or not exact equal",
         )
 
-    # Blob recompute before later layers so SHA mismatches surface first.
-    if recompute_paths:
-        reason, message = recompute_blob_mismatches(
-            receipt,
-            runner_path=runner_path,
-            catalog_path=catalog_path,
-            schema_path=schema_path,
-        )
-        if reason:
-            return gate_failure(reason, message)
+    reason, message = recompute_blob_mismatches(
+        receipt,
+        runner_path=runner_path,
+        catalog_path=catalog_path,
+        schema_path=schema_path,
+    )
+    if reason:
+        return gate_failure(reason, message)
 
-    if not test_receipt_pass(receipt.get("catalogTestReceipt")) or not test_receipt_pass(
-        receipt.get("schemaTestReceipt")
-    ):
-        return gate_failure(
-            "MISSING_TEST_RECEIPT",
-            "catalogTestReceipt and schemaTestReceipt with pass=true are required",
-        )
+    tr_reason, tr_message = evaluate_test_receipt_layer(receipt)
+    if tr_reason:
+        return gate_failure(tr_reason, tr_message)
 
     if not exact_sync_verified(receipt):
         return gate_failure(
@@ -1322,20 +1438,97 @@ def cmd_bootstrap_record_sha(args: argparse.Namespace) -> int:
     if not isinstance(sha, str) or len(sha) != 64:
         fail("BOOTSTRAP_SHA_MISMATCH", "sha256 must be 64 hex chars")
 
-    if args.path:
-        actual = sha256_file(Path(args.path))
-        if actual != sha:
-            fail(
-                "BOOTSTRAP_SHA_MISMATCH",
-                f"provided sha256 does not match file digest: {args.path}",
-            )
+    file_path = require_path_bound_sha256(args.path, sha)
 
     def apply(current: dict[str, Any]) -> dict[str, Any]:
         current[field] = sha
         return current
 
     mutate_bootstrap(path, apply, check_mode=True)
-    return emit_ok("bootstrap-record-sha", receipt=str(path), kind=kind, sha256=sha)
+    return emit_ok(
+        "bootstrap-record-sha",
+        receipt=str(path),
+        kind=kind,
+        sha256=sha,
+        path=str(file_path),
+    )
+
+
+def cmd_bootstrap_record_test_receipt(args: argparse.Namespace) -> int:
+    """Record catalog/schema/runner test receipt only from authentic node --test proof.
+
+    Caller-only --pass true / forged commands are rejected.
+    """
+    path = resolve_bootstrap_path(args)
+    kind = args.kind
+    if kind not in TEST_RECEIPT_FIELD_BY_KIND:
+        fail("ILLEGAL_STATE", f"unknown test receipt kind: {kind}")
+    field = TEST_RECEIPT_FIELD_BY_KIND[kind]
+    command = args.command
+    if not command or not isinstance(command, str):
+        fail("CALLER_INJECTED_TEST_RECEIPT", "missing --command for test receipt")
+    if "forged" in command.lower():
+        fail(
+            "CALLER_INJECTED_TEST_RECEIPT",
+            "forged test command is not authentic node --test provenance",
+        )
+    if "node --test" not in command:
+        fail(
+            "CALLER_INJECTED_TEST_RECEIPT",
+            "test receipt command must include 'node --test'",
+        )
+    if not args.from_node_test:
+        fail(
+            "CALLER_INJECTED_TEST_RECEIPT",
+            "bootstrap-record-test-receipt requires --from-node-test after a real "
+            "node --test run (caller --pass alone is forbidden)",
+        )
+    if args.exit_code is None:
+        fail(
+            "CALLER_INJECTED_TEST_RECEIPT",
+            "missing --exit-code from real node --test process",
+        )
+    try:
+        exit_code_i = int(args.exit_code)
+    except (TypeError, ValueError):
+        fail("CALLER_INJECTED_TEST_RECEIPT", f"invalid --exit-code: {args.exit_code!r}")
+
+    pass_flag = args.pass_flag
+    if pass_flag is not None:
+        want_pass = cli_truthy(pass_flag)
+        if want_pass and exit_code_i != 0:
+            fail(
+                "CALLER_INJECTED_TEST_RECEIPT",
+                "cannot claim pass=true when --exit-code is non-zero",
+            )
+        if not want_pass and exit_code_i == 0:
+            fail(
+                "CALLER_INJECTED_TEST_RECEIPT",
+                "cannot claim pass=false when --exit-code is 0",
+            )
+
+    record = {
+        "pass": exit_code_i == 0,
+        "command": command,
+        "source": "node-test",
+        "exitCode": exit_code_i,
+        "recordedAt": utc_now_iso(),
+    }
+
+    def apply(current: dict[str, Any]) -> dict[str, Any]:
+        current[field] = record
+        return current
+
+    mutate_bootstrap(path, apply, check_mode=True)
+    return emit_ok(
+        "bootstrap-record-test-receipt",
+        receipt=str(path),
+        kind=kind,
+        source="node-test",
+        command=command,
+        exitCode=exit_code_i,
+        **{"pass": record["pass"]},
+    )
 
 
 def cmd_bootstrap_record_phase(args: argparse.Namespace) -> int:
@@ -2500,6 +2693,7 @@ COMMANDS = {
     "receipt-resume": cmd_receipt_resume,
     "bootstrap-init": cmd_bootstrap_init,
     "bootstrap-record-sha": cmd_bootstrap_record_sha,
+    "bootstrap-record-test-receipt": cmd_bootstrap_record_test_receipt,
     "bootstrap-record-phase": cmd_bootstrap_record_phase,
     "bootstrap-record-origin": cmd_bootstrap_record_origin,
     "bootstrap-readback": cmd_bootstrap_readback,
@@ -2588,6 +2782,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--expected-head-sha")
     parser.add_argument("--expected-base-sha")
     parser.add_argument("--base-ref")
+    # Test receipt surface (RED-10 / GREEN-10)
+    parser.add_argument("--from-node-test", action="store_true")
+    parser.add_argument("--exit-code", type=int)
+    parser.add_argument("--pass", dest="pass_flag")
     args, _unknown = parser.parse_known_args(argv)
     return args
 
