@@ -28,11 +28,13 @@ const {
   assertFailClosed,
   ExactSyncFailureReason,
   CANONICAL_BOOTSTRAP_RECEIPT,
+  approvedInfraRef,
 } = require('./wallpaper-task-exact-sync-helpers');
 
-// writeJson is re-exported from ledger helpers via exact-sync helpers.
-
-const REF = 'refs/heads/codex/wallpaper-plugin-infra';
+// Live task ref from unified context (not frozen infra branch string).
+function REF() {
+  return approvedInfraRef();
+}
 
 test('WP-INFRA RED-06: production runner is invokable (framework path)', () => {
   ensureRunnerPresent();
@@ -60,7 +62,7 @@ test('RED-06.2 exact-push command must exist as production surface', () => {
     '--receipt',
     file,
     '--ref',
-    REF,
+    REF(),
     '--expected-sha',
     head,
     '--dry-run',
@@ -84,7 +86,7 @@ test('RED-06.3 exact-push without authorization must refuse real push', () => {
     '--receipt',
     file,
     '--ref',
-    REF,
+    REF(),
     '--expected-sha',
     head,
     // deliberately no --allow-network-push / --i-understand-real-push
@@ -110,7 +112,7 @@ test('RED-06.4 origin ls-remote command must exist and not trust caller-only rem
     '--receipt',
     file,
     '--ref',
-    REF,
+    REF(),
     '--expected-sha',
     infra,
     '--observed-sha',
@@ -131,7 +133,7 @@ test('RED-06.4 origin ls-remote command must exist and not trust caller-only rem
     '--receipt',
     file,
     '--ref',
-    REF,
+    REF(),
   ]);
   // GREEN-06 must implement ls-remote surface (may be dry-run-safe).
   if (ls.status === 0) {
@@ -151,7 +153,7 @@ test('RED-06.5 local/remote SHA mismatch must fail-closed', () => {
     '--receipt',
     file,
     '--ref',
-    REF,
+    REF(),
     '--expected-sha',
     local,
     '--observed-sha',
@@ -175,7 +177,7 @@ test('RED-06.6 PUSH/SYNC_IN_FLIGHT requires ls-remote recovery before mutation',
     '--expected-sha',
     infra,
     '--ref',
-    REF,
+    REF(),
   ]);
   assert.equal(begin.status, 0, begin.combined);
 
@@ -192,7 +194,7 @@ test('RED-06.6 PUSH/SYNC_IN_FLIGHT requires ls-remote recovery before mutation',
     '--receipt',
     file,
     '--ref',
-    REF,
+    REF(),
     '--expected-sha',
     infra,
     '--from-ls-remote',
@@ -258,7 +260,7 @@ test('RED-06.9 exact-push dry-run must not mutate git remotes', () => {
     '--receipt',
     file,
     '--ref',
-    REF,
+    REF(),
     '--expected-sha',
     head,
     '--dry-run',
@@ -281,7 +283,7 @@ test('RED-06.10 machine-readable failures and no silent success for exact-sync s
     '--receipt',
     file,
     '--ref',
-    REF,
+    REF(),
     '--expected-sha',
     'ffffffffffffffffffffffffffffffffffffffff',
     '--observed-sha',
@@ -304,7 +306,7 @@ test('RED-06.11 must not mark WP-INFRA DONE or EffectiveGate true from local-onl
     '--receipt',
     file,
     '--ref',
-    REF,
+    REF(),
     '--expected-sha',
     localHeadSha(),
     '--dry-run',
@@ -314,7 +316,7 @@ test('RED-06.11 must not mark WP-INFRA DONE or EffectiveGate true from local-onl
     '--receipt',
     file,
     '--ref',
-    REF,
+    REF(),
   ]);
   const data = readJson(file);
   assert.equal(data.EffectiveGate, false);

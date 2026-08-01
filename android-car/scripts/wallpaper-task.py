@@ -24,6 +24,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -826,6 +827,9 @@ APPROVED_INFRA_BRANCH = "codex/wallpaper-plugin-infra"
 APPROVED_INFRA_REF = f"refs/heads/{APPROVED_INFRA_BRANCH}"
 DEFAULT_INFRA_REF = APPROVED_INFRA_REF
 APPROVED_BASE_BRANCH = "huawei-android12-car"
+# Live task branches for exact-push: any codex/wallpaper-plugin-* (not base/main/master).
+FORBIDDEN_PUSH_BRANCHES = frozenset({"main", "master", "huawei-android12-car", "HEAD"})
+TASK_BRANCH_PREFIX = "codex/wallpaper-plugin-"
 APPROVED_BASE_REF = f"refs/heads/{APPROVED_BASE_BRANCH}"
 APPROVED_PUSH_REMOTE = "origin"
 DEFAULT_GIT_REMOTE = APPROVED_PUSH_REMOTE
@@ -1821,8 +1825,15 @@ def require_approved_remote(remote: str | None) -> str:
     return token
 
 
+def is_approved_wallpaper_task_branch(branch: str) -> bool:
+    """codex/wallpaper-plugin-* only; never main/master/integration base."""
+    if not branch or branch in FORBIDDEN_PUSH_BRANCHES:
+        return False
+    return branch.startswith(TASK_BRANCH_PREFIX)
+
+
 def normalize_approved_infra_ref(ref: str | None) -> str:
-    """Only refs/heads/codex/wallpaper-plugin-infra is an approved push/readback target."""
+    """Approved push/readback: refs/heads/codex/wallpaper-plugin-*."""
     raw = (ref or DEFAULT_INFRA_REF).strip()
     if not raw:
         fail("REF_NOT_ALLOWED", "missing --ref; approved ref required")
@@ -1832,16 +1843,16 @@ def normalize_approved_infra_ref(ref: str | None) -> str:
     elif raw.startswith("refs/"):
         fail(
             "REF_NOT_ALLOWED",
-            f"ref not allowed: {raw!r}; only {APPROVED_INFRA_REF}",
+            f"ref not allowed: {raw!r}; only refs/heads/{TASK_BRANCH_PREFIX}*",
         )
     else:
         branch = raw
         full = f"refs/heads/{branch}"
-    if branch != APPROVED_INFRA_BRANCH or full != APPROVED_INFRA_REF:
+    if not is_approved_wallpaper_task_branch(branch):
         fail(
             "BRANCH_NOT_ALLOWED",
-            f"branch/ref not allowed: {raw!r}; only {APPROVED_INFRA_BRANCH} "
-            f"({APPROVED_INFRA_REF}). main/master/huawei-android12-car/"
+            f"branch/ref not allowed: {raw!r}; only {TASK_BRANCH_PREFIX}* "
+            f"task branches. main/master/huawei-android12-car/"
             f"upstream/plan branch are forbidden push targets",
         )
     return full
@@ -1863,7 +1874,7 @@ def local_git_branch_name() -> str:
     if not branch or branch == "HEAD":
         fail(
             "BRANCH_NOT_ALLOWED",
-            "detached HEAD is not an approved WP-INFRA push branch",
+            "detached HEAD is not an approved wallpaper task push branch",
         )
     return branch
 
@@ -1877,11 +1888,11 @@ def require_expected_is_local_head(expected: str) -> str:
             f"expectedSha must equal local HEAD: expected={expected} HEAD={head}",
         )
     branch = local_git_branch_name()
-    if branch != APPROVED_INFRA_BRANCH:
+    if not is_approved_wallpaper_task_branch(branch):
         fail(
             "BRANCH_NOT_ALLOWED",
-            f"current branch {branch!r} is not approved; must be on "
-            f"{APPROVED_INFRA_BRANCH} with HEAD == expectedSha",
+            f"current branch {branch!r} is not an approved wallpaper task branch; "
+            f"must be {TASK_BRANCH_PREFIX}* with HEAD == expectedSha",
         )
     return head
 
@@ -2110,6 +2121,14 @@ def cmd_bootstrap_exact_push(args: argparse.Namespace) -> int:
     )
     # expectedSha asserts real local HEAD; never an override of local state.
     expected = require_expected_is_local_head(expected)
+    # Target ref must bind to the current local branch name (no cross-branch push).
+    local_branch = local_git_branch_name()
+    ref_branch = ref[len("refs/heads/") :] if ref.startswith("refs/heads/") else ref
+    if ref_branch != local_branch:
+        fail(
+            "BRANCH_NOT_ALLOWED",
+            f"ref branch {ref_branch!r} must match current branch {local_branch!r}",
+        )
 
     receipt = load_bootstrap_receipt(path, check_mode=True)
     reject_forged_effective_claims(receipt)
