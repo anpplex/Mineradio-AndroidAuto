@@ -32,6 +32,14 @@ class RequestLedger(
         var leaseBootId: String? = null,
         var leaseUntilElapsedMs: Long? = null,
         var actionConsumed: Boolean = false,
+        /** WP-03: copy complete; Mineradio may revoke sourceUri. */
+        var sourceConsumed: Boolean = false,
+        var sourceOperationId: String? = null,
+        var sourceBytes: Long? = null,
+        var sourceSha256: String? = null,
+        var engineUri: String? = null,
+        var stagedPath: String? = null,
+        var stagedEntryId: String? = null,
     )
 
     private val lock = ReentrantLock()

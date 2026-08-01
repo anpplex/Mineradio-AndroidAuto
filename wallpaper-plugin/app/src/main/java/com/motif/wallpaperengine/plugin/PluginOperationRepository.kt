@@ -59,6 +59,8 @@ class PluginOperationRepository(
         displayName: String? = null,
         actionKind: String? = null,
         actionTtlMs: Long = DEFAULT_ACTION_TTL_MS,
+        sourceBytes: Long? = null,
+        sourceSha256: String? = null,
     ): RequestLedger.OperationRecord {
         val existing = ledger.get(operationId)
         if (existing != null) {
@@ -75,9 +77,54 @@ class PluginOperationRepository(
             actionExpiresAtMs = if (actionKind != null) now + actionTtlMs else null,
             sourceUri = sourceUri,
             displayName = displayName,
+            sourceBytes = sourceBytes,
+            sourceSha256 = sourceSha256,
+            sourceOperationId = operationId,
             terminal = false,
         )
         return ledger.putIfAbsent(record)
+    }
+
+    /**
+     * WP-03: mark copy complete (sourceConsumed) and staged engine path/URI.
+     * Does not elevate EffectiveDone / progress — ledger only.
+     */
+    fun markStaged(
+        operationId: String,
+        stagedPath: String,
+        engineUri: String,
+        stagedEntryId: String,
+        sourceConsumed: Boolean = true,
+    ): RequestLedger.OperationRecord? {
+        return ledger.update(operationId) { rec ->
+            rec.operationState = "STAGED"
+            rec.stagedPath = stagedPath
+            rec.engineUri = engineUri
+            rec.stagedEntryId = stagedEntryId
+            rec.sourceConsumed = sourceConsumed
+            rec.sourceOperationId = operationId
+            rec.lastError = null
+        }
+    }
+
+    fun markImporting(operationId: String): RequestLedger.OperationRecord? {
+        return ledger.update(operationId) { rec ->
+            if (!rec.terminal) {
+                rec.operationState = "IMPORTING"
+            }
+        }
+    }
+
+    fun markEngineLaunched(operationId: String): RequestLedger.OperationRecord? {
+        return ledger.update(operationId) { rec ->
+            if (rec.operationState == "STAGED" || rec.operationState == "ENGINE_LAUNCHED") {
+                rec.operationState = "ENGINE_LAUNCHED"
+            }
+        }
+    }
+
+    fun markFailed(operationId: String, lastError: String): RequestLedger.OperationRecord? {
+        return markTerminal(operationId, "FAILED", lastError)
     }
 
     /**

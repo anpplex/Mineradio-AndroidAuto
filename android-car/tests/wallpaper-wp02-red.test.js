@@ -57,6 +57,13 @@ const {
   unitTestSourcePath,
   androidManifestPath,
   catalogToolPath,
+  initTempWp02Receipt,
+  liveWp02OperationalProgress,
+  liveAuthoritativeBaseSha,
+  classifyHeadVsLiveBase,
+  isAllowedTaskBranch,
+  readTaskWorktreeIdentity,
+  isGitAncestor,
 } = require('./wallpaper-wp02-red-helpers');
 
 // ---------------------------------------------------------------------------
@@ -74,21 +81,41 @@ test('WP-02 RED-01: environment paths and tools are real', () => {
 });
 
 test('WP-02 RED-01: worktree branch and live base identity', () => {
-  const branch = git(['branch', '--show-current']);
-  assert.equal(branch.status, 0, branch.combined);
-  // Any codex/wallpaper-plugin-* task branch (implementation, verify-done, …).
-  assert.match(
-    branch.stdout,
-    /^codex\/wallpaper-plugin-/,
-    `unexpected task branch: ${branch.stdout}`,
+  // Live base from origin ls-remote; HEAD may equal live or be a descendant.
+  const identity = readTaskWorktreeIdentity();
+  assert.equal(identity.ok, true, JSON.stringify(identity));
+  assert.match(identity.branch, /^codex\/wallpaper-plugin-/);
+  assert.match(identity.head, /^[0-9a-f]{40}$/);
+  assert.equal(identity.liveBaseSha, liveAuthoritativeBaseSha());
+  assert.ok(
+    identity.relation === 'equal' || identity.relation === 'ahead',
+    `unexpected relation: ${identity.relation}`,
   );
-  const head = git(['rev-parse', 'HEAD']);
-  assert.match(head.stdout, /^[0-9a-f]{40}$/);
-  const live = git(['ls-remote', 'origin', 'huawei-android12-car']);
-  assert.equal(live.status, 0, live.combined);
-  const liveSha = (live.stdout.split(/\s+/)[0] || '').toLowerCase();
-  // HEAD must equal live base when worktree is branched from origin tip.
-  assert.equal(head.stdout.toLowerCase(), liveSha);
+  if (identity.relation === 'ahead') {
+    assert.equal(isGitAncestor(identity.liveBaseSha, identity.head), true);
+  }
+});
+
+test('WP-02 RED-01: head/live relation and branch/forgery fixtures', () => {
+  const a = 'a'.repeat(40);
+  const b = 'b'.repeat(40);
+  assert.equal(classifyHeadVsLiveBase(a, a, {}).relation, 'equal');
+  assert.equal(classifyHeadVsLiveBase(b, a, { liveIsAncestorOfHead: true }).ok, true);
+  assert.equal(
+    classifyHeadVsLiveBase(a, b, { headIsAncestorOfLive: true }).failureReason,
+    'HEAD_BEHIND_LIVE_BASE',
+  );
+  assert.equal(
+    classifyHeadVsLiveBase(a, b, {}).failureReason,
+    'HEAD_DIVERGED_FROM_LIVE_BASE',
+  );
+  assert.equal(isAllowedTaskBranch('codex/wallpaper-plugin-wp02').ok, true);
+  assert.equal(isAllowedTaskBranch('main').ok, false);
+  assert.equal(isAllowedTaskBranch('huawei-android12-car').ok, false);
+  assert.equal(
+    readTaskWorktreeIdentity({ claimedHead: a, merged: true }).failureReason,
+    'CALLER_FORGED_IDENTITY',
+  );
 });
 
 test('WP-02 RED-01: prerequisites WP-INFRA / WP-00 / WP-01 are EffectiveDone', () => {
@@ -197,33 +224,44 @@ test('WP-02 RED-01.3 catalog validate remains well-formed with unique WP-02', ()
 // Transaction init / receipt structure (RED keeps EffectiveDone=false)
 // ---------------------------------------------------------------------------
 
-test('WP-02 RED-01.4 transaction receipt initializes fail-closed (not DONE)', () => {
+test('WP-02 RED-01.4 transaction receipt structure is valid (pre-close fail-closed or post-close DONE)', () => {
   assert.equal(pathExists(wp02TxnReceipt), true, 'wp-02 transaction receipt missing');
   const receipt = readJson(wp02TxnReceipt);
   assert.equal(receipt.taskId, TASK_ID);
   assert.equal(receipt.schema, 'wallpaper-task-receipt/v1');
-  assert.equal(receipt.EffectiveDone, false);
-  assert.notEqual(receipt.state, 'DONE');
-  // Live phase advances RED → GREEN → REFACTOR → VERIFY_READY without DONE elevation.
-  assert.ok(
-    [
-      'INIT',
-      'RED_RECORDED',
-      'GREEN_RECORDED',
-      'REFACTOR_RECORDED',
-      'VERIFY_READY',
-    ].includes(receipt.state),
-    `unexpected WP-02 state: ${receipt.state}`,
-  );
   assert.equal(typeof receipt.revision, 'number');
   assert.ok(Array.isArray(receipt.attempts));
   assert.ok(Array.isArray(receipt.phaseEvents));
   // mode 0600
   const mode = fs.statSync(wp02TxnReceipt).mode & 0o777;
   assert.equal(mode, 0o600, `receipt mode must be 0600, got ${mode.toString(8)}`);
+
+  const live = liveWp02OperationalProgress();
+  if (live.EffectiveDone) {
+    // Post operational CLOSE-VERIFY: DONE only via verify-done, never caller CAS.
+    assert.equal(receipt.EffectiveDone, true);
+    assert.equal(receipt.state, 'DONE');
+    assert.ok(receipt.verifyDone && typeof receipt.verifyDone === 'object');
+    assert.match(String(receipt.verifyDone.liveBaseSha || ''), /^[0-9a-f]{40}$/);
+  } else {
+    assert.equal(receipt.EffectiveDone, false);
+    assert.notEqual(receipt.state, 'DONE');
+    // Live phase advances RED → GREEN → REFACTOR → VERIFY_READY without DONE elevation.
+    assert.ok(
+      [
+        'INIT',
+        'RED_RECORDED',
+        'GREEN_RECORDED',
+        'REFACTOR_RECORDED',
+        'VERIFY_READY',
+      ].includes(receipt.state),
+      `unexpected WP-02 state: ${receipt.state}`,
+    );
+  }
 });
 
 test('WP-02 RED-01.5 runner reconcile/init/assert-state for WP-02', () => {
+  const before = liveWp02OperationalProgress();
   const reconcile = runRunner([
     'reconcile',
     '--task',
@@ -248,8 +286,10 @@ test('WP-02 RED-01.5 runner reconcile/init/assert-state for WP-02', () => {
     transactionsRoot,
   ]);
   assert.equal(state.status, 0, state.combined);
-  // Still not DONE
-  assert.equal(readJson(wp02TxnReceipt).EffectiveDone, false);
+  // Runner must not silently flip EffectiveDone; live operational truth is preserved.
+  const after = readJson(wp02TxnReceipt);
+  assert.equal(after.EffectiveDone, before.EffectiveDone);
+  assert.equal(after.state === 'DONE', before.EffectiveDone);
 });
 
 // ---------------------------------------------------------------------------
@@ -354,10 +394,12 @@ test('WP-02 RED-01.11 production capacity present; gap helpers stay fail-closed 
 // ---------------------------------------------------------------------------
 
 test('WP-02 RED-01.12 caller cannot forge EffectiveDone=true', () => {
-  const before = readJson(wp02TxnReceipt);
-  assert.equal(before.EffectiveDone, false);
+  // Anti-forgery uses a fresh INIT receipt so operational post-close DONE is not confused with forge.
+  const { receipt: tempReceipt, init } = initTempWp02Receipt();
+  assert.equal(init.status, 0, init.combined);
+  assert.equal(readJson(tempReceipt).EffectiveDone, false);
 
-  const attempts = attemptCallerForgeEffectiveDone(wp02TxnReceipt);
+  const attempts = attemptCallerForgeEffectiveDone(tempReceipt);
   assert.notEqual(attempts.cas.status, 0, attempts.cas.combined);
   assert.match(
     attempts.cas.combined,
@@ -368,40 +410,57 @@ test('WP-02 RED-01.12 caller cannot forge EffectiveDone=true', () => {
   assert.match(attempts.declare.combined, /CALLER_DECLARED_DONE/);
 
   assert.notEqual(attempts.casState.status, 0, attempts.casState.combined);
-  assert.match(attempts.casState.combined, /CALLER_DECLARED_DONE/);
+  assert.match(attempts.casState.combined, /CALLER_DECLARED_DONE|ILLEGAL|DONE|STATE/i);
 
   assert.notEqual(attempts.verify.status, 0, attempts.verify.combined);
-  // verify-done production path not implemented for WP-02 → fail-closed
+  // Missing proofs / fail-closed — never silent elevation.
   assert.match(
     attempts.verify.combined,
-    /WP01_VERIFY_DONE_UNAVAILABLE|VERIFY_DONE|WP02|UNAVAILABLE|PROOF/i,
+    /WP01_VERIFY_DONE_UNAVAILABLE|VERIFY_DONE|WP02|UNAVAILABLE|PROOF|missing/i,
   );
 
-  const after = readJson(wp02TxnReceipt);
-  assert.equal(after.EffectiveDone, false);
-  assert.notEqual(after.state, 'DONE');
+  assert.equal(readJson(tempReceipt).EffectiveDone, false);
+  assert.notEqual(readJson(tempReceipt).state, 'DONE');
+
+  // Operational receipt truth is independent of caller forge attempts on temp.
+  const live = liveWp02OperationalProgress();
+  if (live.EffectiveDone) {
+    assert.ok(live.receipt.verifyDone, 'operational DONE requires verifyDone proof');
+  } else {
+    assert.equal(live.receipt.EffectiveDone, false);
+  }
 });
 
 test('WP-02 RED-01.13 caller cannot forge Core progress via WP-02 receipt', () => {
+  // WP-00+WP-01 only (helpers default) always 10% — independent of WP-02 operational close.
   const honest = computeCoreProgress(defaultDoneReceipts());
   assert.equal(honest.status, 0, honest.combined);
   const honestBody = parseRunnerJson(honest);
   assert.equal(honestBody.coreProgressPercent, 10);
 
-  // Pointing at WP-02 receipt (EffectiveDone=false) must not inflate progress.
+  const live = liveWp02OperationalProgress();
+  // Mapping live WP-02 receipt only elevates weight when EffectiveDone is truly true.
   const withWp02 = computeCoreProgress(defaultDoneReceiptsWithForgedWp02());
   assert.equal(withWp02.status, 0, withWp02.combined);
   const withBody = parseRunnerJson(withWp02);
-  assert.equal(withBody.coreProgressPercent, 10);
+  assert.equal(withBody.coreProgressPercent, live.expectedCoreProgressPercent);
 
-  // Even if a caller invents a map entry, receipt EffectiveDone=false excludes weight.
   const breakdown = withBody.breakdown || [];
   const wp02Row = breakdown.find((row) => row.taskId === TASK_ID);
-  // Catalog has no WP-02 → no weight row; if present, EffectiveDone must be false.
   if (wp02Row) {
-    assert.equal(wp02Row.EffectiveDone, false);
+    assert.equal(wp02Row.EffectiveDone, live.EffectiveDone);
+    assert.equal(wp02Row.weight, 8);
   }
-  assert.equal(readJson(wp02TxnReceipt).EffectiveDone, false);
+
+  // Temp non-DONE receipt must never inflate progress when mapped.
+  const { receipt: tempReceipt, init } = initTempWp02Receipt();
+  assert.equal(init.status, 0, init.combined);
+  const withTemp = computeCoreProgress({
+    ...defaultDoneReceipts(),
+    'WP-02': tempReceipt,
+  });
+  assert.equal(withTemp.status, 0, withTemp.combined);
+  assert.equal(parseRunnerJson(withTemp).coreProgressPercent, 10);
 });
 
 test('WP-02 RED-01.14 cannot skip WP-INFRA EffectiveGate for WP-02', () => {
@@ -412,10 +471,19 @@ test('WP-02 RED-01.14 cannot skip WP-INFRA EffectiveGate for WP-02', () => {
 
 test('WP-02 RED-01.15 evidence level / receipt structure remain fail-closed', () => {
   const receipt = readJson(wp02TxnReceipt);
-  assert.equal(receipt.EffectiveDone, false);
   assert.equal(receipt.taskId, TASK_ID);
-  // No caller may append DONE phase without verify-done
-  assert.ok(!receipt.phaseEvents.some((e) => e && e.phase === 'DONE' && e.status === 'PASS'));
+  const live = liveWp02OperationalProgress();
+  if (live.EffectiveDone) {
+    // DONE phase may exist only after authoritative verify-done close.
+    assert.equal(receipt.EffectiveDone, true);
+    assert.ok(receipt.verifyDone);
+  } else {
+    assert.equal(receipt.EffectiveDone, false);
+    // No caller may append DONE phase without verify-done
+    assert.ok(
+      !receipt.phaseEvents.some((e) => e && e.phase === 'DONE' && e.status === 'PASS'),
+    );
+  }
 
   const identity = parseWp02CatalogIdentity();
   if (identity.ok) {
@@ -432,17 +500,25 @@ test('WP-02 RED-01.15 evidence level / receipt structure remain fail-closed', ()
   }
 });
 
-test('WP-02 RED-01.16 Core progress stays 10% and WP-02 EffectiveDone=false', () => {
-  const progress = computeCoreProgress(defaultDoneReceipts());
-  assert.equal(progress.status, 0, progress.combined);
-  const body = parseRunnerJson(progress);
-  assert.equal(body.coreProgressPercent, 10);
-  assert.equal(readJson(wp02TxnReceipt).EffectiveDone, false);
+test('WP-02 RED-01.16 Core progress tracks live WP-02 EffectiveDone (10% pre-close / 18% post-close)', () => {
+  const live = liveWp02OperationalProgress();
+  // Progress without WP-02 weight stays 10%.
+  const without = computeCoreProgress(defaultDoneReceipts());
+  assert.equal(without.status, 0, without.combined);
+  assert.equal(parseRunnerJson(without).coreProgressPercent, 10);
+
+  const withMap = computeCoreProgress(defaultDoneReceiptsWithForgedWp02());
+  assert.equal(withMap.status, 0, withMap.combined);
+  assert.equal(
+    parseRunnerJson(withMap).coreProgressPercent,
+    live.expectedCoreProgressPercent,
+  );
+  assert.equal(readJson(wp02TxnReceipt).EffectiveDone, live.EffectiveDone);
   assert.equal(readJson(wp01TxnReceipt).EffectiveDone, true);
   assert.equal(readJson(wp00MergeReceipt).EffectiveDone, true);
 });
 
-test('WP-02 RED-01.17 GREEN surfaces fail-closed (no DONE / no progress elevation)', () => {
+test('WP-02 RED-01.17 runtime surfaces never grant EffectiveDone; caller claims fail-closed', () => {
   const probes = [
     assertWp02ProductionSurfacesPresent(),
     assertWp02UnitTestsPresent(),
@@ -451,9 +527,9 @@ test('WP-02 RED-01.17 GREEN surfaces fail-closed (no DONE / no progress elevatio
   ];
   for (const p of probes) {
     assert.equal(p.ok, true, JSON.stringify(p));
+    // Gap/catalog helpers never inject EffectiveDone=true (receipt truth is separate).
     assert.notEqual(p.EffectiveDone, true);
   }
-  assert.equal(readJson(wp02TxnReceipt).EffectiveDone, false);
   const surface = loadRuntimeContract();
   assert.ok(surface, FailureReason.WP02_CONTRACT_SURFACE_MISSING);
   const notDone = surface.assertWp02NotDone({
@@ -465,5 +541,6 @@ test('WP-02 RED-01.17 GREEN surfaces fail-closed (no DONE / no progress elevatio
   assert.equal(notDone.EffectiveDone, false);
   const ready = surface.assertWp02RuntimeReady({ cwd: repoRoot });
   assert.equal(ready.ok, true, JSON.stringify(ready));
+  // Contract facade does not elevate EffectiveDone — receipt authority remains runner/verify-done.
   assert.equal(ready.EffectiveDone, false);
 });

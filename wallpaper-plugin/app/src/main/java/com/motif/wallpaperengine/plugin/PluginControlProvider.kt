@@ -115,6 +115,11 @@ class PluginControlProvider : ContentProvider() {
                 putLong(PluginContract.KEY_USER_ACTION_EXPIRES_AT, it)
             }
             record.lastError?.let { putString(PluginContract.KEY_LAST_ERROR, it) }
+            // WP-03 sourceConsumed handoff (Mineradio revokes its sourceUri grant).
+            putBoolean(PluginContract.KEY_SOURCE_CONSUMED, record.sourceConsumed)
+            record.sourceOperationId?.let {
+                putString(PluginContract.KEY_SOURCE_OPERATION_ID, it)
+            }
         }
     }
 
@@ -150,6 +155,11 @@ class PluginControlProvider : ContentProvider() {
         val operationId = request.getString(PluginContract.KEY_OPERATION_ID).orEmpty()
         val needsUserAction = method in USER_ACTION_METHODS
         val actionKind = methodToActionKind(method)
+        val sourceBytes = if (request.containsKey(PluginContract.KEY_BYTES)) {
+            request.getLong(PluginContract.KEY_BYTES)
+        } else {
+            null
+        }
         val record = repository.acceptOperation(
             operationId = operationId,
             method = method,
@@ -157,6 +167,8 @@ class PluginControlProvider : ContentProvider() {
             sourceUri = request.getString(PluginContract.KEY_SOURCE_URI),
             displayName = request.getString(PluginContract.KEY_DISPLAY_NAME),
             actionKind = if (needsUserAction) actionKind else null,
+            sourceBytes = sourceBytes,
+            sourceSha256 = request.getString(PluginContract.KEY_SHA256),
         )
         val out = Bundle().apply {
             putString(PluginContract.KEY_OPERATION_ID, record.operationId)
