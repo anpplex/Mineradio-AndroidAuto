@@ -2038,8 +2038,14 @@ def probe_remote_ref_sha(ref: str, *, remote: str) -> str | None:
 
 
 def execute_exact_sha_push(*, expected: str, ref: str, remote: str) -> dict[str, Any]:
-    """Exact SHA refspec push to origin only. Never force. Never overwrites divergent remote."""
+    """Exact SHA refspec push to origin only. Never force.
+
+    Allowed when remote ref is missing, already at expected, or is a strict
+    ancestor of expected (non-force fast-forward only). Divergent remotes
+    fail with BLOCKED_REMOTE_REF_CONFLICT.
+    """
     existing = probe_remote_ref_sha(ref, remote=remote)
+    fast_forward = False
     if existing is not None:
         if existing == expected:
             # Idempotent: remote already at exact target — no re-push.
@@ -2048,15 +2054,21 @@ def execute_exact_sha_push(*, expected: str, ref: str, remote: str) -> dict[str,
                 "networkMutation": False,
                 "remoteShaBefore": existing,
                 "expectedSha": expected,
+                "fastForward": False,
             }
-        fail(
-            "BLOCKED_REMOTE_REF_CONFLICT",
-            f"remote ref {ref} already at {existing}; refusing to overwrite "
-            f"with {expected} (no force push)",
-        )
+        # Non-force FF only: remote must be an ancestor of the target SHA.
+        if git_is_ancestor(existing, expected):
+            fast_forward = True
+        else:
+            fail(
+                "BLOCKED_REMOTE_REF_CONFLICT",
+                f"remote ref {ref} already at {existing}; not an ancestor of "
+                f"{expected} — refusing non-fast-forward overwrite (no force push)",
+            )
 
     refspec = f"{expected}:{ref}"
     try:
+        # Never pass --force / --force-with-lease.
         proc = subprocess.run(
             ["git", "push", "--", remote, refspec],
             capture_output=True,
@@ -2075,9 +2087,10 @@ def execute_exact_sha_push(*, expected: str, ref: str, remote: str) -> dict[str,
     return {
         "alreadyExact": False,
         "networkMutation": True,
-        "remoteShaBefore": None,
+        "remoteShaBefore": existing,
         "expectedSha": expected,
         "refspec": refspec,
+        "fastForward": fast_forward,
     }
 
 
