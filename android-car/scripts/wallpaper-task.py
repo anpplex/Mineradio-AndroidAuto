@@ -7,9 +7,11 @@ Fail-closed gates for:
   - writer leases
   - durable receipt init, revision/state CAS, atomic fsync replace, readback
   - IN_FLIGHT recovery and append-only attempts
-  - bootstrap receipt, blob SHA freeze, exact origin readback, EffectiveGate
+  - bootstrap receipt (canonical path, transaction identity, phase ledger)
+  - blob SHA freeze, test receipts, exactSync, PR merge / base containment
+  - EffectiveGate derivation (forged DONE rejected)
 
-Does not yet implement full catalog-bound phase execution or production PR merge.
+Does not yet write a production-closed verification receipt with live origin/PR evidence.
 """
 
 from __future__ import annotations
@@ -23,6 +25,8 @@ import os
 import sys
 import tempfile
 import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, NoReturn
 
@@ -815,6 +819,14 @@ def cmd_receipt_resume(args: argparse.Namespace) -> int:
 BOOTSTRAP_SCHEMA = "wallpaper-infra-bootstrap/v1"
 BOOTSTRAP_MODE = 0o600
 DEFAULT_INFRA_REF = "refs/heads/codex/wallpaper-plugin-infra"
+# android-car/scripts/wallpaper-task.py → android-car/verification/.../WP-INFRA.json
+CANONICAL_BOOTSTRAP_RECEIPT = (
+    Path(__file__).resolve().parent.parent
+    / "verification"
+    / "wallpaper-plugin"
+    / "bootstrap"
+    / "WP-INFRA.json"
+)
 REQUIRED_PHASES = ("RED", "GREEN", "REFACTOR", "VERIFY", "COMMIT")
 REQUIRED_GATE_VALUE_FIELDS = (
     "INFRA_SHA",
@@ -829,6 +841,27 @@ SHA_KIND_TO_FIELD = {
     "catalog": "catalogSha256",
     "schema": "schemaSha256",
 }
+LEGAL_BOOTSTRAP_STATES = frozenset(
+    {
+        "INIT",
+        "INFRA_REMOTE_VERIFIED",
+        "SYNC_IN_FLIGHT",
+        "INFRA_PR_OPEN_VERIFIED",
+        "INFRA_PR_FINAL_VERIFIED",
+        "INFRA_PR_MERGE_IN_FLIGHT",
+        "INFRA_PR_MERGED_VERIFIED",
+        "INFRA_AUTHORITATIVE_BASE_VERIFIED",
+        "DONE",
+    }
+)
+
+
+def new_uuid() -> str:
+    return str(uuid.uuid4())
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def empty_bootstrap_receipt(task_id: str) -> dict[str, Any]:
@@ -837,12 +870,21 @@ def empty_bootstrap_receipt(task_id: str) -> dict[str, Any]:
         "taskId": task_id,
         "state": "INIT",
         "revision": 1,
+        "transactionId": new_uuid(),
+        "runUuid": new_uuid(),
         "phaseEvents": [],
         "INFRA_SHA": None,
         "runnerSha256": None,
         "catalogSha256": None,
         "schemaSha256": None,
+        "catalogTestReceipt": None,
+        "schemaTestReceipt": None,
+        "runnerTestReceipt": None,
         "originReadback": None,
+        "exactSync": None,
+        "prMerge": None,
+        "baseContainment": None,
+        "infraPr": None,
         "EffectiveDone": False,
         "EffectiveGate": False,
     }
@@ -861,6 +903,17 @@ def enforce_bootstrap_containment(path: Path, args: argparse.Namespace) -> None:
 
 
 def resolve_bootstrap_path(args: argparse.Namespace) -> Path:
+    if getattr(args, "use_canonical_bootstrap", False):
+        path = CANONICAL_BOOTSTRAP_RECEIPT
+        # Canonical path is fixed; optional --receipt must match if provided.
+        if args.receipt:
+            provided = Path(args.receipt).expanduser().resolve()
+            if provided != path.resolve():
+                fail(
+                    "CANONICAL_PATH_REQUIRED",
+                    f"--use-canonical-bootstrap requires receipt={path}, got {provided}",
+                )
+        return path
     if not args.receipt:
         fail("MISSING_RECEIPT", "missing --receipt")
     path = Path(args.receipt)
@@ -951,11 +1004,18 @@ def origin_exact_match(origin: Any) -> bool:
         return False
     expected = origin.get("expectedSha")
     observed = origin.get("observedSha")
-    return (
-        isinstance(expected, str)
-        and isinstance(observed, str)
-        and len(expected) == 40
-        and expected == observed
+    return is_git_sha40(expected) and expected == observed
+
+
+def is_git_sha40(value: Any) -> bool:
+    return isinstance(value, str) and len(value) == 40 and all(
+        ch in "0123456789abcdef" for ch in value.lower()
+    )
+
+
+def is_sha256_hex(value: Any) -> bool:
+    return isinstance(value, str) and len(value) == 64 and all(
+        ch in "0123456789abcdef" for ch in value.lower()
     )
 
 
@@ -967,9 +1027,9 @@ def missing_gate_fields(receipt: Mapping[str, Any]) -> list[str]:
             missing.append(field)
         elif field == "phaseEvents" and not isinstance(value, list):
             missing.append(field)
-        elif field.endswith("Sha256") and (not isinstance(value, str) or len(value) != 64):
+        elif field.endswith("Sha256") and not is_sha256_hex(value):
             missing.append(field)
-        elif field == "INFRA_SHA" and (not isinstance(value, str) or len(value) != 40):
+        elif field == "INFRA_SHA" and not is_git_sha40(value):
             missing.append(field)
     return missing
 
@@ -1004,6 +1064,42 @@ def recompute_blob_mismatches(
     return None, ""
 
 
+def test_receipt_pass(value: Any) -> bool:
+    return isinstance(value, dict) and value.get("pass") is True
+
+
+def exact_sync_verified(receipt: Mapping[str, Any]) -> bool:
+    exact = receipt.get("exactSync")
+    if exact is None:
+        exact = receipt.get("syncState")
+    if not isinstance(exact, dict):
+        return False
+    status = exact.get("status")
+    if status in {"VERIFIED", "ORIGIN_MATCHED", "EXACT_MATCH"}:
+        return True
+    expected = exact.get("expectedSha")
+    observed = exact.get("observedSha")
+    return is_git_sha40(expected) and expected == observed
+
+
+def pr_merge_verified(receipt: Mapping[str, Any]) -> bool:
+    pr = receipt.get("prMerge")
+    if pr is None:
+        pr = receipt.get("infraPr")
+    if not isinstance(pr, dict):
+        return False
+    return pr.get("merged") is True and is_git_sha40(pr.get("mergeSha"))
+
+
+def base_containment_verified(receipt: Mapping[str, Any]) -> bool:
+    base = receipt.get("baseContainment")
+    return isinstance(base, dict) and base.get("containsMerge") is True
+
+
+def gate_failure(reason: str, message: str) -> tuple[bool, str, str]:
+    return False, reason, message
+
+
 def evaluate_bootstrap_gate(
     receipt: Mapping[str, Any],
     *,
@@ -1011,30 +1107,42 @@ def evaluate_bootstrap_gate(
     runner_path: str | None = None,
     catalog_path: str | None = None,
     schema_path: str | None = None,
+    hard_fail_illegal_state: bool = False,
 ) -> tuple[bool, str | None, str]:
-    """Return (gate, failure_reason_if_false, message)."""
+    """Return (gate, failure_reason_if_false, message).
+
+    Ordered layers (first failure wins):
+      state → required fields → phase ledger → origin →
+      optional blob recompute → test receipts → exactSync →
+      PR merge → base containment.
+    """
+    state = receipt.get("state")
+    if not isinstance(state, str) or state not in LEGAL_BOOTSTRAP_STATES:
+        msg = f"illegal bootstrap state: {state!r}"
+        if hard_fail_illegal_state:
+            fail("ILLEGAL_BOOTSTRAP_STATE", msg)
+        return gate_failure("ILLEGAL_BOOTSTRAP_STATE", msg)
+
     missing = missing_gate_fields(receipt)
     if missing:
-        return (
-            False,
+        return gate_failure(
             "BOOTSTRAP_MISSING_FIELD",
             f"missing required bootstrap fields: {','.join(missing)}",
         )
 
     if not phase_ledger_complete(receipt.get("phaseEvents")):
-        return (
-            False,
+        return gate_failure(
             "PHASE_LEDGER_INCOMPLETE",
             "phase ledger must include RED/GREEN/REFACTOR/VERIFY/COMMIT all PASS",
         )
 
     if not origin_exact_match(receipt.get("originReadback")):
-        return (
-            False,
+        return gate_failure(
             "ORIGIN_SHA_MISMATCH",
             "origin expectedSha/observedSha missing or not exact equal",
         )
 
+    # Blob recompute before later layers so SHA mismatches surface first.
     if recompute_paths:
         reason, message = recompute_blob_mismatches(
             receipt,
@@ -1043,12 +1151,42 @@ def evaluate_bootstrap_gate(
             schema_path=schema_path,
         )
         if reason:
-            return False, reason, message
+            return gate_failure(reason, message)
+
+    if not test_receipt_pass(receipt.get("catalogTestReceipt")) or not test_receipt_pass(
+        receipt.get("schemaTestReceipt")
+    ):
+        return gate_failure(
+            "MISSING_TEST_RECEIPT",
+            "catalogTestReceipt and schemaTestReceipt with pass=true are required",
+        )
+
+    if not exact_sync_verified(receipt):
+        return gate_failure(
+            "MISSING_EXACT_SYNC_STATE",
+            "exactSync/syncState must record verified exact-SHA sync",
+        )
+
+    if not pr_merge_verified(receipt):
+        return gate_failure(
+            "PR_MERGE_REQUIRED",
+            "prMerge/infraPr with merged=true and mergeSha is required",
+        )
+
+    if not base_containment_verified(receipt):
+        return gate_failure(
+            "BASE_CONTAINMENT_REQUIRED",
+            "baseContainment.containsMerge=true is required",
+        )
 
     return True, None, "EffectiveGate conditions satisfied"
 
 
-def gate_from_args(args: argparse.Namespace) -> tuple[Path, dict[str, Any], bool, str | None, str]:
+def gate_from_args(
+    args: argparse.Namespace,
+    *,
+    hard_fail_illegal_state: bool = False,
+) -> tuple[Path, dict[str, Any], bool, str | None, str]:
     path = resolve_bootstrap_path(args)
     receipt = load_bootstrap_receipt(path, check_mode=True)
     gate, reason, message = evaluate_bootstrap_gate(
@@ -1057,12 +1195,15 @@ def gate_from_args(args: argparse.Namespace) -> tuple[Path, dict[str, Any], bool
         runner_path=args.runner_path,
         catalog_path=args.catalog_path,
         schema_path=args.schema_path,
+        hard_fail_illegal_state=hard_fail_illegal_state,
     )
     return path, receipt, gate, reason, message
 
 
 def cmd_bootstrap_init(args: argparse.Namespace) -> int:
     path = resolve_bootstrap_path(args)
+    if getattr(args, "use_canonical_bootstrap", False):
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     if path.exists():
         fail("BOOTSTRAP_RECEIPT_EXISTS", f"bootstrap receipt already exists: {path}")
 
@@ -1111,12 +1252,22 @@ def cmd_bootstrap_record_phase(args: argparse.Namespace) -> int:
     status = args.status
     if not phase or not status:
         fail("ILLEGAL_STATE", "missing --phase or --status")
+    if getattr(args, "replace_ledger", False):
+        fail(
+            "PHASE_LEDGER_APPEND_ONLY",
+            "phase ledger is append-only; --replace-ledger is forbidden",
+        )
 
     def apply(current: dict[str, Any]) -> dict[str, Any]:
         events = list(current.get("phaseEvents") or [])
         if not isinstance(events, list):
             fail("RECEIPT_CORRUPT", "phaseEvents must be an array")
-        event: dict[str, Any] = {"phase": phase, "status": status}
+        event: dict[str, Any] = {
+            "phase": phase,
+            "status": status,
+            "phaseAttemptId": new_uuid(),
+            "completedAt": utc_now_iso(),
+        }
         if args.failure_signature:
             event["failureSignature"] = args.failure_signature
         events.append(event)
@@ -1194,7 +1345,10 @@ def cmd_bootstrap_readback(args: argparse.Namespace) -> int:
 
 
 def cmd_evaluate_effective_gate(args: argparse.Namespace) -> int:
-    path, _receipt, gate, reason, message = gate_from_args(args)
+    path, _receipt, gate, reason, message = gate_from_args(
+        args,
+        hard_fail_illegal_state=True,
+    )
     # With --recompute-paths, failures are hard errors (no silent green exit).
     if not gate and args.recompute_paths:
         fail(reason or "EFFECTIVE_GATE_FALSE", message)
@@ -1204,6 +1358,23 @@ def cmd_evaluate_effective_gate(args: argparse.Namespace) -> int:
         EffectiveGate=gate,
         failureReason=reason,
         message=message,
+    )
+
+
+def cmd_bootstrap_write_status(args: argparse.Namespace) -> int:
+    path = resolve_bootstrap_path(args)
+    if not path.is_file():
+        return emit_ok(
+            "bootstrap-write-status",
+            receipt=str(path),
+            written=False,
+        )
+    # Independent readback proves durable content.
+    load_bootstrap_receipt(path, check_mode=True)
+    return emit_ok(
+        "bootstrap-write-status",
+        receipt=str(path),
+        written=True,
     )
 
 
@@ -1376,6 +1547,7 @@ COMMANDS = {
     "bootstrap-claim-done": cmd_bootstrap_claim_done,
     "bootstrap-sync-begin": cmd_bootstrap_sync_begin,
     "bootstrap-sync-resume": cmd_bootstrap_sync_resume,
+    "bootstrap-write-status": cmd_bootstrap_write_status,
     "assert-ready": cmd_assert_ready,
 }
 
@@ -1435,6 +1607,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--catalog-path")
     parser.add_argument("--schema-path")
     parser.add_argument("--infra-effective-gate")
+    parser.add_argument("--use-canonical-bootstrap", action="store_true")
+    parser.add_argument("--replace-ledger", action="store_true")
     args, _unknown = parser.parse_known_args(argv)
     return args
 
