@@ -7,8 +7,9 @@ Fail-closed gates for:
   - writer leases
   - durable receipt init, revision/state CAS, atomic fsync replace, readback
   - IN_FLIGHT recovery and append-only attempts
+  - bootstrap receipt, blob SHA freeze, exact origin readback, EffectiveGate
 
-Does not yet implement catalog-bound phases, exact origin sync, or PR flow.
+Does not yet implement full catalog-bound phase execution or production PR merge.
 """
 
 from __future__ import annotations
@@ -16,13 +17,14 @@ from __future__ import annotations
 import argparse
 import contextlib
 import fcntl
+import hashlib
 import json
 import os
 import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Iterator, Mapping, NoReturn
+from typing import Any, Callable, Iterator, Mapping, NoReturn
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -804,6 +806,550 @@ def cmd_receipt_resume(args: argparse.Namespace) -> int:
         )
 
 
+# ---------------------------------------------------------------------------
+# Bootstrap / EffectiveGate surface
+# exclusive bootstrap receipt, SHA freeze, exact origin readback, phase ledger,
+# response-loss recovery, and EffectiveGate derivation.
+# ---------------------------------------------------------------------------
+
+BOOTSTRAP_SCHEMA = "wallpaper-infra-bootstrap/v1"
+BOOTSTRAP_MODE = 0o600
+DEFAULT_INFRA_REF = "refs/heads/codex/wallpaper-plugin-infra"
+REQUIRED_PHASES = ("RED", "GREEN", "REFACTOR", "VERIFY", "COMMIT")
+REQUIRED_GATE_VALUE_FIELDS = (
+    "INFRA_SHA",
+    "runnerSha256",
+    "catalogSha256",
+    "schemaSha256",
+    "originReadback",
+    "phaseEvents",
+)
+SHA_KIND_TO_FIELD = {
+    "runner": "runnerSha256",
+    "catalog": "catalogSha256",
+    "schema": "schemaSha256",
+}
+
+
+def empty_bootstrap_receipt(task_id: str) -> dict[str, Any]:
+    return {
+        "schema": BOOTSTRAP_SCHEMA,
+        "taskId": task_id,
+        "state": "INIT",
+        "revision": 1,
+        "phaseEvents": [],
+        "INFRA_SHA": None,
+        "runnerSha256": None,
+        "catalogSha256": None,
+        "schemaSha256": None,
+        "originReadback": None,
+        "EffectiveDone": False,
+        "EffectiveGate": False,
+    }
+
+
+def enforce_bootstrap_containment(path: Path, args: argparse.Namespace) -> None:
+    if not args.require_contained:
+        return
+    if not args.bootstrap_root:
+        fail("BOOTSTRAP_PATH_ESCAPE", "missing --bootstrap-root with --require-contained")
+    root = Path(args.bootstrap_root).resolve()
+    target = path.resolve() if path.exists() else Path(os.path.abspath(str(path)))
+    if is_under(target, root):
+        return
+    fail("BOOTSTRAP_PATH_ESCAPE", f"bootstrap path escapes root: {target}")
+
+
+def resolve_bootstrap_path(args: argparse.Namespace) -> Path:
+    if not args.receipt:
+        fail("MISSING_RECEIPT", "missing --receipt")
+    path = Path(args.receipt)
+    enforce_bootstrap_containment(path, args)
+    return path
+
+
+def assert_bootstrap_mode(path: Path) -> None:
+    mode = path.stat().st_mode & 0o777
+    if mode != BOOTSTRAP_MODE:
+        fail(
+            "BOOTSTRAP_MODE_INVALID",
+            f"bootstrap receipt mode must be 0o600, got {oct(mode)}",
+        )
+
+
+def load_bootstrap_receipt(path: Path, *, check_mode: bool = True) -> dict[str, Any]:
+    if not path.is_file():
+        fail("MISSING_RECEIPT", f"bootstrap receipt not found: {path}")
+    if check_mode:
+        assert_bootstrap_mode(path)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        fail("RECEIPT_CORRUPT", f"bootstrap receipt JSON corrupt: {exc}")
+    except OSError as exc:
+        fail("RECEIPT_CORRUPT", f"bootstrap receipt unreadable: {exc}")
+    if not isinstance(data, dict):
+        fail("RECEIPT_CORRUPT", "bootstrap receipt must be a JSON object")
+    return data
+
+
+def store_bootstrap_receipt(path: Path, value: Mapping[str, Any]) -> None:
+    atomic_write_bytes(path, canonical_receipt_bytes(value), mode=BOOTSTRAP_MODE)
+
+
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def is_sync_in_flight(state: Any) -> bool:
+    return state == "SYNC_IN_FLIGHT" or is_in_flight_state(state)
+
+
+def reject_if_bootstrap_in_flight(receipt: Mapping[str, Any], *, action: str) -> None:
+    state = receipt.get("state")
+    if is_sync_in_flight(state):
+        fail(
+            "SYNC_IN_FLIGHT_RECOVERY_REQUIRED",
+            f"state {state} requires sync resume/readback before {action}",
+        )
+
+
+def mutate_bootstrap(
+    path: Path,
+    mutator: Callable[[dict[str, Any]], dict[str, Any]],
+    *,
+    check_mode: bool = True,
+    allow_in_flight: bool = False,
+) -> dict[str, Any]:
+    """Lock, load, optional in-flight reject, mutate, bump revision, store."""
+    with receipt_lock(path):
+        current = load_bootstrap_receipt(path, check_mode=check_mode)
+        if not allow_in_flight:
+            reject_if_bootstrap_in_flight(current, action="mutate")
+        next_value = mutator(dict(current))
+        next_value["revision"] = bump_revision(current)
+        store_bootstrap_receipt(path, next_value)
+        return next_value
+
+
+def phase_ledger_complete(phase_events: Any) -> bool:
+    if not isinstance(phase_events, list) or not phase_events:
+        return False
+    by_phase: dict[str, str] = {}
+    for event in phase_events:
+        if not isinstance(event, dict):
+            return False
+        phase = event.get("phase")
+        status = event.get("status")
+        if isinstance(phase, str) and isinstance(status, str):
+            by_phase[phase] = status
+    return all(by_phase.get(phase) == "PASS" for phase in REQUIRED_PHASES)
+
+
+def origin_exact_match(origin: Any) -> bool:
+    if not isinstance(origin, dict):
+        return False
+    expected = origin.get("expectedSha")
+    observed = origin.get("observedSha")
+    return (
+        isinstance(expected, str)
+        and isinstance(observed, str)
+        and len(expected) == 40
+        and expected == observed
+    )
+
+
+def missing_gate_fields(receipt: Mapping[str, Any]) -> list[str]:
+    missing: list[str] = []
+    for field in REQUIRED_GATE_VALUE_FIELDS:
+        value = receipt.get(field)
+        if value is None:
+            missing.append(field)
+        elif field == "phaseEvents" and not isinstance(value, list):
+            missing.append(field)
+        elif field.endswith("Sha256") and (not isinstance(value, str) or len(value) != 64):
+            missing.append(field)
+        elif field == "INFRA_SHA" and (not isinstance(value, str) or len(value) != 40):
+            missing.append(field)
+    return missing
+
+
+def recompute_blob_mismatches(
+    receipt: Mapping[str, Any],
+    *,
+    runner_path: str | None,
+    catalog_path: str | None,
+    schema_path: str | None,
+) -> tuple[str | None, str]:
+    checks = (
+        ("runner", runner_path, receipt.get("runnerSha256")),
+        ("catalog", catalog_path, receipt.get("catalogSha256")),
+        ("schema", schema_path, receipt.get("schemaSha256")),
+    )
+    for kind, file_path, recorded in checks:
+        if not file_path:
+            continue
+        path = Path(file_path)
+        if not path.is_file():
+            return (
+                "BOOTSTRAP_SHA_MISMATCH",
+                f"{kind} path missing for recompute: {path}",
+            )
+        actual = sha256_file(path)
+        if actual != recorded:
+            return (
+                "BOOTSTRAP_SHA_MISMATCH",
+                f"{kind} sha256 mismatch: recorded={recorded} actual={actual}",
+            )
+    return None, ""
+
+
+def evaluate_bootstrap_gate(
+    receipt: Mapping[str, Any],
+    *,
+    recompute_paths: bool = False,
+    runner_path: str | None = None,
+    catalog_path: str | None = None,
+    schema_path: str | None = None,
+) -> tuple[bool, str | None, str]:
+    """Return (gate, failure_reason_if_false, message)."""
+    missing = missing_gate_fields(receipt)
+    if missing:
+        return (
+            False,
+            "BOOTSTRAP_MISSING_FIELD",
+            f"missing required bootstrap fields: {','.join(missing)}",
+        )
+
+    if not phase_ledger_complete(receipt.get("phaseEvents")):
+        return (
+            False,
+            "PHASE_LEDGER_INCOMPLETE",
+            "phase ledger must include RED/GREEN/REFACTOR/VERIFY/COMMIT all PASS",
+        )
+
+    if not origin_exact_match(receipt.get("originReadback")):
+        return (
+            False,
+            "ORIGIN_SHA_MISMATCH",
+            "origin expectedSha/observedSha missing or not exact equal",
+        )
+
+    if recompute_paths:
+        reason, message = recompute_blob_mismatches(
+            receipt,
+            runner_path=runner_path,
+            catalog_path=catalog_path,
+            schema_path=schema_path,
+        )
+        if reason:
+            return False, reason, message
+
+    return True, None, "EffectiveGate conditions satisfied"
+
+
+def gate_from_args(args: argparse.Namespace) -> tuple[Path, dict[str, Any], bool, str | None, str]:
+    path = resolve_bootstrap_path(args)
+    receipt = load_bootstrap_receipt(path, check_mode=True)
+    gate, reason, message = evaluate_bootstrap_gate(
+        receipt,
+        recompute_paths=bool(args.recompute_paths),
+        runner_path=args.runner_path,
+        catalog_path=args.catalog_path,
+        schema_path=args.schema_path,
+    )
+    return path, receipt, gate, reason, message
+
+
+def cmd_bootstrap_init(args: argparse.Namespace) -> int:
+    path = resolve_bootstrap_path(args)
+    if path.exists():
+        fail("BOOTSTRAP_RECEIPT_EXISTS", f"bootstrap receipt already exists: {path}")
+
+    task_id = args.task or "WP-INFRA"
+    if task_id not in KNOWN_TASKS:
+        fail("UNKNOWN_TASK", f"unknown task id: {task_id}")
+
+    exclusive_create_bytes(
+        path,
+        canonical_receipt_bytes(empty_bootstrap_receipt(task_id)),
+        mode=BOOTSTRAP_MODE,
+        exists_reason="BOOTSTRAP_RECEIPT_EXISTS",
+    )
+    return emit_ok("bootstrap-init", receipt=str(path), taskId=task_id, revision=1)
+
+
+def cmd_bootstrap_record_sha(args: argparse.Namespace) -> int:
+    path = resolve_bootstrap_path(args)
+    kind = args.kind
+    if kind not in SHA_KIND_TO_FIELD:
+        fail("ILLEGAL_STATE", f"unknown sha kind: {kind}")
+    field = SHA_KIND_TO_FIELD[kind]
+    sha = args.sha256
+    if not isinstance(sha, str) or len(sha) != 64:
+        fail("BOOTSTRAP_SHA_MISMATCH", "sha256 must be 64 hex chars")
+
+    if args.path:
+        actual = sha256_file(Path(args.path))
+        if actual != sha:
+            fail(
+                "BOOTSTRAP_SHA_MISMATCH",
+                f"provided sha256 does not match file digest: {args.path}",
+            )
+
+    def apply(current: dict[str, Any]) -> dict[str, Any]:
+        current[field] = sha
+        return current
+
+    mutate_bootstrap(path, apply, check_mode=True)
+    return emit_ok("bootstrap-record-sha", receipt=str(path), kind=kind, sha256=sha)
+
+
+def cmd_bootstrap_record_phase(args: argparse.Namespace) -> int:
+    path = resolve_bootstrap_path(args)
+    phase = args.phase
+    status = args.status
+    if not phase or not status:
+        fail("ILLEGAL_STATE", "missing --phase or --status")
+
+    def apply(current: dict[str, Any]) -> dict[str, Any]:
+        events = list(current.get("phaseEvents") or [])
+        if not isinstance(events, list):
+            fail("RECEIPT_CORRUPT", "phaseEvents must be an array")
+        event: dict[str, Any] = {"phase": phase, "status": status}
+        if args.failure_signature:
+            event["failureSignature"] = args.failure_signature
+        events.append(event)
+        current["phaseEvents"] = events
+        return current
+
+    mutate_bootstrap(path, apply, check_mode=True)
+    return emit_ok("bootstrap-record-phase", receipt=str(path), phase=phase, status=status)
+
+
+def cmd_bootstrap_record_origin(args: argparse.Namespace) -> int:
+    path = resolve_bootstrap_path(args)
+    expected = args.expected_sha
+    observed = args.observed_sha
+    if not expected or not observed:
+        fail("ORIGIN_SHA_MISMATCH", "missing --expected-sha or --observed-sha")
+    if expected != observed:
+        fail(
+            "ORIGIN_SHA_MISMATCH",
+            f"origin sha mismatch: expected={expected} observed={observed}",
+        )
+
+    def apply(current: dict[str, Any]) -> dict[str, Any]:
+        current["originReadback"] = {
+            "ref": args.ref or DEFAULT_INFRA_REF,
+            "expectedSha": expected,
+            "observedSha": observed,
+        }
+        if args.infra_sha:
+            current["INFRA_SHA"] = args.infra_sha
+        elif current.get("INFRA_SHA") is None:
+            current["INFRA_SHA"] = expected
+        return current
+
+    mutate_bootstrap(path, apply, check_mode=True)
+    return emit_ok(
+        "bootstrap-record-origin",
+        receipt=str(path),
+        expectedSha=expected,
+        observedSha=observed,
+    )
+
+
+def cmd_bootstrap_readback(args: argparse.Namespace) -> int:
+    path = resolve_bootstrap_path(args)
+    infra = args.infra_sha
+    remote = args.remote_sha
+    if not infra or not remote:
+        fail("ORIGIN_SHA_MISMATCH", "missing --infra-sha or --remote-sha")
+    if infra != remote:
+        fail(
+            "ORIGIN_SHA_MISMATCH",
+            f"exact origin readback failed: infra={infra} remote={remote}",
+        )
+
+    def apply(current: dict[str, Any]) -> dict[str, Any]:
+        current["INFRA_SHA"] = infra
+        current["originReadback"] = {
+            "ref": args.ref or DEFAULT_INFRA_REF,
+            "expectedSha": infra,
+            "observedSha": remote,
+        }
+        current["state"] = "INFRA_REMOTE_VERIFIED"
+        return current
+
+    # Readback is the recovery path that may run while SYNC_IN_FLIGHT.
+    mutate_bootstrap(path, apply, check_mode=True, allow_in_flight=True)
+    return emit_ok(
+        "bootstrap-readback",
+        receipt=str(path),
+        infraSha=infra,
+        remoteSha=remote,
+        state="INFRA_REMOTE_VERIFIED",
+    )
+
+
+def cmd_evaluate_effective_gate(args: argparse.Namespace) -> int:
+    path, _receipt, gate, reason, message = gate_from_args(args)
+    # With --recompute-paths, failures are hard errors (no silent green exit).
+    if not gate and args.recompute_paths:
+        fail(reason or "EFFECTIVE_GATE_FALSE", message)
+    return emit_ok(
+        "evaluate-effective-gate",
+        receipt=str(path),
+        EffectiveGate=gate,
+        failureReason=reason,
+        message=message,
+    )
+
+
+def cmd_assert_effective_gate(args: argparse.Namespace) -> int:
+    if args.expected is None:
+        fail("ILLEGAL_STATE", "missing --expected true|false")
+    expected = str(args.expected).strip().lower() in {"1", "true", "yes", "on"}
+    path, _receipt, gate, reason, message = gate_from_args(args)
+
+    if expected and not gate:
+        fail(reason or "EFFECTIVE_GATE_FALSE", message)
+    if not expected and gate:
+        fail(
+            "EFFECTIVE_GATE_CLAIM_REJECTED",
+            "EffectiveGate evaluated true but expected false",
+        )
+    return emit_ok(
+        "assert-effective-gate",
+        receipt=str(path),
+        expected=expected,
+        EffectiveGate=gate,
+    )
+
+
+def cmd_bootstrap_claim_done(args: argparse.Namespace) -> int:
+    path = resolve_bootstrap_path(args)
+
+    def apply(receipt: dict[str, Any]) -> dict[str, Any]:
+        gate, reason, message = evaluate_bootstrap_gate(receipt)
+        forged = receipt.get("EffectiveDone") is True or receipt.get("EffectiveGate") is True
+        if forged and not gate:
+            fail(
+                "EFFECTIVE_GATE_CLAIM_REJECTED",
+                "cannot claim EffectiveDone/EffectiveGate without satisfying gate: "
+                + message,
+            )
+        if not gate:
+            fail(reason or "EFFECTIVE_GATE_FALSE", message)
+        receipt["EffectiveGate"] = True
+        receipt["EffectiveDone"] = True
+        receipt["state"] = "DONE"
+        return receipt
+
+    mutate_bootstrap(path, apply, check_mode=True)
+    return emit_ok(
+        "bootstrap-claim-done",
+        receipt=str(path),
+        EffectiveGate=True,
+        EffectiveDone=True,
+    )
+
+
+def cmd_bootstrap_sync_begin(args: argparse.Namespace) -> int:
+    path = resolve_bootstrap_path(args)
+    expected = args.expected_sha
+    if not expected:
+        fail("ORIGIN_SHA_MISMATCH", "missing --expected-sha")
+
+    with receipt_lock(path):
+        current = load_bootstrap_receipt(path, check_mode=True)
+        reject_if_bootstrap_in_flight(current, action="sync-begin")
+        next_value = dict(current)
+        next_value["resumeState"] = current.get("state") or "INIT"
+        next_value["state"] = "SYNC_IN_FLIGHT"
+        next_value["lastExternalOp"] = {
+            "kind": "push",
+            "expectedSha": expected,
+            "ref": args.ref or DEFAULT_INFRA_REF,
+        }
+        next_value["revision"] = bump_revision(current)
+        store_bootstrap_receipt(path, next_value)
+
+    return emit_ok("bootstrap-sync-begin", receipt=str(path), state="SYNC_IN_FLIGHT")
+
+
+def cmd_bootstrap_sync_resume(args: argparse.Namespace) -> int:
+    path = resolve_bootstrap_path(args)
+    with receipt_lock(path):
+        current = load_bootstrap_receipt(path, check_mode=True)
+        if is_sync_in_flight(current.get("state")):
+            if not getattr(args, "confirm_readback", False):
+                fail(
+                    "SYNC_IN_FLIGHT_RECOVERY_REQUIRED",
+                    "SYNC_IN_FLIGHT resume requires independent origin readback first "
+                    "(pass --confirm-readback after readback)",
+                )
+            resume_state = current.get("resumeState") or "INFRA_REMOTE_VERIFIED"
+            next_value = dict(current)
+            next_value["state"] = resume_state
+            next_value["revision"] = bump_revision(current)
+            store_bootstrap_receipt(path, next_value)
+            return emit_ok(
+                "bootstrap-sync-resume",
+                receipt=str(path),
+                state=resume_state,
+            )
+        return emit_ok(
+            "bootstrap-sync-resume",
+            receipt=str(path),
+            state=current.get("state"),
+        )
+
+
+def cmd_assert_ready(args: argparse.Namespace) -> int:
+    task_id = args.task
+    if not task_id:
+        fail("UNKNOWN_TASK", "missing --task")
+    if task_id not in KNOWN_TASKS:
+        fail("UNKNOWN_TASK", f"unknown task id: {task_id}")
+
+    gate_raw = args.infra_effective_gate
+    if gate_raw is None:
+        if task_id != "WP-INFRA":
+            fail("EFFECTIVE_GATE_FALSE", "missing --infra-effective-gate")
+        return emit_ok("assert-ready", taskId=task_id, EffectiveGate=True)
+
+    token = str(gate_raw).strip().lower()
+    if token == "from-receipt":
+        path = resolve_bootstrap_path(args)
+        receipt = load_bootstrap_receipt(path, check_mode=True)
+        gate, reason, message = evaluate_bootstrap_gate(receipt)
+        if receipt.get("EffectiveGate") is True and not gate:
+            gate = False
+        if task_id != "WP-INFRA" and not gate:
+            fail("EFFECTIVE_GATE_FALSE", message or "WP-INFRA EffectiveGate=false")
+        return emit_ok(
+            "assert-ready",
+            taskId=task_id,
+            EffectiveGate=gate,
+            failureReason=reason,
+        )
+
+    if token in {"0", "false", "no", "off"}:
+        if task_id != "WP-INFRA":
+            fail(
+                "EFFECTIVE_GATE_FALSE",
+                f"{task_id} cannot start while WP-INFRA EffectiveGate=false",
+            )
+        return emit_ok("assert-ready", taskId=task_id, EffectiveGate=False)
+
+    if token in {"1", "true", "yes", "on"}:
+        return emit_ok("assert-ready", taskId=task_id, EffectiveGate=True)
+
+    fail("ILLEGAL_STATE", f"illegal --infra-effective-gate value: {gate_raw!r}")
+
+
 COMMANDS = {
     "reconcile": cmd_reconcile,
     "assert-state": cmd_assert_state,
@@ -820,6 +1366,17 @@ COMMANDS = {
     "receipt-readback": cmd_receipt_readback,
     "receipt-append-attempt": cmd_receipt_append_attempt,
     "receipt-resume": cmd_receipt_resume,
+    "bootstrap-init": cmd_bootstrap_init,
+    "bootstrap-record-sha": cmd_bootstrap_record_sha,
+    "bootstrap-record-phase": cmd_bootstrap_record_phase,
+    "bootstrap-record-origin": cmd_bootstrap_record_origin,
+    "bootstrap-readback": cmd_bootstrap_readback,
+    "evaluate-effective-gate": cmd_evaluate_effective_gate,
+    "assert-effective-gate": cmd_assert_effective_gate,
+    "bootstrap-claim-done": cmd_bootstrap_claim_done,
+    "bootstrap-sync-begin": cmd_bootstrap_sync_begin,
+    "bootstrap-sync-resume": cmd_bootstrap_sync_resume,
+    "assert-ready": cmd_assert_ready,
 }
 
 
@@ -862,6 +1419,22 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--require-contained", action="store_true")
     parser.add_argument("--receipts-root")
     parser.add_argument("--confirm-readback", action="store_true")
+    # Bootstrap / EffectiveGate surface (RED-04 / GREEN-04)
+    parser.add_argument("--bootstrap-root")
+    parser.add_argument("--kind")
+    parser.add_argument("--sha256")
+    parser.add_argument("--status")
+    parser.add_argument("--failure-signature")
+    parser.add_argument("--expected-sha")
+    parser.add_argument("--observed-sha")
+    parser.add_argument("--ref")
+    parser.add_argument("--infra-sha")
+    parser.add_argument("--remote-sha")
+    parser.add_argument("--recompute-paths", action="store_true")
+    parser.add_argument("--runner-path")
+    parser.add_argument("--catalog-path")
+    parser.add_argument("--schema-path")
+    parser.add_argument("--infra-effective-gate")
     args, _unknown = parser.parse_known_args(argv)
     return args
 
