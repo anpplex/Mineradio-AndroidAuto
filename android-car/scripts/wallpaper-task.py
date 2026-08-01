@@ -2371,7 +2371,8 @@ def gh_pr_view_json(pr_number: int, *, repo: str | None) -> dict[str, Any]:
         "view",
         str(pr_number),
         "--json",
-        "number,state,mergedAt,mergeCommit,baseRefName,headRefName,url,title",
+        "number,state,mergedAt,mergeCommit,baseRefName,headRefName,headRefOid,"
+        "headRepository,url,title,closed",
     ]
     if repo:
         cmd.extend(["--repo", repo])
@@ -2694,99 +2695,350 @@ def catalog_task(catalog: Mapping[str, Any], task_id: str) -> dict[str, Any]:
 
 
 def live_authoritative_base_sha() -> str:
-    out = run_git(
-        ["rev-parse", "origin/huawei-android12-car"],
-        fail_reason="LS_REMOTE_MISMATCH",
-    )
-    return normalize_git_sha40(
-        out,
-        reason="LS_REMOTE_MISMATCH",
-        message="origin/huawei-android12-car is not a 40-char SHA",
-    )
+    """Independent live base tip via `git ls-remote --refs origin base` (never local tip alone)."""
+    return probe_base_ref_sha(remote=APPROVED_PUSH_REMOTE)
 
 
-def evaluate_wp01_verify_done(
+# WP-01 verify-done proof-chain roles (identity only; remote facts from API/git).
+WP01_PROOF_CHAIN_ROLES = ("import", "repair")
+# Caller must not inject remote/done facts; only task identity (PR numbers) + local suite digests.
+WP01_CALLER_FORGERY_KEYS = frozenset(
+    {
+        "merged",
+        "EffectiveDone",
+        "REMOTE_VERIFIED",
+        "remoteVerified",
+        "EffectiveGate",
+        "mergeSha",
+        "mergedAt",
+        "merge_commit_sha",
+        "mergeCommit",
+        "state",
+    }
+)
+APPROVED_GITHUB_REPO = "anpplex/Mineradio-AndroidAuto"
+
+
+def _sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _try_int(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _reject_caller_forged_remote_facts(
+    proofs: Mapping[str, Any],
+) -> tuple[bool, str, str]:
+    """Fail-closed if caller tries to inject remote/done facts into proofs."""
+    has_chain = isinstance(proofs.get("proofChain"), dict)
+    # Legacy single-PR + catalog merge pin model (pre proof-chain) — explicit signature.
+    if not has_chain and ("prNumber" in proofs or "mergeSha" in proofs):
+        return (
+            False,
+            "WP01_VERIFY_DONE_CATALOG_MERGE_PIN",
+            "legacy single-PR prNumber/mergeSha pin rejected; use proofChain identities",
+        )
+    for key in WP01_CALLER_FORGERY_KEYS:
+        if key in proofs:
+            return (
+                False,
+                "WP01_VERIFY_DONE_CALLER_FORGERY",
+                f"caller must not supply untrusted remote/done fact {key!r}; "
+                "only task identity is accepted",
+            )
+    chain = proofs.get("proofChain")
+    if isinstance(chain, dict):
+        for role, entry in chain.items():
+            if not isinstance(entry, dict):
+                continue
+            for key in WP01_CALLER_FORGERY_KEYS:
+                if key in entry:
+                    return (
+                        False,
+                        "WP01_VERIFY_DONE_CALLER_FORGERY",
+                        f"caller must not supply untrusted fact {key!r} under proofChain.{role}",
+                    )
+    return True, "", ""
+
+
+def _load_wp01_identity_proofs(
     receipt: Mapping[str, Any],
     args: argparse.Namespace,
-) -> tuple[bool, str, str, dict[str, Any]]:
-    """Return (ok, reason, message, proof_record). Fail-closed when proofs incomplete."""
-    catalog = load_authoritative_catalog(args)
-    task = catalog_task(catalog, "WP-01")
-    weight = task.get("weight")
-    if weight != 6:
-        return False, "CATALOG_WP01_MISSING", f"WP-01 weight must be 6, got {weight!r}", {}
-
-    proofs = receipt.get("proofs") if isinstance(receipt.get("proofs"), dict) else {}
-    # Optional CLI override is not trusted alone — must match receipt proofs when both set.
+) -> tuple[dict[str, Any] | None, str, str]:
+    """Merge receipt proofs with optional CLI identity; never trust remote facts from either."""
+    proofs: dict[str, Any] = {}
+    if isinstance(receipt.get("proofs"), dict):
+        proofs.update(receipt["proofs"])
     if args.proofs_json:
         try:
             injected = json.loads(args.proofs_json)
         except json.JSONDecodeError as exc:
-            return False, "WP01_VERIFY_DONE_PROOF_MISSING", f"invalid --proofs-json: {exc}", {}
+            return None, "WP01_VERIFY_DONE_PROOF_MISSING", f"invalid --proofs-json: {exc}"
         if not isinstance(injected, dict):
-            return False, "WP01_VERIFY_DONE_PROOF_MISSING", "--proofs-json must be object", {}
-        # merge only for missing keys; receipt wins on conflict
+            return None, "WP01_VERIFY_DONE_PROOF_MISSING", "--proofs-json must be object"
+        # Receipt wins on conflict for overlapping keys; CLI fills missing identity only.
         merged = dict(injected)
         merged.update(proofs)
         proofs = merged
+    ok, reason, message = _reject_caller_forged_remote_facts(proofs)
+    if not ok:
+        return None, reason, message
+    return proofs, "", ""
 
-    required_keys = (
-        "importCommit",
-        "mergeSha",
-        "prNumber",
-        "authoritativeBaseSha",
-        "pluginContractTest",
-        "monorepoImportTest",
-        "fullNodeTest",
-    )
-    missing = [k for k in required_keys if k not in proofs]
-    if missing:
+
+def _catalog_proof_chain(task: Mapping[str, Any]) -> tuple[dict[str, Any] | None, str, str]:
+    catalog_proofs = task.get("proofs") if isinstance(task.get("proofs"), dict) else {}
+    chain = catalog_proofs.get("proofChain") if isinstance(catalog_proofs, dict) else None
+    if not isinstance(chain, dict):
         return (
-            False,
+            None,
             "WP01_VERIFY_DONE_PROOF_MISSING",
-            f"missing proofs: {','.join(missing)}",
-            {},
+            "catalog proofs.proofChain missing or not object",
         )
+    # Catalog must not hard-pin PR numbers or merge SHAs (dynamic readback only).
+    if "prNumber" in catalog_proofs or "mergeSha" in catalog_proofs:
+        return (
+            None,
+            "WP01_VERIFY_DONE_CATALOG_MERGE_PIN",
+            "catalog must not hardcode proofs.prNumber or proofs.mergeSha",
+        )
+    for role in WP01_PROOF_CHAIN_ROLES:
+        entry = chain.get(role)
+        if not isinstance(entry, dict):
+            return (
+                None,
+                "WP01_VERIFY_DONE_PROOF_MISSING",
+                f"catalog proofChain.{role} missing or incomplete",
+            )
+        if "prNumber" in entry or "mergeSha" in entry:
+            return (
+                None,
+                "WP01_VERIFY_DONE_CATALOG_MERGE_PIN",
+                f"catalog proofChain.{role} must not pin prNumber/mergeSha",
+            )
+        task_commit = entry.get("taskCommit")
+        if not is_git_sha40(task_commit):
+            return (
+                None,
+                "WP01_VERIFY_DONE_PROOF_MISSING",
+                f"catalog proofChain.{role}.taskCommit must be 40-char SHA",
+            )
+        base_ref = str(entry.get("baseRef") or "")
+        if base_ref not in {APPROVED_BASE_BRANCH, APPROVED_BASE_REF}:
+            return (
+                None,
+                "WP01_VERIFY_DONE_PROOF_MISSING",
+                f"catalog proofChain.{role}.baseRef must be {APPROVED_BASE_BRANCH}",
+            )
+        head_ref = str(entry.get("headRef") or "")
+        if not head_ref.startswith(TASK_BRANCH_PREFIX):
+            return (
+                None,
+                "WP01_VERIFY_DONE_PROOF_MISSING",
+                f"catalog proofChain.{role}.headRef must start with {TASK_BRANCH_PREFIX}",
+            )
+    return chain, "", ""
 
-    import_commit = normalize_git_sha40(
-        str(proofs.get("importCommit") or ""),
-        reason="WP01_VERIFY_DONE_PROOF_MISSING",
-        message="importCommit must be 40-char SHA",
-    )
-    merge_sha = normalize_git_sha40(
-        str(proofs.get("mergeSha") or ""),
-        reason="WP01_VERIFY_DONE_PROOF_MISSING",
-        message="mergeSha must be 40-char SHA",
-    )
+
+def _caller_proof_chain_identities(
+    proofs: Mapping[str, Any],
+) -> tuple[dict[str, int] | None, str, str]:
+    """Extract role → prNumber identity map from caller/receipt (identity only)."""
+    # Legacy single-PR shape is rejected under the post-#6 proof-chain model.
+    if "prNumber" in proofs or "mergeSha" in proofs:
+        return (
+            None,
+            "WP01_VERIFY_DONE_CATALOG_MERGE_PIN",
+            "legacy single-PR prNumber/mergeSha pin rejected; supply proofChain identities",
+        )
+    chain = proofs.get("proofChain")
+    if not isinstance(chain, dict):
+        return (
+            None,
+            "WP01_VERIFY_DONE_PROOF_MISSING",
+            "missing proofs.proofChain object with import/repair identities",
+        )
+    identities: dict[str, int] = {}
+    for role in WP01_PROOF_CHAIN_ROLES:
+        entry = chain.get(role)
+        if not isinstance(entry, dict):
+            return (
+                None,
+                "WP01_VERIFY_DONE_PROOF_MISSING",
+                f"proofChain.{role} missing or incomplete",
+            )
+        pr_number = _try_int(entry.get("prNumber"))
+        if pr_number is None or pr_number <= 0:
+            return (
+                None,
+                "WP01_VERIFY_DONE_PROOF_MISSING",
+                f"proofChain.{role}.prNumber must be positive int (task identity)",
+            )
+        identities[role] = pr_number
+    # Duplicate PR identities across roles are incomplete/ambiguous proofs.
+    if len(set(identities.values())) != len(identities):
+        return (
+            None,
+            "WP01_VERIFY_DONE_PROOF_MISSING",
+            "proofChain roles must not share the same PR number (duplicate proof)",
+        )
+    return identities, "", ""
+
+
+def verify_wp01_merged_pr_proof(
+    *,
+    role: str,
+    pr_number: int,
+    expected_task_commit: str,
+    expected_head_ref: str,
+    expected_base_ref: str,
+    live_base_sha: str,
+    repo: str | None,
+) -> tuple[dict[str, Any] | None, str, str]:
+    """Independently re-read PR via GitHub API + ancestry vs live base. No tip equality."""
     try:
-        pr_number = int(proofs.get("prNumber"))
-    except (TypeError, ValueError):
-        return False, "WP01_VERIFY_DONE_PROOF_MISSING", "prNumber must be int", {}
-    if pr_number != 5:
-        return False, "WP01_VERIFY_DONE_PROOF_MISSING", f"prNumber must be 5, got {pr_number}", {}
+        data = gh_pr_view_json(pr_number, repo=repo)
+    except SystemExit:
+        # gh_pr_view_json fail-closes via SystemExit; re-raise for infrastructure errors.
+        raise
 
-    claimed_base = normalize_git_sha40(
-        str(proofs.get("authoritativeBaseSha") or ""),
-        reason="WP01_VERIFY_DONE_PROOF_MISSING",
-        message="authoritativeBaseSha must be 40-char SHA",
+    # Repository match (head repo nameWithOwner or URL).
+    head_repo = data.get("headRepository") if isinstance(data.get("headRepository"), dict) else {}
+    name_with_owner = str(head_repo.get("nameWithOwner") or "")
+    url = str(data.get("url") or "")
+    if name_with_owner and name_with_owner != APPROVED_GITHUB_REPO:
+        return (
+            None,
+            "WP01_VERIFY_DONE_PROOF_MISSING",
+            f"{role} PR #{pr_number} repository {name_with_owner!r} != {APPROVED_GITHUB_REPO}",
+        )
+    if APPROVED_GITHUB_REPO not in url and name_with_owner != APPROVED_GITHUB_REPO:
+        # When headRepository omitted, require URL path match.
+        if f"github.com/{APPROVED_GITHUB_REPO}" not in url.replace("https://", ""):
+            return (
+                None,
+                "WP01_VERIFY_DONE_PROOF_MISSING",
+                f"{role} PR #{pr_number} URL/repo does not match {APPROVED_GITHUB_REPO}",
+            )
+
+    state = str(data.get("state") or "").upper()
+    merged_at = data.get("mergedAt")
+    closed = data.get("closed")
+    if state != "MERGED":
+        return (
+            None,
+            "WP01_VERIFY_DONE_PROOF_MISSING",
+            f"{role} PR #{pr_number} state is {state!r}, not MERGED (unmerged rejected)",
+        )
+    if not merged_at:
+        return (
+            None,
+            "WP01_VERIFY_DONE_PROOF_MISSING",
+            f"{role} PR #{pr_number} mergedAt is null",
+        )
+    if closed is False:
+        return (
+            None,
+            "WP01_VERIFY_DONE_PROOF_MISSING",
+            f"{role} PR #{pr_number} closed=false",
+        )
+
+    api_number = _try_int(data.get("number"))
+    if api_number != pr_number:
+        return (
+            None,
+            "WP01_VERIFY_DONE_PROOF_MISSING",
+            f"{role} PR number readback {api_number} != identity {pr_number}",
+        )
+
+    head_ref = str(data.get("headRefName") or "")
+    if head_ref != expected_head_ref:
+        return (
+            None,
+            "WP01_VERIFY_DONE_PROOF_MISSING",
+            f"{role} PR head.ref {head_ref!r} != expected {expected_head_ref!r}",
+        )
+
+    base_ref = str(data.get("baseRefName") or "")
+    if base_ref != expected_base_ref and base_ref != APPROVED_BASE_BRANCH:
+        return (
+            None,
+            "WP01_VERIFY_DONE_PROOF_MISSING",
+            f"{role} PR base.ref {base_ref!r} is not {APPROVED_BASE_BRANCH}",
+        )
+
+    head_sha_raw = data.get("headRefOid")
+    if not is_git_sha40(head_sha_raw):
+        return (
+            None,
+            "WP01_VERIFY_DONE_PROOF_MISSING",
+            f"{role} PR head.sha missing/invalid from API",
+        )
+    head_sha = str(head_sha_raw).lower()
+    expected_task_commit = str(expected_task_commit).lower()
+    if head_sha != expected_task_commit:
+        return (
+            None,
+            "WP01_VERIFY_DONE_PROOF_MISSING",
+            f"{role} PR head.sha {head_sha} != catalog taskCommit {expected_task_commit}",
+        )
+
+    merge_commit = data.get("mergeCommit")
+    if not isinstance(merge_commit, dict) or not is_git_sha40(merge_commit.get("oid")):
+        return (
+            None,
+            "WP01_VERIFY_DONE_PROOF_MISSING",
+            f"{role} PR #{pr_number} missing real merge_commit_sha from API",
+        )
+    merge_sha = str(merge_commit.get("oid")).lower()
+
+    # Merge SHA must be ancestor of live base tip — NOT required to equal tip.
+    if not git_is_ancestor(merge_sha, live_base_sha):
+        return (
+            None,
+            "BASE_CONTAINMENT_REQUIRED",
+            f"{role} proof mergeSha {merge_sha} is not an ancestor of live base {live_base_sha}",
+        )
+    # Task head / import-repair commit must also be contained in live base.
+    if not git_is_ancestor(expected_task_commit, live_base_sha):
+        return (
+            None,
+            "BASE_CONTAINMENT_REQUIRED",
+            f"{role} taskCommit {expected_task_commit} is not an ancestor of live base {live_base_sha}",
+        )
+
+    return (
+        {
+            "role": role,
+            "prNumber": pr_number,
+            "headRef": head_ref,
+            "headSha": head_sha,
+            "taskCommit": expected_task_commit,
+            "baseRef": base_ref,
+            "mergeSha": merge_sha,
+            "mergedAt": merged_at,
+            "state": state,
+            "url": data.get("url"),
+            "repository": name_with_owner or APPROVED_GITHUB_REPO,
+            "mergeIsAncestorOfLiveBase": True,
+            "taskCommitIsAncestorOfLiveBase": True,
+            "source": SOURCE_GH_PR_API,
+            "ancestrySource": SOURCE_GIT_MERGE_BASE,
+            "liveBaseSha": live_base_sha,
+        },
+        "",
+        "",
     )
-    live_base = live_authoritative_base_sha()
-    if claimed_base != live_base:
-        return (
-            False,
-            "BASE_CONTAINMENT_REQUIRED",
-            f"proof base {claimed_base} != live origin base {live_base}",
-            {},
-        )
-    # merge must equal live base tip for closed WP-01 monorepo import
-    if merge_sha != live_base:
-        return (
-            False,
-            "BASE_CONTAINMENT_REQUIRED",
-            f"mergeSha {merge_sha} != live base tip {live_base}",
-            {},
-        )
 
+
+def _verify_suite_and_blob_proofs(
+    proofs: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
     for suite_key in ("pluginContractTest", "monorepoImportTest", "fullNodeTest"):
         suite = proofs.get(suite_key)
         if not isinstance(suite, dict) or suite.get("pass") is not True:
@@ -2805,32 +3057,178 @@ def evaluate_wp01_verify_done(
                 {},
             )
 
-    catalog_proofs = task.get("proofs") if isinstance(task.get("proofs"), dict) else {}
-    if catalog_proofs.get("importCommit") and catalog_proofs["importCommit"] != import_commit:
+    catalog_path = Path(args.catalog_path) if args.catalog_path else DEFAULT_CATALOG_BLOB_PATH
+    schema_path = Path(args.schema_path) if args.schema_path else DEFAULT_SCHEMA_BLOB_PATH
+    if not catalog_path.is_file():
+        return False, "WP01_VERIFY_DONE_PROOF_MISSING", f"catalog missing: {catalog_path}", {}
+    if not schema_path.is_file():
+        return False, "WP01_VERIFY_DONE_PROOF_MISSING", f"schema missing: {schema_path}", {}
+
+    live_catalog_sha = _sha256_file(catalog_path)
+    live_schema_sha = _sha256_file(schema_path)
+
+    claimed_catalog = proofs.get("catalogSha256")
+    if not isinstance(claimed_catalog, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", claimed_catalog.lower() or ""
+    ):
         return (
             False,
             "WP01_VERIFY_DONE_PROOF_MISSING",
-            "importCommit does not match catalog proofs.importCommit",
+            "catalogSha256 must be 64-char hex matching actual catalog file",
             {},
         )
-    if catalog_proofs.get("mergeSha") and catalog_proofs["mergeSha"] != merge_sha:
+    if claimed_catalog.lower() != live_catalog_sha:
         return (
             False,
             "WP01_VERIFY_DONE_PROOF_MISSING",
-            "mergeSha does not match catalog proofs.mergeSha",
+            f"catalogSha256 mismatch: claimed={claimed_catalog.lower()} live={live_catalog_sha}",
+            {},
+        )
+
+    claimed_schema = proofs.get("schemaSha256")
+    if not isinstance(claimed_schema, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", claimed_schema.lower() or ""
+    ):
+        return (
+            False,
+            "WP01_VERIFY_DONE_PROOF_MISSING",
+            "schemaSha256 must be 64-char hex matching actual schema file",
+            {},
+        )
+    if claimed_schema.lower() != live_schema_sha:
+        return (
+            False,
+            "WP01_VERIFY_DONE_PROOF_MISSING",
+            f"schemaSha256 mismatch: claimed={claimed_schema.lower()} live={live_schema_sha}",
+            {},
+        )
+
+    return (
+        True,
+        "",
+        "",
+        {
+            "catalogSha256": live_catalog_sha,
+            "schemaSha256": live_schema_sha,
+            "pluginContractTest": proofs["pluginContractTest"],
+            "monorepoImportTest": proofs["monorepoImportTest"],
+            "fullNodeTest": proofs["fullNodeTest"],
+        },
+    )
+
+
+def evaluate_wp01_verify_done(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    """Return (ok, reason, message, proof_record).
+
+    WP-01 DONE requires a merged import+repair proof chain:
+      - PR numbers are dynamic identities (not hard-coded 5/6)
+      - each PR is independently re-read via GitHub API
+      - each merge SHA is an ancestor of live base tip (not tip equality)
+      - live base tip comes from origin ls-remote
+      - caller cannot forge merged/EffectiveDone/REMOTE_VERIFIED/mergeSha
+    """
+    catalog = load_authoritative_catalog(args)
+    task = catalog_task(catalog, "WP-01")
+    weight = task.get("weight")
+    if weight != 6:
+        return False, "CATALOG_WP01_MISSING", f"WP-01 weight must be 6, got {weight!r}", {}
+
+    proofs, reason, message = _load_wp01_identity_proofs(receipt, args)
+    if proofs is None:
+        return False, reason, message, {}
+
+    catalog_chain, reason, message = _catalog_proof_chain(task)
+    if catalog_chain is None:
+        return False, reason, message, {}
+
+    identities, reason, message = _caller_proof_chain_identities(proofs)
+    if identities is None:
+        return False, reason, message, {}
+
+    ok_suites, reason, message, suite_record = _verify_suite_and_blob_proofs(proofs, args)
+    if not ok_suites:
+        return False, reason, message, {}
+
+    # Live base tip: independent ls-remote only.
+    live_base = live_authoritative_base_sha()
+    # Optional claimed base must match live if provided (identity cross-check).
+    claimed_base = proofs.get("authoritativeBaseSha")
+    if claimed_base is not None:
+        if not is_git_sha40(claimed_base):
+            return (
+                False,
+                "WP01_VERIFY_DONE_PROOF_MISSING",
+                "authoritativeBaseSha must be 40-char SHA when provided",
+                {},
+            )
+        if str(claimed_base).lower() != live_base:
+            return (
+                False,
+                "BASE_CONTAINMENT_REQUIRED",
+                f"claimed base {str(claimed_base).lower()} != live ls-remote base {live_base}",
+                {},
+            )
+
+    repo = getattr(args, "repo", None) or APPROVED_GITHUB_REPO
+    verified_roles: dict[str, dict[str, Any]] = {}
+    for role in WP01_PROOF_CHAIN_ROLES:
+        cat_entry = catalog_chain[role]
+        expected_base = str(cat_entry.get("baseRef") or APPROVED_BASE_BRANCH)
+        if expected_base == APPROVED_BASE_REF:
+            expected_base = APPROVED_BASE_BRANCH
+        pr_number = identities[role]
+        role_proof, reason, message = verify_wp01_merged_pr_proof(
+            role=role,
+            pr_number=pr_number,
+            expected_task_commit=str(cat_entry["taskCommit"]).lower(),
+            expected_head_ref=str(cat_entry["headRef"]),
+            expected_base_ref=expected_base,
+            live_base_sha=live_base,
+            repo=repo,
+        )
+        if role_proof is None:
+            return False, reason, message, {}
+        verified_roles[role] = role_proof
+
+    import_proof = verified_roles["import"]
+    repair_proof = verified_roles["repair"]
+    catalog_proofs = task.get("proofs") if isinstance(task.get("proofs"), dict) else {}
+    import_commit = str(
+        catalog_proofs.get("importCommit") or import_proof["taskCommit"]
+    ).lower()
+    if import_commit != import_proof["taskCommit"]:
+        return (
+            False,
+            "WP01_VERIFY_DONE_PROOF_MISSING",
+            "catalog importCommit must match import proof taskCommit",
             {},
         )
 
     record = {
+        "proofChain": {
+            "import": import_proof,
+            "repair": repair_proof,
+        },
+        "importProof": import_proof,
+        "repairProof": repair_proof,
         "importCommit": import_commit,
-        "mergeSha": merge_sha,
-        "prNumber": pr_number,
+        # Distinct SHAs: do not conflate merge tip with live base tip.
+        "importMergeSha": import_proof["mergeSha"],
+        "repairMergeSha": repair_proof["mergeSha"],
+        "liveBaseSha": live_base,
         "authoritativeBaseSha": live_base,
         "weight": 6,
         "product": task.get("product") or "Wallpaper Engine",
         "path": task.get("path") or "wallpaper-plugin/",
         "verifiedAt": utc_now_iso(),
         "source": "verify-done",
+        "remoteFactsSource": SOURCE_GH_PR_API,
+        "baseTipSource": SOURCE_GIT_LS_REMOTE,
+        "ancestrySource": SOURCE_GIT_MERGE_BASE,
+        **suite_record,
     }
     return True, "", "", record
 

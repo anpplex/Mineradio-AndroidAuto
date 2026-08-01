@@ -62,10 +62,24 @@
         "importCommit": "363cc82849d57b6f9f43706840a0c286afbef144",
         "implementationCommits": [
           "08c60a9fbcb9f3772e1c3c9419523da50118edc4",
-          "363cc82849d57b6f9f43706840a0c286afbef144"
+          "363cc82849d57b6f9f43706840a0c286afbef144",
+          "4351beb985a09896b2a2753960a046e63dac6a3b",
+          "d81ca0e4070f95c2961e87e7f3e1663897ce3327"
         ],
-        "prNumber": 5,
-        "mergeSha": "37bfcae9c812b691b68fa8a91ebd0c08b2ec6e30",
+        "proofChain": {
+          "import": {
+            "role": "import",
+            "taskCommit": "363cc82849d57b6f9f43706840a0c286afbef144",
+            "headRef": "codex/wallpaper-plugin-monorepo",
+            "baseRef": "huawei-android12-car"
+          },
+          "repair": {
+            "role": "repair",
+            "taskCommit": "d81ca0e4070f95c2961e87e7f3e1663897ce3327",
+            "headRef": "codex/wallpaper-plugin-wp01-context-catalog-repair",
+            "baseRef": "huawei-android12-car"
+          }
+        },
         "authoritativeBaseRef": "refs/heads/huawei-android12-car",
         "sourceRepository": "local WallpaperEngine sandbox",
         "sourceCommit": "f117780b0741b6c3807d024ce59dbf629410579c",
