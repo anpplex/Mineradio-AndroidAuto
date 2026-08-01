@@ -32,7 +32,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping, NoReturn
+from typing import Any, Callable, Iterator, Mapping, NoReturn, Sequence
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -2730,23 +2730,27 @@ def _try_int(value: Any) -> int | None:
         return None
 
 
-def _reject_caller_forged_remote_facts(
+def _reject_forged_keys_in_proofs(
     proofs: Mapping[str, Any],
+    *,
+    forbidden_keys: frozenset[str],
+    forgery_reason: str,
+    legacy_pin_reason: str | None = None,
 ) -> tuple[bool, str, str]:
-    """Fail-closed if caller tries to inject remote/done facts into proofs."""
+    """Shared fail-closed guard: caller must not inject remote/done/progress facts."""
     has_chain = isinstance(proofs.get("proofChain"), dict)
-    # Legacy single-PR + catalog merge pin model (pre proof-chain) — explicit signature.
-    if not has_chain and ("prNumber" in proofs or "mergeSha" in proofs):
+    # Legacy single-PR + catalog merge pin model (pre proof-chain) — WP-01 signature.
+    if legacy_pin_reason and not has_chain and ("prNumber" in proofs or "mergeSha" in proofs):
         return (
             False,
-            "WP01_VERIFY_DONE_CATALOG_MERGE_PIN",
+            legacy_pin_reason,
             "legacy single-PR prNumber/mergeSha pin rejected; use proofChain identities",
         )
-    for key in WP01_CALLER_FORGERY_KEYS:
+    for key in forbidden_keys:
         if key in proofs:
             return (
                 False,
-                "WP01_VERIFY_DONE_CALLER_FORGERY",
+                forgery_reason,
                 f"caller must not supply untrusted remote/done fact {key!r}; "
                 "only task identity is accepted",
             )
@@ -2755,21 +2759,24 @@ def _reject_caller_forged_remote_facts(
         for role, entry in chain.items():
             if not isinstance(entry, dict):
                 continue
-            for key in WP01_CALLER_FORGERY_KEYS:
+            for key in forbidden_keys:
                 if key in entry:
                     return (
                         False,
-                        "WP01_VERIFY_DONE_CALLER_FORGERY",
+                        forgery_reason,
                         f"caller must not supply untrusted fact {key!r} under proofChain.{role}",
                     )
     return True, "", ""
 
 
-def _load_wp01_identity_proofs(
+def _merge_receipt_and_cli_proofs(
     receipt: Mapping[str, Any],
     args: argparse.Namespace,
+    *,
+    missing_reason: str,
+    require_nonempty: bool = False,
 ) -> tuple[dict[str, Any] | None, str, str]:
-    """Merge receipt proofs with optional CLI identity; never trust remote facts from either."""
+    """Merge receipt.proofs with optional --proofs-json; receipt wins on key conflict."""
     proofs: dict[str, Any] = {}
     if isinstance(receipt.get("proofs"), dict):
         proofs.update(receipt["proofs"])
@@ -2777,13 +2784,131 @@ def _load_wp01_identity_proofs(
         try:
             injected = json.loads(args.proofs_json)
         except json.JSONDecodeError as exc:
-            return None, "WP01_VERIFY_DONE_PROOF_MISSING", f"invalid --proofs-json: {exc}"
+            return None, missing_reason, f"invalid --proofs-json: {exc}"
         if not isinstance(injected, dict):
-            return None, "WP01_VERIFY_DONE_PROOF_MISSING", "--proofs-json must be object"
+            return None, missing_reason, "--proofs-json must be object"
         # Receipt wins on conflict for overlapping keys; CLI fills missing identity only.
         merged = dict(injected)
         merged.update(proofs)
         proofs = merged
+    if require_nonempty and not proofs:
+        return None, missing_reason, "missing proofs identity"
+    return proofs, "", ""
+
+
+def _require_suite_pass_digests(
+    proofs: Mapping[str, Any],
+    suite_keys: Sequence[str],
+    *,
+    missing_reason: str,
+) -> tuple[bool, str, str]:
+    for suite_key in suite_keys:
+        suite = proofs.get(suite_key)
+        if not isinstance(suite, dict) or suite.get("pass") is not True:
+            return False, missing_reason, f"{suite_key}.pass must be true"
+        sha = suite.get("sha256")
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{64}", sha.lower() or ""):
+            return False, missing_reason, f"{suite_key}.sha256 must be 64-char hex"
+    return True, "", ""
+
+
+def _require_matching_file_digest(
+    proofs: Mapping[str, Any],
+    *,
+    field: str,
+    path: Path,
+    missing_reason: str,
+) -> tuple[bool, str, str, str]:
+    """Return (ok, reason, message, live_sha)."""
+    if not path.is_file():
+        return False, missing_reason, f"{field} file missing: {path}", ""
+    live_sha = _sha256_file(path)
+    claimed = proofs.get(field)
+    if not isinstance(claimed, str) or not re.fullmatch(r"[0-9a-f]{64}", claimed.lower() or ""):
+        return (
+            False,
+            missing_reason,
+            f"{field} must be 64-char hex matching actual file",
+            "",
+        )
+    if claimed.lower() != live_sha:
+        return (
+            False,
+            missing_reason,
+            f"{field} mismatch: claimed={claimed.lower()} live={live_sha}",
+            "",
+        )
+    return True, "", "", live_sha
+
+
+def _pr_repo_matches_approved(data: Mapping[str, Any]) -> tuple[bool, str]:
+    head_repo = data.get("headRepository") if isinstance(data.get("headRepository"), dict) else {}
+    name_with_owner = str(head_repo.get("nameWithOwner") or "")
+    url = str(data.get("url") or "")
+    if name_with_owner and name_with_owner != APPROVED_GITHUB_REPO:
+        return False, name_with_owner
+    if APPROVED_GITHUB_REPO not in url and name_with_owner != APPROVED_GITHUB_REPO:
+        if f"github.com/{APPROVED_GITHUB_REPO}" not in url.replace("https://", ""):
+            return False, name_with_owner or url
+    return True, name_with_owner or APPROVED_GITHUB_REPO
+
+
+def _require_merged_pr_fields(
+    data: Mapping[str, Any],
+    *,
+    label: str,
+    missing_reason: str,
+) -> tuple[bool, str, str]:
+    state = str(data.get("state") or "").upper()
+    merged_at = data.get("mergedAt")
+    if state != "MERGED":
+        return False, missing_reason, f"{label} state is {state!r}, not MERGED"
+    if not merged_at:
+        return False, missing_reason, f"{label} mergedAt is null"
+    return True, "", ""
+
+
+def _require_ancestor_of_live_base(
+    sha: str,
+    live_base_sha: str,
+    *,
+    label: str,
+) -> tuple[bool, str, str]:
+    """Ancestry only — never tip equality."""
+    if not git_is_ancestor(sha, live_base_sha):
+        return (
+            False,
+            "BASE_CONTAINMENT_REQUIRED",
+            f"{label} {sha} is not an ancestor of live base {live_base_sha}",
+        )
+    return True, "", ""
+
+
+def _reject_caller_forged_remote_facts(
+    proofs: Mapping[str, Any],
+) -> tuple[bool, str, str]:
+    """Fail-closed if caller tries to inject remote/done facts into proofs."""
+    return _reject_forged_keys_in_proofs(
+        proofs,
+        forbidden_keys=WP01_CALLER_FORGERY_KEYS,
+        forgery_reason="WP01_VERIFY_DONE_CALLER_FORGERY",
+        legacy_pin_reason="WP01_VERIFY_DONE_CATALOG_MERGE_PIN",
+    )
+
+
+def _load_wp01_identity_proofs(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    """Merge receipt proofs with optional CLI identity; never trust remote facts from either."""
+    proofs, reason, message = _merge_receipt_and_cli_proofs(
+        receipt,
+        args,
+        missing_reason="WP01_VERIFY_DONE_PROOF_MISSING",
+        require_nonempty=False,
+    )
+    if proofs is None:
+        return None, reason, message
     ok, reason, message = _reject_caller_forged_remote_facts(proofs)
     if not ok:
         return None, reason, message
@@ -3039,23 +3164,13 @@ def _verify_suite_and_blob_proofs(
     proofs: Mapping[str, Any],
     args: argparse.Namespace,
 ) -> tuple[bool, str, str, dict[str, Any]]:
-    for suite_key in ("pluginContractTest", "monorepoImportTest", "fullNodeTest"):
-        suite = proofs.get(suite_key)
-        if not isinstance(suite, dict) or suite.get("pass") is not True:
-            return (
-                False,
-                "WP01_VERIFY_DONE_PROOF_MISSING",
-                f"{suite_key}.pass must be true",
-                {},
-            )
-        sha = suite.get("sha256")
-        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{64}", sha.lower() or ""):
-            return (
-                False,
-                "WP01_VERIFY_DONE_PROOF_MISSING",
-                f"{suite_key}.sha256 must be 64-char hex",
-                {},
-            )
+    ok, reason, message = _require_suite_pass_digests(
+        proofs,
+        ("pluginContractTest", "monorepoImportTest", "fullNodeTest"),
+        missing_reason="WP01_VERIFY_DONE_PROOF_MISSING",
+    )
+    if not ok:
+        return False, reason, message, {}
 
     catalog_path = Path(args.catalog_path) if args.catalog_path else DEFAULT_CATALOG_BLOB_PATH
     schema_path = Path(args.schema_path) if args.schema_path else DEFAULT_SCHEMA_BLOB_PATH
@@ -3064,44 +3179,27 @@ def _verify_suite_and_blob_proofs(
     if not schema_path.is_file():
         return False, "WP01_VERIFY_DONE_PROOF_MISSING", f"schema missing: {schema_path}", {}
 
-    live_catalog_sha = _sha256_file(catalog_path)
-    live_schema_sha = _sha256_file(schema_path)
+    ok, reason, message, live_catalog_sha = _require_matching_file_digest(
+        proofs,
+        field="catalogSha256",
+        path=catalog_path,
+        missing_reason="WP01_VERIFY_DONE_PROOF_MISSING",
+    )
+    if not ok:
+        if "must be 64-char hex matching actual file" in message:
+            message = "catalogSha256 must be 64-char hex matching actual catalog file"
+        return False, reason, message, {}
 
-    claimed_catalog = proofs.get("catalogSha256")
-    if not isinstance(claimed_catalog, str) or not re.fullmatch(
-        r"[0-9a-f]{64}", claimed_catalog.lower() or ""
-    ):
-        return (
-            False,
-            "WP01_VERIFY_DONE_PROOF_MISSING",
-            "catalogSha256 must be 64-char hex matching actual catalog file",
-            {},
-        )
-    if claimed_catalog.lower() != live_catalog_sha:
-        return (
-            False,
-            "WP01_VERIFY_DONE_PROOF_MISSING",
-            f"catalogSha256 mismatch: claimed={claimed_catalog.lower()} live={live_catalog_sha}",
-            {},
-        )
-
-    claimed_schema = proofs.get("schemaSha256")
-    if not isinstance(claimed_schema, str) or not re.fullmatch(
-        r"[0-9a-f]{64}", claimed_schema.lower() or ""
-    ):
-        return (
-            False,
-            "WP01_VERIFY_DONE_PROOF_MISSING",
-            "schemaSha256 must be 64-char hex matching actual schema file",
-            {},
-        )
-    if claimed_schema.lower() != live_schema_sha:
-        return (
-            False,
-            "WP01_VERIFY_DONE_PROOF_MISSING",
-            f"schemaSha256 mismatch: claimed={claimed_schema.lower()} live={live_schema_sha}",
-            {},
-        )
+    ok, reason, message, live_schema_sha = _require_matching_file_digest(
+        proofs,
+        field="schemaSha256",
+        path=schema_path,
+        missing_reason="WP01_VERIFY_DONE_PROOF_MISSING",
+    )
+    if not ok:
+        if "must be 64-char hex matching actual file" in message:
+            message = "schemaSha256 must be 64-char hex matching actual schema file"
+        return False, reason, message, {}
 
     return (
         True,
@@ -3233,6 +3331,359 @@ def evaluate_wp01_verify_done(
     return True, "", "", record
 
 
+# WP-02 verify-done: single implementation PR identity + suite digests.
+WP02_PROOF_CHAIN_ROLES = ("implementation",)
+WP02_RUNTIME_CONTRACT_PATH = _FROZEN_SCRIPT_DIR / "wp02-runtime-contract.js"
+WP02_CALLER_FORGERY_KEYS = WP01_CALLER_FORGERY_KEYS | frozenset(
+    {
+        "coreProgressPercent",
+        "coreProgress",
+        "progress",
+    }
+)
+WP02_SUITE_KEYS = (
+    "pluginContractTest",
+    "monorepoImportTest",
+    "fullNodeTest",
+    "wp02ContractTest",
+)
+
+
+def _load_wp02_identity_proofs(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    proofs, reason, message = _merge_receipt_and_cli_proofs(
+        receipt,
+        args,
+        missing_reason="WP02_VERIFY_DONE_PROOF_MISSING",
+        require_nonempty=True,
+    )
+    if proofs is None:
+        # Preserve RED/GREEN message for empty proofs.
+        if message == "missing proofs identity":
+            message = "missing WP-02 proofs identity"
+        return None, reason, message
+    ok, reason, message = _reject_forged_keys_in_proofs(
+        proofs,
+        forbidden_keys=WP02_CALLER_FORGERY_KEYS,
+        forgery_reason="WP02_VERIFY_DONE_CALLER_FORGERY",
+    )
+    if not ok:
+        return None, reason, message
+    return proofs, "", ""
+
+
+def _caller_wp02_implementation_pr(
+    proofs: Mapping[str, Any],
+) -> tuple[int | None, str, str]:
+    """Extract implementation PR number identity (caller/receipt only)."""
+    chain = proofs.get("proofChain")
+    if not isinstance(chain, dict):
+        return (
+            None,
+            "WP02_VERIFY_DONE_PROOF_MISSING",
+            "missing proofs.proofChain.implementation.prNumber identity",
+        )
+    entry = chain.get("implementation")
+    if not isinstance(entry, dict):
+        return (
+            None,
+            "WP02_VERIFY_DONE_PROOF_MISSING",
+            "proofChain.implementation missing or incomplete",
+        )
+    pr_number = _try_int(entry.get("prNumber"))
+    if pr_number is None or pr_number <= 0:
+        return (
+            None,
+            "WP02_VERIFY_DONE_PROOF_MISSING",
+            "proofChain.implementation.prNumber must be positive int (task identity)",
+        )
+    return pr_number, "", ""
+
+
+def _verify_wp02_suite_and_blob_proofs(
+    proofs: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    ok, reason, message = _require_suite_pass_digests(
+        proofs,
+        WP02_SUITE_KEYS,
+        missing_reason="WP02_VERIFY_DONE_PROOF_MISSING",
+    )
+    if not ok:
+        return False, reason, message, {}
+
+    catalog_path = Path(args.catalog_path) if args.catalog_path else DEFAULT_CATALOG_BLOB_PATH
+    schema_path = Path(args.schema_path) if args.schema_path else DEFAULT_SCHEMA_BLOB_PATH
+    if not catalog_path.is_file():
+        return False, "WP02_VERIFY_DONE_PROOF_MISSING", f"catalog missing: {catalog_path}", {}
+    if not schema_path.is_file():
+        return False, "WP02_VERIFY_DONE_PROOF_MISSING", f"schema missing: {schema_path}", {}
+    if not WP02_RUNTIME_CONTRACT_PATH.is_file():
+        return (
+            False,
+            "WP02_VERIFY_DONE_PROOF_MISSING",
+            f"wp02-runtime-contract missing: {WP02_RUNTIME_CONTRACT_PATH}",
+            {},
+        )
+
+    ok, reason, message, live_catalog_sha = _require_matching_file_digest(
+        proofs,
+        field="catalogSha256",
+        path=catalog_path,
+        missing_reason="WP02_VERIFY_DONE_PROOF_MISSING",
+    )
+    if not ok:
+        if "must be 64-char hex matching actual file" in message:
+            message = "catalogSha256 must be 64-char hex matching actual catalog file"
+        return False, reason, message, {}
+
+    ok, reason, message, live_schema_sha = _require_matching_file_digest(
+        proofs,
+        field="schemaSha256",
+        path=schema_path,
+        missing_reason="WP02_VERIFY_DONE_PROOF_MISSING",
+    )
+    if not ok:
+        if "must be 64-char hex matching actual file" in message:
+            message = "schemaSha256 must be 64-char hex matching actual schema file"
+        return False, reason, message, {}
+
+    return (
+        True,
+        "",
+        "",
+        {
+            "catalogSha256": live_catalog_sha,
+            "schemaSha256": live_schema_sha,
+            "pluginContractTest": proofs["pluginContractTest"],
+            "monorepoImportTest": proofs["monorepoImportTest"],
+            "fullNodeTest": proofs["fullNodeTest"],
+            "wp02ContractTest": proofs["wp02ContractTest"],
+            "runtimeContractPath": str(WP02_RUNTIME_CONTRACT_PATH),
+            "runtimeContractSha256": _sha256_file(WP02_RUNTIME_CONTRACT_PATH),
+        },
+    )
+
+
+def verify_wp02_merged_implementation_pr(
+    *,
+    pr_number: int,
+    live_base_sha: str,
+    repo: str | None,
+) -> tuple[dict[str, Any] | None, str, str]:
+    """Independently re-read WP-02 implementation PR; ancestry vs live base, not tip equality."""
+    try:
+        data = gh_pr_view_json(pr_number, repo=repo)
+    except SystemExit:
+        raise
+
+    repo_ok, name_with_owner = _pr_repo_matches_approved(data)
+    if not repo_ok:
+        return (
+            None,
+            "WP02_VERIFY_DONE_PROOF_MISSING",
+            f"implementation PR #{pr_number} repository {name_with_owner!r} != {APPROVED_GITHUB_REPO}"
+            if name_with_owner and "/" in str(name_with_owner)
+            else f"implementation PR #{pr_number} URL/repo does not match {APPROVED_GITHUB_REPO}",
+        )
+
+    ok, reason, message = _require_merged_pr_fields(
+        data,
+        label=f"implementation PR #{pr_number}",
+        missing_reason="WP02_VERIFY_DONE_PROOF_MISSING",
+    )
+    if not ok:
+        return None, reason, message
+
+    head_ref = str(data.get("headRefName") or "")
+    if not head_ref.startswith(TASK_BRANCH_PREFIX):
+        return (
+            None,
+            "WP02_VERIFY_DONE_PROOF_MISSING",
+            f"implementation PR head.ref {head_ref!r} must start with {TASK_BRANCH_PREFIX}",
+        )
+
+    base_ref = str(data.get("baseRefName") or "")
+    if base_ref not in {APPROVED_BASE_BRANCH, APPROVED_BASE_REF}:
+        return (
+            None,
+            "WP02_VERIFY_DONE_PROOF_MISSING",
+            f"implementation PR base.ref {base_ref!r} is not {APPROVED_BASE_BRANCH}",
+        )
+
+    head_sha_raw = data.get("headRefOid")
+    if not is_git_sha40(head_sha_raw):
+        return (
+            None,
+            "WP02_VERIFY_DONE_PROOF_MISSING",
+            "implementation PR head.sha missing/invalid from API",
+        )
+    head_sha = str(head_sha_raw).lower()
+
+    merge_commit = data.get("mergeCommit")
+    if not isinstance(merge_commit, dict) or not is_git_sha40(merge_commit.get("oid")):
+        return (
+            None,
+            "WP02_VERIFY_DONE_PROOF_MISSING",
+            f"implementation PR #{pr_number} missing real merge_commit_sha from API",
+        )
+    merge_sha = str(merge_commit.get("oid")).lower()
+
+    # Ancestry only — never require mergeSha == live tip.
+    ok, reason, message = _require_ancestor_of_live_base(
+        merge_sha,
+        live_base_sha,
+        label="implementation mergeSha",
+    )
+    if not ok:
+        return None, reason, message
+    ok, reason, message = _require_ancestor_of_live_base(
+        head_sha,
+        live_base_sha,
+        label="implementation head",
+    )
+    if not ok:
+        return None, reason, message
+
+    return (
+        {
+            "role": "implementation",
+            "prNumber": pr_number,
+            "headRef": head_ref,
+            "headSha": head_sha,
+            "taskCommit": head_sha,
+            "baseRef": base_ref,
+            "mergeSha": merge_sha,
+            "mergedAt": data.get("mergedAt"),
+            "state": str(data.get("state") or "").upper(),
+            "url": data.get("url"),
+            "repository": name_with_owner or APPROVED_GITHUB_REPO,
+            "mergeIsAncestorOfLiveBase": True,
+            "taskCommitIsAncestorOfLiveBase": True,
+            "source": SOURCE_GH_PR_API,
+            "ancestrySource": SOURCE_GIT_MERGE_BASE,
+            "liveBaseSha": live_base_sha,
+        },
+        "",
+        "",
+    )
+
+
+def _catalog_wp02_task(
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    catalog = load_authoritative_catalog(args)
+    matches = [
+        t
+        for t in catalog.get("tasks", [])
+        if isinstance(t, dict) and t.get("taskId") == "WP-02"
+    ]
+    if len(matches) != 1:
+        return (
+            None,
+            "WP02_CATALOG_ENTRY_MISSING",
+            f"catalog must contain unique WP-02 entry (found {len(matches)})",
+        )
+    task = matches[0]
+    if task.get("weight") != 8:
+        return (
+            None,
+            "WP02_VERIFY_DONE_PROOF_MISSING",
+            f"WP-02 weight must be 8, got {task.get('weight')!r}",
+        )
+    required_done = task.get("requiredEffectiveDone")
+    if not isinstance(required_done, list) or not all(
+        dep in required_done for dep in ("WP-INFRA", "WP-00", "WP-01")
+    ):
+        return (
+            None,
+            "WP02_PREREQUISITE_NOT_DONE",
+            "WP-02.requiredEffectiveDone must include WP-INFRA, WP-00, WP-01",
+        )
+    return task, "", ""
+
+
+def evaluate_wp02_verify_done(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    """Return (ok, reason, message, proof_record) for WP-02 CLOSE-VERIFY.
+
+    Requires:
+      - unique catalog WP-02 with weight 8
+      - identity-only proofChain.implementation.prNumber
+      - independent gh PR API: MERGED + approved repo/base/head prefix
+      - merge + head are ancestors of live origin base tip (not tip equality)
+      - suite digests + catalog/schema SHA match
+      - wp02-runtime-contract.js present
+      - caller cannot forge merged/EffectiveDone/REMOTE_VERIFIED/mergeSha/progress
+    """
+    task, reason, message = _catalog_wp02_task(args)
+    if task is None:
+        return False, reason, message, {}
+
+    proofs, reason, message = _load_wp02_identity_proofs(receipt, args)
+    if proofs is None:
+        return False, reason, message, {}
+
+    pr_number, reason, message = _caller_wp02_implementation_pr(proofs)
+    if pr_number is None:
+        return False, reason, message, {}
+
+    ok_suites, reason, message, suite_record = _verify_wp02_suite_and_blob_proofs(proofs, args)
+    if not ok_suites:
+        return False, reason, message, {}
+
+    live_base = live_authoritative_base_sha()
+    claimed_base = proofs.get("authoritativeBaseSha")
+    if claimed_base is not None:
+        if not is_git_sha40(claimed_base):
+            return (
+                False,
+                "WP02_VERIFY_DONE_PROOF_MISSING",
+                "authoritativeBaseSha must be 40-char SHA when provided",
+                {},
+            )
+        if str(claimed_base).lower() != live_base:
+            return (
+                False,
+                "BASE_CONTAINMENT_REQUIRED",
+                f"claimed base {str(claimed_base).lower()} != live ls-remote base {live_base}",
+                {},
+            )
+
+    repo = getattr(args, "repo", None) or APPROVED_GITHUB_REPO
+    impl_proof, reason, message = verify_wp02_merged_implementation_pr(
+        pr_number=pr_number,
+        live_base_sha=live_base,
+        repo=repo,
+    )
+    if impl_proof is None:
+        return False, reason, message, {}
+
+    record = {
+        "proofChain": {"implementation": impl_proof},
+        "implementationProof": impl_proof,
+        "implementationCommit": impl_proof["taskCommit"],
+        "implementationMergeSha": impl_proof["mergeSha"],
+        "liveBaseSha": live_base,
+        "authoritativeBaseSha": live_base,
+        "weight": 8,
+        "product": task.get("product") or "Wallpaper Engine",
+        "path": task.get("path") or "wallpaper-plugin/",
+        "evidenceLevel": task.get("evidenceLevel") or "E1",
+        "verifiedAt": utc_now_iso(),
+        "source": "verify-done",
+        "remoteFactsSource": SOURCE_GH_PR_API,
+        "baseTipSource": SOURCE_GIT_LS_REMOTE,
+        "ancestrySource": SOURCE_GIT_MERGE_BASE,
+        **suite_record,
+    }
+    return True, "", "", record
+
+
 def cmd_verify_done(args: argparse.Namespace) -> int:
     """Fail-closed DONE only when catalog + proofs + live base containment hold."""
     task_id = require_task(args.task)
@@ -3246,18 +3697,33 @@ def cmd_verify_done(args: argparse.Namespace) -> int:
                 f"receipt taskId {current.get('taskId')} != {task_id}",
             )
 
-        if task_id != "WP-01":
+        if task_id == "WP-01":
+            ok_gate, reason, message, proof_record = evaluate_wp01_verify_done(current, args)
+            weight = 6
+        elif task_id == "WP-02":
+            ok_gate, reason, message, proof_record = evaluate_wp02_verify_done(current, args)
+            weight = 8
+        else:
             fail(
-                "WP01_VERIFY_DONE_UNAVAILABLE",
-                f"verify-done production path currently implemented for WP-01 only (got {task_id})",
+                "WP02_VERIFY_DONE_UNAVAILABLE"
+                if task_id.startswith("WP-")
+                else "WP01_VERIFY_DONE_UNAVAILABLE",
+                f"verify-done production path not implemented for {task_id}",
             )
 
-        ok_gate, reason, message, proof_record = evaluate_wp01_verify_done(current, args)
         if not ok_gate:
-            fail(reason or "WP01_VERIFY_DONE_PROOF_MISSING", message or "verify-done proofs incomplete")
+            fail(
+                reason
+                or (
+                    "WP02_VERIFY_DONE_PROOF_MISSING"
+                    if task_id == "WP-02"
+                    else "WP01_VERIFY_DONE_PROOF_MISSING"
+                ),
+                message or "verify-done proofs incomplete",
+            )
 
         next_value = dict(current)
-        next_value["taskId"] = "WP-01"
+        next_value["taskId"] = task_id
         next_value["state"] = "DONE"
         next_value["EffectiveDone"] = True
         next_value["revision"] = bump_revision(current)
@@ -3271,13 +3737,13 @@ def cmd_verify_done(args: argparse.Namespace) -> int:
     receipt_sha = hashlib.sha256(canonical_receipt_bytes(again)).hexdigest()
     return emit_ok(
         "verify-done",
-        taskId="WP-01",
+        taskId=task_id,
         EffectiveDone=True,
         state="DONE",
         revision=again.get("revision"),
         receipt=str(path),
         receiptSha256=receipt_sha,
-        coreProgressWeight=6,
+        coreProgressWeight=weight,
     )
 
 
