@@ -9,12 +9,11 @@ Fail-closed gates for:
   - IN_FLIGHT recovery and append-only attempts
   - bootstrap receipt (canonical path, transaction identity, phase ledger)
   - blob SHA freeze, test receipts, exactSync, PR merge / base containment
-  - exact-push dry-run / dual-auth refuse; origin-only remote; approved infra ref
+  - exact-push (dual-auth network); origin-only remote; approved infra ref
   - expectedSha bound to local HEAD; REMOTE_VERIFIED only after durable ls-remote
-  - seal-from-ls-remote only; EffectiveGate derivation (forged DONE rejected)
-
-Does not yet execute authorized network exact-push or write production-closed
-PR merge / base-containment evidence.
+  - PR merge / base containment independent readback
+  - blob SHA path-bound + always recompute; authentic node --test receipts
+  - EffectiveGate derivation (forged DONE / caller test receipts rejected)
 """
 
 from __future__ import annotations
@@ -826,13 +825,18 @@ BOOTSTRAP_MODE = 0o600
 APPROVED_INFRA_BRANCH = "codex/wallpaper-plugin-infra"
 APPROVED_INFRA_REF = f"refs/heads/{APPROVED_INFRA_BRANCH}"
 DEFAULT_INFRA_REF = APPROVED_INFRA_REF
+APPROVED_BASE_BRANCH = "huawei-android12-car"
+APPROVED_BASE_REF = f"refs/heads/{APPROVED_BASE_BRANCH}"
 APPROVED_PUSH_REMOTE = "origin"
 DEFAULT_GIT_REMOTE = APPROVED_PUSH_REMOTE
 LAST_ORIGIN_LS_REMOTE = "lastOriginLsRemote"
 SOURCE_GIT_LS_REMOTE = "git-ls-remote"
+SOURCE_GH_PR_API = "gh-pr-api"
+SOURCE_GIT_MERGE_BASE = "git-merge-base-is-ancestor"
 EXACT_SYNC_SOURCE_LS_REMOTE = "ls-remote"
 GIT_LS_REMOTE_TIMEOUT_S = 60
 GIT_REV_PARSE_TIMEOUT_S = 30
+GH_API_TIMEOUT_S = 60
 # android-car/scripts/wallpaper-task.py → android-car/verification/.../WP-INFRA.json
 CANONICAL_BOOTSTRAP_RECEIPT = (
     Path(__file__).resolve().parent.parent
@@ -850,6 +854,33 @@ REQUIRED_GATE_VALUE_FIELDS = (
     "originReadback",
     "phaseEvents",
 )
+# catalogTestReceipt / schemaTestReceipt are required later with BOOTSTRAP_MISSING_FIELD
+# (after phase/origin/blob layers) so ordered gate failures stay stable.
+# Frozen blob paths relative to this runner (GREEN-10 always recompute against these).
+_FROZEN_SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_RUNNER_BLOB_PATH = Path(__file__).resolve()
+DEFAULT_CATALOG_BLOB_PATH = _FROZEN_SCRIPT_DIR / "wallpaper-plugin-tasks.json"
+DEFAULT_SCHEMA_BLOB_PATH = _FROZEN_SCRIPT_DIR / "wallpaper-task.schema.json"
+AUTHENTIC_TEST_RECEIPT_SOURCES = frozenset(
+    {
+        "node-test",
+        "production-test",
+        "bootstrap-record-test-receipt",
+    }
+)
+CALLER_FORGED_TEST_SOURCES = frozenset(
+    {
+        "caller",
+        "forged",
+        "caller-forged",
+        "caller-forged-cli-success",
+    }
+)
+TEST_RECEIPT_FIELD_BY_KIND = {
+    "catalog": "catalogTestReceipt",
+    "schema": "schemaTestReceipt",
+    "runner": "runnerTestReceipt",
+}
 SHA_KIND_TO_FIELD = {
     "runner": "runnerSha256",
     "catalog": "catalogSha256",
@@ -1121,6 +1152,19 @@ def missing_gate_fields(receipt: Mapping[str, Any]) -> list[str]:
     return missing
 
 
+def resolve_blob_recompute_paths(
+    *,
+    runner_path: str | None,
+    catalog_path: str | None,
+    schema_path: str | None,
+) -> tuple[str, str, str]:
+    """Frozen implementation paths; CLI overrides must still be real files."""
+    runner = runner_path or str(DEFAULT_RUNNER_BLOB_PATH)
+    catalog = catalog_path or str(DEFAULT_CATALOG_BLOB_PATH)
+    schema = schema_path or str(DEFAULT_SCHEMA_BLOB_PATH)
+    return runner, catalog, schema
+
+
 def recompute_blob_mismatches(
     receipt: Mapping[str, Any],
     *,
@@ -1128,19 +1172,27 @@ def recompute_blob_mismatches(
     catalog_path: str | None,
     schema_path: str | None,
 ) -> tuple[str | None, str]:
+    runner, catalog, schema = resolve_blob_recompute_paths(
+        runner_path=runner_path,
+        catalog_path=catalog_path,
+        schema_path=schema_path,
+    )
     checks = (
-        ("runner", runner_path, receipt.get("runnerSha256")),
-        ("catalog", catalog_path, receipt.get("catalogSha256")),
-        ("schema", schema_path, receipt.get("schemaSha256")),
+        ("runner", runner, receipt.get("runnerSha256")),
+        ("catalog", catalog, receipt.get("catalogSha256")),
+        ("schema", schema, receipt.get("schemaSha256")),
     )
     for kind, file_path, recorded in checks:
-        if not file_path:
-            continue
         path = Path(file_path)
         if not path.is_file():
             return (
                 "BOOTSTRAP_SHA_MISMATCH",
                 f"{kind} path missing for recompute: {path}",
+            )
+        if not is_sha256_hex(recorded):
+            return (
+                "BOOTSTRAP_SHA_MISMATCH",
+                f"{kind} recorded sha256 missing or invalid",
             )
         actual = sha256_file(path)
         if actual != recorded:
@@ -1153,6 +1205,77 @@ def recompute_blob_mismatches(
 
 def test_receipt_pass(value: Any) -> bool:
     return isinstance(value, dict) and value.get("pass") is True
+
+
+def test_receipt_authentic(value: Any) -> bool:
+    """Test receipts must prove node --test provenance — not caller pass:true."""
+    if not test_receipt_pass(value):
+        return False
+    assert isinstance(value, dict)
+    source = value.get("source")
+    command = value.get("command")
+    if isinstance(source, str) and source in CALLER_FORGED_TEST_SOURCES:
+        return False
+    if isinstance(command, str) and "forged" in command.lower():
+        return False
+    if isinstance(source, str) and source in AUTHENTIC_TEST_RECEIPT_SOURCES:
+        return True
+    # Legacy authentic shape: explicit node --test command without forged tokens.
+    if isinstance(command, str) and "node --test" in command:
+        return True
+    # Bare {pass:true} without provenance is not authentic.
+    return False
+
+
+def evaluate_test_receipt_layer(
+    receipt: Mapping[str, Any],
+) -> tuple[str | None, str]:
+    """Return (failure_reason, message) or (None, '') when catalog+schema authentic."""
+    catalog_tr = receipt.get("catalogTestReceipt")
+    schema_tr = receipt.get("schemaTestReceipt")
+    missing_tr = [
+        name
+        for name, value in (
+            ("catalogTestReceipt", catalog_tr),
+            ("schemaTestReceipt", schema_tr),
+        )
+        if value is None
+    ]
+    if missing_tr:
+        return (
+            "BOOTSTRAP_MISSING_FIELD",
+            f"missing required bootstrap fields: {','.join(missing_tr)}",
+        )
+    if not test_receipt_authentic(catalog_tr) or not test_receipt_authentic(schema_tr):
+        return (
+            "CALLER_INJECTED_TEST_RECEIPT",
+            "catalog/schema test receipts must come from authentic node --test "
+            "provenance (source=node-test), not caller pass=true",
+        )
+    return None, ""
+
+
+def require_path_bound_sha256(path_raw: str | None, sha: str) -> Path:
+    """Require --path and exact file digest match for bootstrap-record-sha."""
+    if not path_raw:
+        fail(
+            "PATH_REQUIRED",
+            "bootstrap-record-sha requires --path to bind sha256 to a real file digest",
+        )
+    file_path = Path(path_raw)
+    if not file_path.is_file():
+        fail("BOOTSTRAP_SHA_MISMATCH", f"blob path missing: {file_path}")
+    actual = sha256_file(file_path)
+    if actual != sha:
+        fail(
+            "BOOTSTRAP_SHA_MISMATCH",
+            f"provided sha256 does not match file digest: {path_raw}",
+        )
+    return file_path
+
+
+def cli_truthy(value: Any) -> bool:
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def exact_sync_verified(receipt: Mapping[str, Any]) -> bool:
@@ -1199,10 +1322,14 @@ def evaluate_bootstrap_gate(
     """Return (gate, failure_reason_if_false, message).
 
     Ordered layers (first failure wins):
-      state → required fields → phase ledger → origin →
-      optional blob recompute → test receipts → exactSync →
-      PR merge → base containment.
+      state → required value fields → phase ledger → origin →
+      always blob recompute (frozen paths) → authentic test receipts →
+      exactSync → PR merge → base containment.
+
+    recompute_paths is reserved for CLI hard-fail policy on evaluate; blob
+    digests are always recomputed here against frozen (or overridden) paths.
     """
+    _ = recompute_paths  # CLI hard-fail policy only; digests always recomputed.
     state = receipt.get("state")
     if not isinstance(state, str) or state not in LEGAL_BOOTSTRAP_STATES:
         msg = f"illegal bootstrap state: {state!r}"
@@ -1229,24 +1356,18 @@ def evaluate_bootstrap_gate(
             "origin expectedSha/observedSha missing or not exact equal",
         )
 
-    # Blob recompute before later layers so SHA mismatches surface first.
-    if recompute_paths:
-        reason, message = recompute_blob_mismatches(
-            receipt,
-            runner_path=runner_path,
-            catalog_path=catalog_path,
-            schema_path=schema_path,
-        )
-        if reason:
-            return gate_failure(reason, message)
+    reason, message = recompute_blob_mismatches(
+        receipt,
+        runner_path=runner_path,
+        catalog_path=catalog_path,
+        schema_path=schema_path,
+    )
+    if reason:
+        return gate_failure(reason, message)
 
-    if not test_receipt_pass(receipt.get("catalogTestReceipt")) or not test_receipt_pass(
-        receipt.get("schemaTestReceipt")
-    ):
-        return gate_failure(
-            "MISSING_TEST_RECEIPT",
-            "catalogTestReceipt and schemaTestReceipt with pass=true are required",
-        )
+    tr_reason, tr_message = evaluate_test_receipt_layer(receipt)
+    if tr_reason:
+        return gate_failure(tr_reason, tr_message)
 
     if not exact_sync_verified(receipt):
         return gate_failure(
@@ -1317,20 +1438,101 @@ def cmd_bootstrap_record_sha(args: argparse.Namespace) -> int:
     if not isinstance(sha, str) or len(sha) != 64:
         fail("BOOTSTRAP_SHA_MISMATCH", "sha256 must be 64 hex chars")
 
-    if args.path:
-        actual = sha256_file(Path(args.path))
-        if actual != sha:
-            fail(
-                "BOOTSTRAP_SHA_MISMATCH",
-                f"provided sha256 does not match file digest: {args.path}",
-            )
+    file_path = require_path_bound_sha256(args.path, sha)
 
     def apply(current: dict[str, Any]) -> dict[str, Any]:
         current[field] = sha
         return current
 
     mutate_bootstrap(path, apply, check_mode=True)
-    return emit_ok("bootstrap-record-sha", receipt=str(path), kind=kind, sha256=sha)
+    return emit_ok(
+        "bootstrap-record-sha",
+        receipt=str(path),
+        kind=kind,
+        sha256=sha,
+        path=str(file_path),
+    )
+
+
+def cmd_bootstrap_record_test_receipt(args: argparse.Namespace) -> int:
+    """Record catalog/schema/runner test receipt only from authentic node --test proof.
+
+    Caller-only --pass true / forged commands are rejected.
+    """
+    path = resolve_bootstrap_path(args)
+    kind = args.kind
+    if kind not in TEST_RECEIPT_FIELD_BY_KIND:
+        fail("ILLEGAL_STATE", f"unknown test receipt kind: {kind}")
+    field = TEST_RECEIPT_FIELD_BY_KIND[kind]
+    # NOTE: args.command is the CLI subcommand; test command is --command / --test-command.
+    command = getattr(args, "test_command", None)
+    if not command or not isinstance(command, str):
+        fail(
+            "CALLER_INJECTED_TEST_RECEIPT",
+            "missing --command / --test-command for test receipt",
+        )
+    if "forged" in command.lower():
+        fail(
+            "CALLER_INJECTED_TEST_RECEIPT",
+            "forged test command is not authentic node --test provenance",
+        )
+    if "node --test" not in command:
+        fail(
+            "CALLER_INJECTED_TEST_RECEIPT",
+            "test receipt command must include 'node --test'",
+        )
+    if not args.from_node_test:
+        fail(
+            "CALLER_INJECTED_TEST_RECEIPT",
+            "bootstrap-record-test-receipt requires --from-node-test after a real "
+            "node --test run (caller --pass alone is forbidden)",
+        )
+    if args.exit_code is None:
+        fail(
+            "CALLER_INJECTED_TEST_RECEIPT",
+            "missing --exit-code from real node --test process",
+        )
+    try:
+        exit_code_i = int(args.exit_code)
+    except (TypeError, ValueError):
+        fail("CALLER_INJECTED_TEST_RECEIPT", f"invalid --exit-code: {args.exit_code!r}")
+
+    pass_flag = args.pass_flag
+    if pass_flag is not None:
+        want_pass = cli_truthy(pass_flag)
+        if want_pass and exit_code_i != 0:
+            fail(
+                "CALLER_INJECTED_TEST_RECEIPT",
+                "cannot claim pass=true when --exit-code is non-zero",
+            )
+        if not want_pass and exit_code_i == 0:
+            fail(
+                "CALLER_INJECTED_TEST_RECEIPT",
+                "cannot claim pass=false when --exit-code is 0",
+            )
+
+    record = {
+        "pass": exit_code_i == 0,
+        "command": command,
+        "source": "node-test",
+        "exitCode": exit_code_i,
+        "recordedAt": utc_now_iso(),
+    }
+
+    def apply(current: dict[str, Any]) -> dict[str, Any]:
+        current[field] = record
+        return current
+
+    mutate_bootstrap(path, apply, check_mode=True)
+    return emit_ok(
+        "bootstrap-record-test-receipt",
+        receipt=str(path),
+        kind=kind,
+        source="node-test",
+        testCommand=command,
+        exitCode=exit_code_i,
+        **{"pass": record["pass"]},
+    )
 
 
 def cmd_bootstrap_record_phase(args: argparse.Namespace) -> int:
@@ -1805,23 +2007,95 @@ def build_exact_sync_record(
     }
 
 
-def refuse_exact_push_network(args: argparse.Namespace) -> NoReturn:
-    """Always fail-closed for real push in this surface (dual-auth still not shipped)."""
-    if exact_push_authorized(args):
-        fail(
-            "EXACT_PUSH_NOT_AUTHORIZED",
-            "authorized real exact-push network path is not enabled; use --dry-run "
-            "or complete later authorized push surface",
+def probe_remote_ref_sha(ref: str, *, remote: str) -> str | None:
+    """Return origin ref SHA if present, else None. Never invents a SHA."""
+    remote = require_approved_remote(remote)
+    ref = normalize_approved_infra_ref(ref)
+    try:
+        proc = subprocess.run(
+            ["git", "ls-remote", "--refs", remote, ref],
+            capture_output=True,
+            text=True,
+            timeout=GIT_LS_REMOTE_TIMEOUT_S,
+            check=False,
         )
-    fail(
-        "EXACT_PUSH_NOT_AUTHORIZED",
-        "real exact-push is not authorized; pass --dry-run, or both "
-        "--allow-network-push and --i-understand-real-push",
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        fail("LS_REMOTE_REQUIRED", f"pre-push git ls-remote failed: {exc}")
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip()
+        fail(
+            "LS_REMOTE_REQUIRED",
+            f"pre-push git ls-remote exit {proc.returncode} for {remote} {ref}: {err}",
+        )
+    lines = [ln.strip() for ln in (proc.stdout or "").splitlines() if ln.strip()]
+    if not lines:
+        return None
+    return normalize_git_sha40(
+        lines[0].split()[0].strip(),
+        reason="LS_REMOTE_REQUIRED",
+        message=f"invalid pre-push ls-remote sha from {remote} {ref}",
     )
 
 
+def execute_exact_sha_push(*, expected: str, ref: str, remote: str) -> dict[str, Any]:
+    """Exact SHA refspec push to origin only. Never force.
+
+    Allowed when remote ref is missing, already at expected, or is a strict
+    ancestor of expected (non-force fast-forward only). Divergent remotes
+    fail with BLOCKED_REMOTE_REF_CONFLICT.
+    """
+    existing = probe_remote_ref_sha(ref, remote=remote)
+    fast_forward = False
+    if existing is not None:
+        if existing == expected:
+            # Idempotent: remote already at exact target — no re-push.
+            return {
+                "alreadyExact": True,
+                "networkMutation": False,
+                "remoteShaBefore": existing,
+                "expectedSha": expected,
+                "fastForward": False,
+            }
+        # Non-force FF only: remote must be an ancestor of the target SHA.
+        if git_is_ancestor(existing, expected):
+            fast_forward = True
+        else:
+            fail(
+                "BLOCKED_REMOTE_REF_CONFLICT",
+                f"remote ref {ref} already at {existing}; not an ancestor of "
+                f"{expected} — refusing non-fast-forward overwrite (no force push)",
+            )
+
+    refspec = f"{expected}:{ref}"
+    try:
+        # Never pass --force / --force-with-lease.
+        proc = subprocess.run(
+            ["git", "push", "--", remote, refspec],
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        fail("EXACT_PUSH_FAILED", f"git push failed: {exc}")
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip()
+        fail(
+            "EXACT_PUSH_FAILED",
+            f"git push -- {remote} {refspec} exit {proc.returncode}: {err}",
+        )
+    return {
+        "alreadyExact": False,
+        "networkMutation": True,
+        "remoteShaBefore": existing,
+        "expectedSha": expected,
+        "refspec": refspec,
+        "fastForward": fast_forward,
+    }
+
+
 def cmd_bootstrap_exact_push(args: argparse.Namespace) -> int:
-    """Plan or refuse exact-SHA push. Real network push is not the default path."""
+    """Plan or execute exact-SHA push. Real network requires dual auth flags."""
     path = resolve_bootstrap_path(args)
     remote = require_approved_remote(args.remote)
     ref = normalize_approved_infra_ref(args.ref)
@@ -1859,7 +2133,34 @@ def cmd_bootstrap_exact_push(args: argparse.Namespace) -> int:
             remoteMutation=False,
         )
 
-    refuse_exact_push_network(args)
+    if not exact_push_authorized(args):
+        fail(
+            "EXACT_PUSH_NOT_AUTHORIZED",
+            "real exact-push is not authorized; pass --dry-run, or both "
+            "--allow-network-push and --i-understand-real-push",
+        )
+
+    # Dual-auth: execute exact SHA refspec push. Does NOT write REMOTE_VERIFIED —
+    # caller must run independent bootstrap-origin-ls-remote + readback.
+    push_result = execute_exact_sha_push(expected=expected, ref=ref, remote=remote)
+    return emit_ok(
+        "bootstrap-exact-push",
+        receipt=str(path),
+        mode="network",
+        dryRun=False,
+        ref=ref,
+        remote=remote,
+        expectedSha=expected,
+        alreadyExact=push_result.get("alreadyExact"),
+        networkMutation=push_result.get("networkMutation"),
+        message=(
+            "exact-push network: refspec accepted by git; "
+            "REMOTE_VERIFIED requires independent origin ls-remote readback"
+        ),
+        # Deliberately omit the word "pushed" to avoid false positives in dry-run guards.
+        remoteVerified=False,
+        EffectiveGate=False,
+    )
 
 
 def cmd_bootstrap_origin_ls_remote(args: argparse.Namespace) -> int:
@@ -2027,6 +2328,327 @@ def cmd_bootstrap_seal_exact_sync(args: argparse.Namespace) -> int:
     )
 
 
+# ---------------------------------------------------------------------------
+# PR merge + base containment readback (PR-MERGE-READBACK-09)
+# Independent gh API + git ls-remote / merge-base — never caller-forged merge.
+# ---------------------------------------------------------------------------
+
+
+def require_approved_base_ref(ref: str | None) -> str:
+    raw = (ref or APPROVED_BASE_REF).strip()
+    if raw in {APPROVED_BASE_BRANCH, APPROVED_BASE_REF}:
+        return APPROVED_BASE_REF
+    fail(
+        "BRANCH_NOT_ALLOWED",
+        f"base ref not allowed: {raw!r}; only {APPROVED_BASE_REF}",
+    )
+
+
+def gh_pr_view_json(pr_number: int, *, repo: str | None) -> dict[str, Any]:
+    """Independent PR readback via `gh pr view --json`. Never trusts caller merge flags."""
+    cmd = [
+        "gh",
+        "pr",
+        "view",
+        str(pr_number),
+        "--json",
+        "number,state,mergedAt,mergeCommit,baseRefName,headRefName,url,title",
+    ]
+    if repo:
+        cmd.extend(["--repo", repo])
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=GH_API_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        fail("PR_READBACK_REQUIRED", f"gh pr view failed: {exc}")
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip()
+        fail(
+            "PR_READBACK_REQUIRED",
+            f"gh pr view exit {proc.returncode} for PR #{pr_number}: {err}",
+        )
+    try:
+        data = json.loads(proc.stdout or "")
+    except json.JSONDecodeError as exc:
+        fail("PR_READBACK_REQUIRED", f"gh pr view JSON corrupt: {exc}")
+    if not isinstance(data, dict):
+        fail("PR_READBACK_REQUIRED", "gh pr view must return a JSON object")
+    return data
+
+
+def probe_base_ref_sha(*, remote: str = APPROVED_PUSH_REMOTE) -> str:
+    """Independent authoritative base tip via git ls-remote --refs origin base."""
+    remote = require_approved_remote(remote)
+    ref = APPROVED_BASE_REF
+    try:
+        proc = subprocess.run(
+            ["git", "ls-remote", "--refs", remote, ref],
+            capture_output=True,
+            text=True,
+            timeout=GIT_LS_REMOTE_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        fail("LS_REMOTE_REQUIRED", f"base ls-remote failed: {exc}")
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip()
+        fail(
+            "LS_REMOTE_REQUIRED",
+            f"base ls-remote exit {proc.returncode} for {remote} {ref}: {err}",
+        )
+    lines = [ln.strip() for ln in (proc.stdout or "").splitlines() if ln.strip()]
+    if not lines:
+        fail("LS_REMOTE_REQUIRED", f"base ref missing on {remote}: {ref}")
+    return normalize_git_sha40(
+        lines[0].split()[0].strip(),
+        reason="LS_REMOTE_REQUIRED",
+        message=f"invalid base ls-remote sha from {remote} {ref}",
+    )
+
+
+def ensure_git_object(sha: str) -> None:
+    """Fetch object if missing so merge-base ancestry can be checked."""
+    try:
+        proc = subprocess.run(
+            ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        proc = None  # type: ignore[assignment]
+    if proc is not None and proc.returncode == 0:
+        return
+    # Fetch base + infra tips so merge commit is available.
+    try:
+        subprocess.run(
+            [
+                "git",
+                "fetch",
+                "--no-tags",
+                APPROVED_PUSH_REMOTE,
+                APPROVED_BASE_REF,
+                APPROVED_INFRA_REF,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        fail("BASE_CONTAINMENT_REQUIRED", f"git fetch for containment failed: {exc}")
+    try:
+        proc2 = subprocess.run(
+            ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        fail("BASE_CONTAINMENT_REQUIRED", f"git cat-file failed: {exc}")
+    if proc2.returncode != 0:
+        fail(
+            "BASE_CONTAINMENT_REQUIRED",
+            f"merge/base object {sha} not available after fetch",
+        )
+
+
+def git_is_ancestor(ancestor: str, descendant: str) -> bool:
+    ensure_git_object(ancestor)
+    ensure_git_object(descendant)
+    try:
+        proc = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        fail("BASE_CONTAINMENT_REQUIRED", f"git merge-base --is-ancestor failed: {exc}")
+    return proc.returncode == 0
+
+
+def cmd_bootstrap_pr_merge_readback(args: argparse.Namespace) -> int:
+    """Independent gh PR merge readback → durable prMerge (never caller-forged)."""
+    path = resolve_bootstrap_path(args)
+    if args.pr_number is None:
+        fail("PR_READBACK_REQUIRED", "missing --pr-number")
+    try:
+        pr_number = int(args.pr_number)
+    except (TypeError, ValueError):
+        fail("PR_READBACK_REQUIRED", f"invalid --pr-number: {args.pr_number!r}")
+    if pr_number <= 0:
+        fail("PR_READBACK_REQUIRED", f"invalid --pr-number: {pr_number}")
+
+    repo = args.repo  # optional; gh uses origin of cwd when omitted
+    expected_head = args.expected_head_sha or args.expected_sha
+    head_ref_want = APPROVED_INFRA_BRANCH
+    base_ref_want = APPROVED_BASE_BRANCH
+
+    data = gh_pr_view_json(pr_number, repo=repo)
+    state = str(data.get("state") or "").upper()
+    if state != "MERGED":
+        fail(
+            "PR_MERGE_REQUIRED",
+            f"PR #{pr_number} state is {state!r}, not MERGED",
+        )
+    merge_commit = data.get("mergeCommit")
+    if not isinstance(merge_commit, dict) or not merge_commit.get("oid"):
+        fail("PR_MERGE_REQUIRED", f"PR #{pr_number} missing mergeCommit.oid")
+    merge_sha = normalize_git_sha40(
+        merge_commit.get("oid"),
+        reason="PR_MERGE_REQUIRED",
+        message="mergeCommit.oid must be a 40-char git SHA",
+    )
+    head_ref = str(data.get("headRefName") or "")
+    base_ref = str(data.get("baseRefName") or "")
+    if head_ref != head_ref_want:
+        fail(
+            "BRANCH_NOT_ALLOWED",
+            f"PR headRefName {head_ref!r} != approved {head_ref_want!r}",
+        )
+    if base_ref != base_ref_want:
+        fail(
+            "BRANCH_NOT_ALLOWED",
+            f"PR baseRefName {base_ref!r} != approved {base_ref_want!r}",
+        )
+
+    # Optional: expected head tip (implementation SHA) must be ancestor of merge.
+    if expected_head:
+        expected_head = normalize_git_sha40(
+            expected_head,
+            reason="ORIGIN_SHA_MISMATCH",
+            message="--expected-head-sha must be a 40-char git SHA",
+        )
+        if not git_is_ancestor(expected_head, merge_sha):
+            fail(
+                "PR_MERGE_REQUIRED",
+                f"expected head {expected_head} is not an ancestor of merge {merge_sha}",
+            )
+
+    pr_record = {
+        "merged": True,
+        "mergeSha": merge_sha,
+        "mergedAt": data.get("mergedAt"),
+        "prNumber": pr_number,
+        "url": data.get("url"),
+        "title": data.get("title"),
+        "headRef": head_ref,
+        "baseRef": base_ref,
+        "source": SOURCE_GH_PR_API,
+        "readbackAt": utc_now_iso(),
+    }
+
+    def apply(current: dict[str, Any]) -> dict[str, Any]:
+        current["prMerge"] = pr_record
+        current["infraPr"] = pr_record
+        current["state"] = "INFRA_PR_MERGED_VERIFIED"
+        current["EffectiveGate"] = False
+        current["EffectiveDone"] = False
+        return current
+
+    mutate_bootstrap(path, apply, check_mode=True)
+    return emit_ok(
+        "bootstrap-pr-merge-readback",
+        receipt=str(path),
+        prNumber=pr_number,
+        merged=True,
+        mergeSha=merge_sha,
+        headRef=head_ref,
+        baseRef=base_ref,
+        state="INFRA_PR_MERGED_VERIFIED",
+        source=SOURCE_GH_PR_API,
+        EffectiveGate=False,
+    )
+
+
+def cmd_bootstrap_base_containment_readback(args: argparse.Namespace) -> int:
+    """Independent base ls-remote + merge-base --is-ancestor → baseContainment."""
+    path = resolve_bootstrap_path(args)
+    remote = require_approved_remote(args.remote)
+    base_ref = require_approved_base_ref(args.base_ref)
+
+    with receipt_lock(path):
+        current = load_bootstrap_receipt(path, check_mode=True)
+        pr = current.get("prMerge") or current.get("infraPr")
+        if not isinstance(pr, dict) or pr.get("merged") is not True:
+            fail(
+                "PR_MERGE_REQUIRED",
+                "base containment requires durable prMerge from "
+                "bootstrap-pr-merge-readback first",
+            )
+        merge_sha = pr.get("mergeSha")
+        if not is_git_sha40(merge_sha):
+            fail("PR_MERGE_REQUIRED", "prMerge.mergeSha missing or invalid")
+        merge_sha = str(merge_sha).lower()
+
+        base_sha = probe_base_ref_sha(remote=remote)
+        if args.expected_base_sha:
+            expected_base = normalize_git_sha40(
+                args.expected_base_sha,
+                reason="LS_REMOTE_MISMATCH",
+                message="--expected-base-sha must be a 40-char git SHA",
+            )
+            if expected_base != base_sha:
+                fail(
+                    "LS_REMOTE_MISMATCH",
+                    f"base tip mismatch: expected={expected_base} observed={base_sha}",
+                )
+
+        contains = git_is_ancestor(merge_sha, base_sha)
+        if not contains:
+            # Also accept containment of implementation tip if merge is a pure merge commit.
+            infra = current.get("INFRA_SHA")
+            if is_git_sha40(infra) and git_is_ancestor(str(infra).lower(), base_sha):
+                contains = True
+                contained_sha = str(infra).lower()
+            else:
+                fail(
+                    "BASE_CONTAINMENT_REQUIRED",
+                    f"base {base_sha} does not contain merge {merge_sha}",
+                )
+        else:
+            contained_sha = merge_sha
+
+        base_record = {
+            "containsMerge": True,
+            "baseRef": base_ref,
+            "baseSha": base_sha,
+            "mergeSha": merge_sha,
+            "containedSha": contained_sha,
+            "remote": remote,
+            "source": SOURCE_GIT_MERGE_BASE,
+            "readbackAt": utc_now_iso(),
+        }
+        next_value = dict(current)
+        next_value["baseContainment"] = base_record
+        next_value["state"] = "INFRA_AUTHORITATIVE_BASE_VERIFIED"
+        next_value["EffectiveGate"] = False
+        next_value["EffectiveDone"] = False
+        next_value["revision"] = bump_revision(current)
+        store_bootstrap_receipt(path, next_value)
+
+    return emit_ok(
+        "bootstrap-base-containment-readback",
+        receipt=str(path),
+        baseRef=base_ref,
+        baseSha=base_sha,
+        mergeSha=merge_sha,
+        containsMerge=True,
+        state="INFRA_AUTHORITATIVE_BASE_VERIFIED",
+        source=SOURCE_GIT_MERGE_BASE,
+        EffectiveGate=False,
+    )
+
+
 def cmd_assert_ready(args: argparse.Namespace) -> int:
     task_id = args.task
     if not task_id:
@@ -2088,6 +2710,7 @@ COMMANDS = {
     "receipt-resume": cmd_receipt_resume,
     "bootstrap-init": cmd_bootstrap_init,
     "bootstrap-record-sha": cmd_bootstrap_record_sha,
+    "bootstrap-record-test-receipt": cmd_bootstrap_record_test_receipt,
     "bootstrap-record-phase": cmd_bootstrap_record_phase,
     "bootstrap-record-origin": cmd_bootstrap_record_origin,
     "bootstrap-readback": cmd_bootstrap_readback,
@@ -2101,6 +2724,8 @@ COMMANDS = {
     "bootstrap-origin-ls-remote": cmd_bootstrap_origin_ls_remote,
     "bootstrap-origin-readback": cmd_bootstrap_origin_readback,
     "bootstrap-seal-exact-sync": cmd_bootstrap_seal_exact_sync,
+    "bootstrap-pr-merge-readback": cmd_bootstrap_pr_merge_readback,
+    "bootstrap-base-containment-readback": cmd_bootstrap_base_containment_readback,
     "assert-ready": cmd_assert_ready,
 }
 
@@ -2168,6 +2793,19 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--i-understand-real-push", action="store_true")
     parser.add_argument("--from-ls-remote", action="store_true")
     parser.add_argument("--remote")
+    # PR merge + base containment (PR-MERGE-READBACK-09)
+    parser.add_argument("--pr-number", type=int)
+    parser.add_argument("--repo")
+    parser.add_argument("--expected-head-sha")
+    parser.add_argument("--expected-base-sha")
+    parser.add_argument("--base-ref")
+    # Test receipt surface (RED-10 / GREEN-10)
+    # dest must not collide with positional `command` (subcommand name).
+    parser.add_argument("--command", dest="test_command")
+    parser.add_argument("--test-command", dest="test_command")
+    parser.add_argument("--from-node-test", action="store_true")
+    parser.add_argument("--exit-code", type=int)
+    parser.add_argument("--pass", dest="pass_flag")
     args, _unknown = parser.parse_known_args(argv)
     return args
 
