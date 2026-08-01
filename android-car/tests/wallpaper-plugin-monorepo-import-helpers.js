@@ -62,6 +62,92 @@ const WP01_COMMIT = path.join(
   VERIFICATION_BOOTSTRAP,
   'WP-01-COMMIT-IMPLEMENTATION-01.json',
 );
+/** Authoritative WP-01 transaction receipt (post verify-done). */
+const WP01_TXN = path.join(
+  '/Users/anpple/Codex/Mineradio',
+  'android-car',
+  'verification',
+  'wallpaper-plugin',
+  'transactions',
+  'wp-01.json',
+);
+const RUNNER_PATH = path.join(
+  // Prefer live monorepo worktree when present; fall back to import worktree.
+  fs.existsSync(path.join(process.cwd(), 'android-car', 'scripts', 'wallpaper-task.py'))
+    ? process.cwd()
+    : MONOREPO_WORKTREE,
+  'android-car',
+  'scripts',
+  'wallpaper-task.py',
+);
+
+/**
+ * Live WP-01 EffectiveDone from transaction receipt first, then bootstrap snapshot.
+ * Never hardcodes false after WP-01 close.
+ */
+function readWp01EffectiveDone() {
+  if (pathExists(WP01_TXN)) {
+    const txn = readJson(WP01_TXN);
+    return {
+      source: 'transaction',
+      path: WP01_TXN,
+      EffectiveDone: txn.EffectiveDone === true,
+      state: txn.state,
+      taskId: txn.taskId,
+      raw: txn,
+    };
+  }
+  if (pathExists(WP01_COMMIT)) {
+    const snap = readJson(WP01_COMMIT);
+    return {
+      source: 'bootstrap-commit-snapshot',
+      path: WP01_COMMIT,
+      EffectiveDone: snap.EffectiveDone === true,
+      state: snap.state,
+      taskId: snap.taskId,
+      raw: snap,
+    };
+  }
+  return {
+    source: 'missing',
+    path: null,
+    EffectiveDone: false,
+    state: null,
+    taskId: null,
+    raw: null,
+  };
+}
+
+/**
+ * Core progress from runner + real done receipts (not caller-forged).
+ */
+function readLiveCoreProgressPercent() {
+  const done = {
+    'WP-00': WP00_MERGE,
+  };
+  const wp01 = readWp01EffectiveDone();
+  if (wp01.EffectiveDone && wp01.path) {
+    done['WP-01'] = wp01.path;
+  }
+  const result = spawnSync(
+    'python3',
+    [RUNNER_PATH, 'compute-core-progress', '--done-receipts-json', JSON.stringify(done)],
+    { encoding: 'utf8' },
+  );
+  const text = `${result.stdout || ''}\n${result.stderr || ''}`;
+  const lines = text.split(/\n+/).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    try {
+      const body = JSON.parse(lines[i]);
+      if (body && typeof body.coreProgressPercent === 'number') {
+        return body.coreProgressPercent;
+      }
+    } catch {
+      // continue
+    }
+  }
+  return null;
+}
 
 const pluginRoot = path.join(MONOREPO_WORKTREE, PLUGIN_ROOT_REL);
 const requiredPaths = Object.freeze({
@@ -311,6 +397,8 @@ module.exports = {
   WP_INFRA_FINAL,
   WP00_MERGE,
   WP01_COMMIT,
+  WP01_TXN,
+  RUNNER_PATH,
   pluginRoot,
   requiredPaths,
   git,
@@ -319,4 +407,6 @@ module.exports = {
   isExecutable,
   assertMonorepoPluginImported,
   assertMonorepoPluginContent,
+  readWp01EffectiveDone,
+  readLiveCoreProgressPercent,
 };
