@@ -3684,6 +3684,581 @@ def evaluate_wp02_verify_done(
     return True, "", "", record
 
 
+# WP-03 verify-done: single implementation PR identity + suite digests + prereq DONE.
+# REFACTOR-03: internal helpers only — public failure reasons / proof fields unchanged.
+WP03_PROOF_CHAIN_ROLES = ("implementation",)
+WP03_STAGING_CONTRACT_PATH = _FROZEN_SCRIPT_DIR / "wp03-staging-contract.js"
+WP03_CALLER_FORGERY_KEYS = WP02_CALLER_FORGERY_KEYS | frozenset(
+    {
+        "catalogSha",
+        "schemaSha",
+        "suiteDigests",
+    }
+)
+WP03_SUITE_KEYS = (
+    "androidUnitTest",
+    "wp03ContractTest",
+    "fullNodeTest",
+    "stagingContractTest",
+)
+WP03_REQUIRED_PREREQS = ("WP-INFRA", "WP-00", "WP-01", "WP-02")
+WP03_PR_JSON_FIELDS = (
+    "number,state,mergedAt,mergeCommit,baseRefName,headRefName,headRefOid,"
+    "headRepository,url,title,closed"
+)
+# Shared verification receipts (primary clone; gitignored operational evidence).
+_WP03_VERIFICATION_ROOT = Path(
+    "/Users/anpple/Codex/Mineradio/android-car/verification/wallpaper-plugin"
+)
+_WP03_PREREQ_RECEIPTS = {
+    "WP-INFRA": _WP03_VERIFICATION_ROOT / "bootstrap" / "WP-INFRA-FINAL-RECEIPT-17.json",
+    "WP-00": _WP03_VERIFICATION_ROOT / "bootstrap" / "WP-00-PR-MERGE-19.json",
+    "WP-01": _WP03_VERIFICATION_ROOT / "transactions" / "wp-01.json",
+    "WP-02": _WP03_VERIFICATION_ROOT / "transactions" / "wp-02.json",
+}
+
+
+def _wp03_digest_field_message(field: str, message: str) -> str:
+    """Normalize shared digest helper wording for catalog/schema fields."""
+    if "must be 64-char hex matching actual file" in message:
+        if field == "catalogSha256":
+            return "catalogSha256 must be 64-char hex matching actual catalog file"
+        if field == "schemaSha256":
+            return "schemaSha256 must be 64-char hex matching actual schema file"
+    return message
+
+
+def _gh_pr_view_json_soft(
+    pr_number: int,
+    *,
+    repo: str | None,
+    invalid_reason: str,
+) -> tuple[dict[str, Any] | None, str, str]:
+    """gh pr view without process-level fail(); maps errors to task namespace."""
+    cmd = [
+        "gh",
+        "pr",
+        "view",
+        str(pr_number),
+        "--json",
+        WP03_PR_JSON_FIELDS,
+    ]
+    if repo:
+        cmd.extend(["--repo", repo])
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=GH_API_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, invalid_reason, f"gh pr view failed: {exc}"
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip()
+        return (
+            None,
+            invalid_reason,
+            f"gh pr view exit {proc.returncode} for PR #{pr_number}: {err}",
+        )
+    try:
+        data = json.loads(proc.stdout or "")
+    except json.JSONDecodeError as exc:
+        return None, invalid_reason, f"gh pr view JSON corrupt: {exc}"
+    if not isinstance(data, dict):
+        return None, invalid_reason, "gh pr view must return a JSON object"
+    return data, "", ""
+
+
+def _extract_implementation_pr_number(
+    proofs: Mapping[str, Any],
+    *,
+    missing_reason: str,
+) -> tuple[int | None, str, str]:
+    """proofChain.implementation.prNumber only — never remote facts from caller."""
+    chain = proofs.get("proofChain")
+    if not isinstance(chain, dict):
+        return (
+            None,
+            missing_reason,
+            "missing proofs.proofChain.implementation.prNumber identity",
+        )
+    entry = chain.get("implementation")
+    if not isinstance(entry, dict):
+        return (
+            None,
+            missing_reason,
+            "proofChain.implementation missing or incomplete",
+        )
+    pr_number = _try_int(entry.get("prNumber"))
+    if pr_number is None or pr_number <= 0:
+        return (
+            None,
+            missing_reason,
+            "proofChain.implementation.prNumber must be positive int (task identity)",
+        )
+    return pr_number, "", ""
+
+
+def _load_wp03_identity_proofs(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    proofs, reason, message = _merge_receipt_and_cli_proofs(
+        receipt,
+        args,
+        missing_reason="WP03_VERIFY_DONE_PROOF_MISSING",
+        require_nonempty=True,
+    )
+    if proofs is None:
+        if message == "missing proofs identity":
+            message = "missing WP-03 proofs identity"
+        return None, reason, message
+    ok, reason, message = _reject_forged_keys_in_proofs(
+        proofs,
+        forbidden_keys=WP03_CALLER_FORGERY_KEYS,
+        forgery_reason="WP03_VERIFY_DONE_CALLER_FORGERY",
+    )
+    if not ok:
+        return None, reason, message
+    return proofs, "", ""
+
+
+def _caller_wp03_implementation_pr(
+    proofs: Mapping[str, Any],
+) -> tuple[int | None, str, str]:
+    """Extract implementation PR number identity only (never trust remote facts from caller)."""
+    return _extract_implementation_pr_number(
+        proofs,
+        missing_reason="WP03_VERIFY_DONE_PROOF_MISSING",
+    )
+
+
+def _verify_wp03_catalog_schema_digests(
+    proofs: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, str, str]:
+    """Return (ok, reason, message, live_catalog_sha, live_schema_sha)."""
+    catalog_path = Path(args.catalog_path) if args.catalog_path else DEFAULT_CATALOG_BLOB_PATH
+    schema_path = Path(args.schema_path) if args.schema_path else DEFAULT_SCHEMA_BLOB_PATH
+    if not catalog_path.is_file():
+        return False, "WP03_CATALOG_PROOF_INVALID", f"catalog missing: {catalog_path}", "", ""
+    if not schema_path.is_file():
+        return False, "WP03_CATALOG_PROOF_INVALID", f"schema missing: {schema_path}", "", ""
+
+    ok, reason, message, live_catalog_sha = _require_matching_file_digest(
+        proofs,
+        field="catalogSha256",
+        path=catalog_path,
+        missing_reason="WP03_CATALOG_PROOF_INVALID",
+    )
+    if not ok:
+        return False, reason, _wp03_digest_field_message("catalogSha256", message), "", ""
+
+    ok, reason, message, live_schema_sha = _require_matching_file_digest(
+        proofs,
+        field="schemaSha256",
+        path=schema_path,
+        missing_reason="WP03_CATALOG_PROOF_INVALID",
+    )
+    if not ok:
+        return False, reason, _wp03_digest_field_message("schemaSha256", message), "", ""
+
+    return True, "", "", live_catalog_sha, live_schema_sha
+
+
+def _verify_wp03_suite_and_blob_proofs(
+    proofs: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    ok, reason, message = _require_suite_pass_digests(
+        proofs,
+        WP03_SUITE_KEYS,
+        missing_reason="WP03_SUITE_RECEIPT_INVALID",
+    )
+    if not ok:
+        return False, reason, message, {}
+
+    if not WP03_STAGING_CONTRACT_PATH.is_file():
+        return (
+            False,
+            "WP03_VERIFY_DONE_PROOF_MISSING",
+            f"wp03-staging-contract missing: {WP03_STAGING_CONTRACT_PATH}",
+            {},
+        )
+
+    ok, reason, message, live_catalog_sha, live_schema_sha = _verify_wp03_catalog_schema_digests(
+        proofs, args
+    )
+    if not ok:
+        return False, reason, message, {}
+
+    return (
+        True,
+        "",
+        "",
+        {
+            "catalogSha256": live_catalog_sha,
+            "schemaSha256": live_schema_sha,
+            "androidUnitTest": proofs["androidUnitTest"],
+            "wp03ContractTest": proofs["wp03ContractTest"],
+            "fullNodeTest": proofs["fullNodeTest"],
+            "stagingContractTest": proofs["stagingContractTest"],
+            "stagingContractPath": str(WP03_STAGING_CONTRACT_PATH),
+            "stagingContractSha256": _sha256_file(WP03_STAGING_CONTRACT_PATH),
+        },
+    )
+
+
+def _wp03_require_ancestors_of_live(
+    *,
+    merge_sha: str,
+    head_sha: str,
+    live_base_sha: str,
+) -> tuple[bool, str, str]:
+    """Ancestry only — never tip equality."""
+    ok, reason, message = _require_ancestor_of_live_base(
+        merge_sha,
+        live_base_sha,
+        label="implementation mergeSha",
+    )
+    if not ok:
+        return False, "WP03_BASE_CONTAINMENT_FAILED", message
+    ok, reason, message = _require_ancestor_of_live_base(
+        head_sha,
+        live_base_sha,
+        label="implementation head",
+    )
+    if not ok:
+        return False, "WP03_BASE_CONTAINMENT_FAILED", message
+    return True, "", ""
+
+
+def _wp03_build_implementation_proof(
+    *,
+    pr_number: int,
+    data: Mapping[str, Any],
+    head_ref: str,
+    head_sha: str,
+    base_ref: str,
+    merge_sha: str,
+    live_base_sha: str,
+    repository: str,
+) -> dict[str, Any]:
+    return {
+        "role": "implementation",
+        "prNumber": pr_number,
+        "headRef": head_ref,
+        "headSha": head_sha,
+        "taskCommit": head_sha,
+        "baseRef": base_ref,
+        "mergeSha": merge_sha,
+        "mergedAt": data.get("mergedAt"),
+        "state": str(data.get("state") or "").upper(),
+        "url": data.get("url"),
+        "repository": repository,
+        "mergeIsAncestorOfLiveBase": True,
+        "taskCommitIsAncestorOfLiveBase": True,
+        "source": SOURCE_GH_PR_API,
+        "ancestrySource": SOURCE_GIT_MERGE_BASE,
+        "liveBaseSha": live_base_sha,
+    }
+
+
+def verify_wp03_merged_implementation_pr(
+    *,
+    pr_number: int,
+    live_base_sha: str,
+    repo: str | None,
+) -> tuple[dict[str, Any] | None, str, str]:
+    """Independently re-read WP-03 implementation PR; ancestry vs live base, not tip equality."""
+    # Soft gh view: surface WP03_PR_PROOF_INVALID (not process-level PR_READBACK_REQUIRED).
+    data, reason, message = _gh_pr_view_json_soft(
+        pr_number,
+        repo=repo,
+        invalid_reason="WP03_PR_PROOF_INVALID",
+    )
+    if data is None:
+        return None, reason, message
+
+    repo_ok, name_with_owner = _pr_repo_matches_approved(data)
+    if not repo_ok:
+        return (
+            None,
+            "WP03_PR_PROOF_INVALID",
+            f"implementation PR #{pr_number} repository {name_with_owner!r} != {APPROVED_GITHUB_REPO}"
+            if name_with_owner and "/" in str(name_with_owner)
+            else f"implementation PR #{pr_number} URL/repo does not match {APPROVED_GITHUB_REPO}",
+        )
+
+    ok, reason, message = _require_merged_pr_fields(
+        data,
+        label=f"implementation PR #{pr_number}",
+        missing_reason="WP03_PR_PROOF_INVALID",
+    )
+    if not ok:
+        return None, reason, message
+
+    head_ref = str(data.get("headRefName") or "")
+    if not head_ref.startswith(TASK_BRANCH_PREFIX):
+        return (
+            None,
+            "WP03_PR_PROOF_INVALID",
+            f"implementation PR head.ref {head_ref!r} must start with {TASK_BRANCH_PREFIX}",
+        )
+
+    base_ref = str(data.get("baseRefName") or "")
+    if base_ref not in {APPROVED_BASE_BRANCH, APPROVED_BASE_REF}:
+        return (
+            None,
+            "WP03_PR_PROOF_INVALID",
+            f"implementation PR base.ref {base_ref!r} is not {APPROVED_BASE_BRANCH}",
+        )
+
+    head_sha_raw = data.get("headRefOid")
+    if not is_git_sha40(head_sha_raw):
+        return (
+            None,
+            "WP03_PR_PROOF_INVALID",
+            "implementation PR head.sha missing/invalid from API",
+        )
+    head_sha = str(head_sha_raw).lower()
+
+    merge_commit = data.get("mergeCommit")
+    if not isinstance(merge_commit, dict) or not is_git_sha40(merge_commit.get("oid")):
+        return (
+            None,
+            "WP03_PR_PROOF_INVALID",
+            f"implementation PR #{pr_number} missing real merge_commit_sha from API",
+        )
+    merge_sha = str(merge_commit.get("oid")).lower()
+
+    ok, reason, message = _wp03_require_ancestors_of_live(
+        merge_sha=merge_sha,
+        head_sha=head_sha,
+        live_base_sha=live_base_sha,
+    )
+    if not ok:
+        return None, reason, message
+
+    proof = _wp03_build_implementation_proof(
+        pr_number=pr_number,
+        data=data,
+        head_ref=head_ref,
+        head_sha=head_sha,
+        base_ref=base_ref,
+        merge_sha=merge_sha,
+        live_base_sha=live_base_sha,
+        repository=name_with_owner or APPROVED_GITHUB_REPO,
+    )
+    return proof, "", ""
+
+
+def _catalog_wp03_task(
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    catalog = load_authoritative_catalog(args)
+    matches = [
+        t
+        for t in catalog.get("tasks", [])
+        if isinstance(t, dict) and t.get("taskId") == "WP-03"
+    ]
+    if len(matches) != 1:
+        return (
+            None,
+            "WP03_CATALOG_ENTRY_MISSING",
+            f"catalog must contain unique WP-03 entry (found {len(matches)})",
+        )
+    task = matches[0]
+    if task.get("weight") != 8:
+        return (
+            None,
+            "WP03_CATALOG_PROOF_INVALID",
+            f"WP-03 weight must be 8, got {task.get('weight')!r}",
+        )
+    if task.get("evidenceLevel") != "E1":
+        return (
+            None,
+            "WP03_CATALOG_PROOF_INVALID",
+            f"WP-03 evidenceLevel must be E1, got {task.get('evidenceLevel')!r}",
+        )
+    required_done = task.get("requiredEffectiveDone")
+    if not isinstance(required_done, list) or not all(
+        dep in required_done for dep in WP03_REQUIRED_PREREQS
+    ):
+        return (
+            None,
+            "WP03_REQUIRED_DONE_MISSING",
+            "WP-03.requiredEffectiveDone must include WP-INFRA, WP-00, WP-01, WP-02",
+        )
+    path = str(task.get("path") or "")
+    if path and path not in {"wallpaper-plugin/", "wallpaper-plugin"}:
+        # Allow empty (inherit product default) or monorepo plugin path only.
+        if not path.startswith("wallpaper-plugin"):
+            return (
+                None,
+                "WP03_CATALOG_PROOF_INVALID",
+                f"WP-03 path must be under wallpaper-plugin/, got {path!r}",
+            )
+    return task, "", ""
+
+
+def _read_wp03_prerequisite_receipt(
+    task_id: str,
+    receipt_path: Path,
+) -> tuple[dict[str, Any] | None, str, str]:
+    """Load one prerequisite DONE receipt; fail-closed on missing/invalid."""
+    if not receipt_path.is_file():
+        return (
+            None,
+            "WP03_REQUIRED_DONE_MISSING",
+            f"prerequisite receipt missing for {task_id}: {receipt_path}",
+        )
+    try:
+        data = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return (
+            None,
+            "WP03_REQUIRED_DONE_MISSING",
+            f"prerequisite receipt unreadable for {task_id}: {exc}",
+        )
+    if data.get("EffectiveDone") is not True:
+        return (
+            None,
+            "WP03_REQUIRED_DONE_MISSING",
+            f"{task_id} EffectiveDone is not true on disk receipt",
+        )
+    if task_id == "WP-INFRA" and data.get("EffectiveGate") is not True:
+        return (
+            None,
+            "WP03_REQUIRED_DONE_MISSING",
+            "WP-INFRA EffectiveGate is not true",
+        )
+    if task_id in {"WP-01", "WP-02"} and data.get("state") != "DONE":
+        return (
+            None,
+            "WP03_REQUIRED_DONE_MISSING",
+            f"{task_id} state is not DONE",
+        )
+    return (
+        {
+            "path": str(receipt_path),
+            "EffectiveDone": True,
+            "state": data.get("state"),
+            "receiptSha256": _sha256_file(receipt_path),
+        },
+        "",
+        "",
+    )
+
+
+def _verify_wp03_prerequisite_done_receipts() -> tuple[bool, str, str, dict[str, Any]]:
+    """Real DONE receipts for WP-INFRA/00/01/02 — not caller-forged."""
+    snapshot: dict[str, Any] = {}
+    for task_id, receipt_path in _WP03_PREREQ_RECEIPTS.items():
+        entry, reason, message = _read_wp03_prerequisite_receipt(task_id, receipt_path)
+        if entry is None:
+            return False, reason, message, {}
+        snapshot[task_id] = entry
+    return True, "", "", snapshot
+
+
+def _wp03_resolve_live_base(
+    proofs: Mapping[str, Any],
+) -> tuple[str | None, str, str]:
+    """ls-remote live tip; optional authoritativeBaseSha must match when provided."""
+    live_base = live_authoritative_base_sha()
+    claimed_base = proofs.get("authoritativeBaseSha")
+    if claimed_base is None:
+        return live_base, "", ""
+    if not is_git_sha40(claimed_base):
+        return (
+            None,
+            "WP03_VERIFY_DONE_PROOF_MISSING",
+            "authoritativeBaseSha must be 40-char SHA when provided",
+        )
+    if str(claimed_base).lower() != live_base:
+        return (
+            None,
+            "WP03_BASE_CONTAINMENT_FAILED",
+            f"claimed base {str(claimed_base).lower()} != live ls-remote base {live_base}",
+        )
+    return live_base, "", ""
+
+
+def evaluate_wp03_verify_done(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    """Return (ok, reason, message, proof_record) for WP-03 CLOSE-VERIFY.
+
+    Requires:
+      - unique catalog WP-03 with weight 8 / evidence E1
+      - identity-only proofChain.implementation.prNumber
+      - independent gh PR API: MERGED + approved repo/base/head prefix
+      - merge + head are ancestors of live origin base tip (not tip equality)
+      - suite digests + catalog/schema SHA match
+      - wp03-staging-contract.js present
+      - WP-INFRA/WP-00/WP-01/WP-02 EffectiveDone from real receipts
+      - caller cannot forge merged/EffectiveDone/REMOTE_VERIFIED/mergeSha/progress
+    """
+    task, reason, message = _catalog_wp03_task(args)
+    if task is None:
+        return False, reason, message, {}
+
+    ok_prereq, reason, message, prereq_record = _verify_wp03_prerequisite_done_receipts()
+    if not ok_prereq:
+        return False, reason, message, {}
+
+    proofs, reason, message = _load_wp03_identity_proofs(receipt, args)
+    if proofs is None:
+        return False, reason, message, {}
+
+    pr_number, reason, message = _caller_wp03_implementation_pr(proofs)
+    if pr_number is None:
+        return False, reason, message, {}
+
+    ok_suites, reason, message, suite_record = _verify_wp03_suite_and_blob_proofs(proofs, args)
+    if not ok_suites:
+        return False, reason, message, {}
+
+    live_base, reason, message = _wp03_resolve_live_base(proofs)
+    if live_base is None:
+        return False, reason, message, {}
+
+    repo = getattr(args, "repo", None) or APPROVED_GITHUB_REPO
+    impl_proof, reason, message = verify_wp03_merged_implementation_pr(
+        pr_number=pr_number,
+        live_base_sha=live_base,
+        repo=repo,
+    )
+    if impl_proof is None:
+        return False, reason, message, {}
+
+    record = {
+        "proofChain": {"implementation": impl_proof},
+        "implementationProof": impl_proof,
+        "implementationCommit": impl_proof["taskCommit"],
+        "implementationMergeSha": impl_proof["mergeSha"],
+        "liveBaseSha": live_base,
+        "authoritativeBaseSha": live_base,
+        "weight": 8,
+        "product": task.get("product") or "Wallpaper Engine",
+        "path": task.get("path") or "wallpaper-plugin/",
+        "evidenceLevel": task.get("evidenceLevel") or "E1",
+        "requiredEffectiveDone": list(task.get("requiredEffectiveDone") or []),
+        "prerequisiteReceipts": prereq_record,
+        "verifiedAt": utc_now_iso(),
+        "source": "verify-done",
+        "remoteFactsSource": SOURCE_GH_PR_API,
+        "baseTipSource": SOURCE_GIT_LS_REMOTE,
+        "ancestrySource": SOURCE_GIT_MERGE_BASE,
+        **suite_record,
+    }
+    return True, "", "", record
+
+
 def cmd_verify_done(args: argparse.Namespace) -> int:
     """Fail-closed DONE only when catalog + proofs + live base containment hold."""
     task_id = require_task(args.task)
@@ -3703,9 +4278,12 @@ def cmd_verify_done(args: argparse.Namespace) -> int:
         elif task_id == "WP-02":
             ok_gate, reason, message, proof_record = evaluate_wp02_verify_done(current, args)
             weight = 8
+        elif task_id == "WP-03":
+            ok_gate, reason, message, proof_record = evaluate_wp03_verify_done(current, args)
+            weight = 8
         else:
             fail(
-                "WP02_VERIFY_DONE_UNAVAILABLE"
+                "WP03_VERIFY_DONE_UNAVAILABLE"
                 if task_id.startswith("WP-")
                 else "WP01_VERIFY_DONE_UNAVAILABLE",
                 f"verify-done production path not implemented for {task_id}",
@@ -3715,7 +4293,9 @@ def cmd_verify_done(args: argparse.Namespace) -> int:
             fail(
                 reason
                 or (
-                    "WP02_VERIFY_DONE_PROOF_MISSING"
+                    "WP03_VERIFY_DONE_PROOF_MISSING"
+                    if task_id == "WP-03"
+                    else "WP02_VERIFY_DONE_PROOF_MISSING"
                     if task_id == "WP-02"
                     else "WP01_VERIFY_DONE_PROOF_MISSING"
                 ),
