@@ -49,6 +49,8 @@ const {
   runVerifyDone,
   computeCoreProgress,
   defaultDoneReceipts,
+  defaultDoneReceiptsThroughWp02,
+  liveWp03OperationalProgress,
   productionHasWp03VerifyDonePath,
   lastFailureReason,
 } = require('./wallpaper-wp03-verify-done-helpers');
@@ -202,18 +204,26 @@ test('WP-03 VERIFY-DONE RED-1.2: GREEN success target fails until path exists', 
   assert.ok(vd.implementationMergeSha);
 });
 
-test('WP-03 VERIFY-DONE RED-1.3: operational wp-03 txn remains non-DONE without verify-done', () => {
+test('WP-03 VERIFY-DONE RED-1.3: operational wp-03 txn tracks live verify-done (non-DONE or DONE with proof)', () => {
   assert.equal(pathExists(wp03TxnReceipt), true);
   const before = readJson(wp03TxnReceipt);
   assert.equal(before.taskId, TASK_ID);
-  assert.equal(before.EffectiveDone, false);
-  assert.notEqual(before.state, 'DONE');
-  assert.ok(
-    ['INIT', 'RED_RECORDED', 'GREEN_RECORDED', 'REFACTOR_RECORDED', 'VERIFY_READY'].includes(
+  const live = liveWp03OperationalProgress();
+  if (live.EffectiveDone) {
+    // Post CLOSE-VERIFY: only verify-done may set EffectiveDone; proof object required.
+    assert.equal(before.EffectiveDone, true);
+    assert.equal(before.state, 'DONE');
+    assert.ok(before.verifyDone && typeof before.verifyDone === 'object');
+  } else {
+    assert.equal(before.EffectiveDone, false);
+    assert.notEqual(before.state, 'DONE');
+    assert.ok(
+      ['INIT', 'RED_RECORDED', 'GREEN_RECORDED', 'REFACTOR_RECORDED', 'VERIFY_READY'].includes(
+        before.state,
+      ),
       before.state,
-    ),
-    before.state,
-  );
+    );
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -378,16 +388,22 @@ test('WP-03 VERIFY-DONE RED-2.6: suite digest pass:false must fail-closed (when 
 // Progress guards
 // ---------------------------------------------------------------------------
 
-test('WP-03 VERIFY-DONE RED-3.1: Core progress stays 18% while operational EffectiveDone=false', () => {
+test('WP-03 VERIFY-DONE RED-3.1: Core progress tracks live WP-03 EffectiveDone (18% pre / 26% post)', () => {
+  const live = liveWp03OperationalProgress();
+  // Without WP-03 weight always 18%.
+  const without = computeCoreProgress(defaultDoneReceiptsThroughWp02());
+  assert.equal(without.status, 0, without.combined);
+  assert.equal(parseRunnerJson(without).coreProgressPercent, 18);
+
   const progress = computeCoreProgress(defaultDoneReceipts());
   assert.equal(progress.status, 0, progress.combined);
   const body = parseRunnerJson(progress);
-  assert.equal(body.coreProgressPercent, 18);
+  assert.equal(body.coreProgressPercent, live.expectedCoreProgressPercent);
   const wp03 = (body.breakdown || []).find((r) => r.taskId === TASK_ID);
   assert.ok(wp03);
   assert.equal(wp03.weight, EXPECTED_WEIGHT);
-  assert.equal(wp03.EffectiveDone, false);
-  assert.equal(readJson(wp03TxnReceipt).EffectiveDone, false);
+  assert.equal(wp03.EffectiveDone, live.EffectiveDone);
+  assert.equal(readJson(wp03TxnReceipt).EffectiveDone, live.EffectiveDone);
 });
 
 test('WP-03 VERIFY-DONE RED-3.2: GREEN success target is progress 26% from catalog weights', () => {
@@ -426,8 +442,27 @@ test('WP-03 VERIFY-DONE RED-3.3: runner source must not require mergeSha == live
   assert.match(src, /never require mergeSha == live tip|Ancestry only|merge-base --is-ancestor/i);
 });
 
-test('WP-03 VERIFY-DONE RED-3.4: WP-04 not started', () => {
+test('WP-03 VERIFY-DONE RED-3.4: WP-04 EffectiveDone not elevated by WP-03 close', () => {
   const catalog = readJson(catalogPath);
-  assert.ok(!catalog.tasks.some((t) => t.taskId === 'WP-04'));
-  assert.equal(readJson(wp03TxnReceipt).EffectiveDone, false);
+  assert.ok(Array.isArray(catalog.tasks));
+  const live = liveWp03OperationalProgress();
+  // WP-03 close must not auto-elevate WP-04. Catalog may register WP-04 later.
+  const wp04 = (catalog.tasks || []).find((t) => t && t.taskId === 'WP-04');
+  if (wp04) {
+    assert.equal(wp04.weight, 10);
+    assert.equal(wp04.evidenceLevel, 'E1');
+    // Catalog must never author EffectiveDone / state (runtime fields).
+    assert.equal(wp04.EffectiveDone, undefined);
+    assert.equal(wp04.state, undefined);
+  }
+  // Operational WP-03 truth is dynamic; WP-04 txn if present must stay non-DONE in GREEN.
+  const wp04Path = path.join(path.dirname(wp03TxnReceipt), 'wp-04.json');
+  if (pathExists(wp04Path)) {
+    const wp04Receipt = readJson(wp04Path);
+    assert.notEqual(wp04Receipt.EffectiveDone, true);
+    assert.notEqual(wp04Receipt.state, 'DONE');
+  }
+  if (live.EffectiveDone) {
+    assert.ok(live.receipt.verifyDone, 'WP-03 DONE requires verifyDone proof');
+  }
 });
