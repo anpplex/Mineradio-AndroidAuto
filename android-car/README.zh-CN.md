@@ -10,11 +10,21 @@
 | **[docs/DEVELOPMENT.zh-CN.md](./docs/DEVELOPMENT.zh-CN.md)** | **开发文档**：**Max Subagents** + **严格 Git Workflow** + 门禁与构建闭环 |
 | [AGENTS.md](./AGENTS.md) | Coding agent 入口摘要（指向上述两文） |
 | [docs/FEATURE-MATRIX.zh-CN.md](./docs/FEATURE-MATRIX.zh-CN.md) | Windows 2.0.3 ↔ 车机 1.1.7 能力对齐 |
+| [docs/WALLPAPER-PLUGIN-DEVELOPMENT.zh-CN.md](./docs/WALLPAPER-PLUGIN-DEVELOPMENT.zh-CN.md) | 用户授权沙盒：独立 Wallpaper Engine 插件进程可执行开发计划 |
+| [docs/WALLPAPER-PLUGIN-PROGRESS.zh-CN.md](./docs/WALLPAPER-PLUGIN-PROGRESS.zh-CN.md) | 插件里程碑、Gate、证据等级与当前进度 |
 
 **两条总纲：**
 
-1. **严格 Git Workflow** — 仅 `origin` / `huawei-android12-car`；提交前 `node --test android-car/tests/*.test.js`；禁止 APK/JKS/密钥/截图入库；禁止 push `upstream`。
+1. **严格 Git Workflow** — `huawei-android12-car` 为集成分支，任务分支使用 `codex/*`；仅 push `origin`；提交前 `node --test android-car/tests/*.test.js`；禁止 APK/JKS/密钥/截图入库；禁止 push `upstream`。
 2. **Max Subagents** — 存在 ≥2 个独立工作域时必须最大合理并行 subagents，主会话集成后统一提交推送。
+
+### 方案 3 执行入口（fail-closed）
+
+- 当前权威状态只看 [插件进度表](./docs/WALLPAPER-PLUGIN-PROGRESS.zh-CN.md)。当其仍为 `PLAN_REVIEW_REWORK`、`WP-PLAN-01` 未 `DONE`、计划 PR 未在 `origin/huawei-android12-car` merged/readback，或不计权 `WP-INFRA` Gate 未 `DONE` 时，禁止启动 `WP-00`～`WP-12E`。
+- `WP-00`～`WP-11C` 使用核心控制分支与 `/Users/anpple/Codex/WallpaperEngine/.worktrees/mineradio-plugin-sandbox`；`WP-12A`～`WP-12E` 只能使用各自的实验 worktree，不得复用核心 worktree，也不得写入 `/Users/anpple/Codex/WallpaperEngine` 脏主工作区。
+- 方案 3 的 implementation/evidence/closure 同步只允许 transaction CLI 执行 exact SHA refspec、`ls-remote`/API readback 与恢复；不得套用普通 `git push origin <branch>`。
+- `Release readiness` 只评估不含第三方或实验二进制的核心发布候选；官方 Wallpaper Engine 包、提取 runtime、第三方 `.mpkg` 与 WP-12 产物始终排除在该对象之外。
+- 当前无设备只登记为 `FUTURE_DEVICE_GATE`，不阻塞 `WP-PLAN-01` 文档复审或后续 `WP-INFRA`；设备 Gate 从 WP-10A 开始生效。
 
 ## 已做的车机适配
 
@@ -43,7 +53,7 @@
 - **视觉层**（见 [docs/VISUAL-LAYER.zh-CN.md](./docs/VISUAL-LAYER.zh-CN.md)）：
   - 车机 **固定 stage showcase**（无 on-screen 行车/巡航/舞台条；`setMode` 仍 API）；
   - HMI：TL Home+列表+搜索、底中「视觉控制台」抽屉与「播控·更多」、全局账号入口、空首页插件、底栏曲名优先、safe-top/bottom 避状态栏/Docker；
-  - 运行时 `car-visual-runtime.js`；**不**接 OEM 车速总线，**不**启用桌面歌词 / Wallpaper Engine / 手势相机。
+  - 运行时 `car-visual-runtime.js`；**不**接 OEM 车速总线，默认/生产主路径**不**启用桌面歌词 / Wallpaper Engine / 手势相机；用户授权沙盒的独立 WE 插件另见开发计划。
 
 当前静态验证已覆盖 MENC 加解密回环、HTML/CSS/runtime 注入幂等、登录入口、车机尺度 token。连上车机后请重装最新 `out/` APK 做真车验收。
 

@@ -252,7 +252,7 @@
 - 行车/巡航模式重做、OEM 车速总线、音频焦点业务、U 盘扫描、登录鉴权。  
 - 把 Windows 2.0.3 模块化 JS 整包塞进 APK（当前链路是 **patch 注入 runtime+CSS**，不是替换 初始化加载器）。  
 - 修复 SPICaMusic 原生存储（需 smali/原生层；仅要求 stage runtime **容忍**失败并重断言）。  
-- 开启桌面歌词 / Wallpaper Engine / 手势相机。
+- 在 stage 差距任务中开启桌面歌词 / Wallpaper Engine / 手势相机；用户授权沙盒独立 WE 插件由单独开发计划管理。
 
 ---
 

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "wallpaper-task-catalog/v1",
+  "tasks": [
+    {
+      "taskId": "WP-INFRA",
+      "dependsOn": [],
+      "requiredEffectiveDone": [],
+      "phaseCommands": {
+        "RED": { "commandId": "WP-INFRA-RED", "argv": ["true"] },
+        "GREEN": { "commandId": "WP-INFRA-GREEN", "argv": ["true"] },
+        "REFACTOR": { "commandId": "WP-INFRA-REFACTOR", "argv": ["true"] },
+        "VERIFY": { "commandId": "WP-INFRA-VERIFY", "argv": ["true"] }
+      },
+      "expectedExit": { "RED": 1, "GREEN": 0, "REFACTOR": 0, "VERIFY": 0 },
+      "failureSignaturePolicy": { "RED": { "required": true, "match": "stderr" } },
+      "scopeCheck": { "repo": "mineradio", "exactFiles": [] },
+      "evidenceLevel": "E0",
+      "weight": 0,
+      "requiredEffectiveGate": true
+    }
+  ]
+}

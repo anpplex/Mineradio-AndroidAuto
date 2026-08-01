@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "wallpaper-task-catalog/v1",
+  "title": "Mineradio wallpaper plugin task catalog",
+  "description": "Structural schema for wallpaper-plugin-tasks.json (WP-INFRA). Full JSON Schema draft validation may be layered later; catalog tool enforces fail-closed semantic rules.",
+  "type": "object",
+  "required": ["schemaVersion", "tasks"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "wallpaper-task-catalog/v1"
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "taskId",
+          "dependsOn",
+          "requiredEffectiveDone",
+          "phaseCommands",
+          "expectedExit",
+          "failureSignaturePolicy",
+          "scopeCheck"
+        ],
+        "properties": {
+          "taskId": { "type": "string" },
+          "dependsOn": {
+            "type": "array",
+            "items": { "type": "string" },
+            "uniqueItems": true
+          },
+          "requiredEffectiveDone": {
+            "type": "array",
+            "items": { "type": "string" },
+            "uniqueItems": true
+          },
+          "phaseCommands": {
+            "type": "object",
+            "required": ["RED", "GREEN", "REFACTOR", "VERIFY"]
+          },
+          "expectedExit": {
+            "type": "object",
+            "required": ["RED", "GREEN", "REFACTOR", "VERIFY"]
+          },
+          "failureSignaturePolicy": { "type": "object" },
+          "scopeCheck": { "type": "object" },
+          "evidenceLevel": {
+            "type": "string",
+            "enum": ["E0", "E1", "E2", "E3", "E4", "E5", "E6", "E7"]
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}
