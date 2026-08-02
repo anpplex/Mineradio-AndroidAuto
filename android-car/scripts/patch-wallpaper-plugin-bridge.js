@@ -76,6 +76,7 @@ const FORBIDDEN_PROVIDER_PATH_TAGS_RE =
 const PATHS_XML_BASENAME = 'wallpaper_plugin_paths.xml';
 const STAGER_SMALI_BASENAME = 'CarWallpaperMpkgStager.smali';
 const BRIDGE_SMALI_BASENAME = 'CarWallpaperPluginBridge.smali';
+const INSTALLER_SMALI_BASENAME = 'CarWallpaperPluginInstaller.smali';
 
 function resolveSmaliSourceRoot() {
   return path.join(__dirname, 'smali', 'com', 'mineradio', 'app', 'car');
@@ -142,6 +143,32 @@ function copyStagerSmali(decodedDir) {
     }
   });
   return { dest: copied.dest, changed: true, stager: 'CarWallpaperMpkgStager' };
+}
+
+/**
+ * WP-06: copy CarWallpaperPluginInstaller.smali next to bridge (idempotent refresh).
+ */
+function copyInstallerSmali(decodedDir) {
+  const installMirror = contract.assertInstallSmaliMirror({
+    cwd: path.resolve(__dirname, '..', '..'),
+  });
+  if (!installMirror.ok) {
+    throw new Error(
+      `Install Smali mirror failed before installer copy: ${installMirror.failureReason}: ${installMirror.message}`,
+    );
+  }
+  const copied = copyCarSmaliFile(decodedDir, INSTALLER_SMALI_BASENAME, (text) => {
+    if (
+      !text.includes('CarWallpaperPluginInstaller') ||
+      !text.includes('PackageInstaller') ||
+      !text.includes('content://')
+    ) {
+      throw new Error(
+        'CarWallpaperPluginInstaller.smali missing required install markers (fail-closed)',
+      );
+    }
+  });
+  return { dest: copied.dest, changed: true, installer: 'CarWallpaperPluginInstaller' };
 }
 
 /**
@@ -252,11 +279,14 @@ function patchWallpaperPluginBridge(decodedDir) {
   // WP-05: FileProvider paths XML → res/xml/ + CarWallpaperMpkgStager.smali
   const pathsXml = copyWallpaperPluginPathsXml(root);
   const stager = copyStagerSmali(root);
+  // WP-06: CarWallpaperPluginInstaller.smali (PackageInstaller + package visibility)
+  const installer = copyInstallerSmali(root);
   const activity = patchLandscapeWebActivity(root);
   return {
     smaliDir: path.dirname(smali.dest),
     bridgeSmali: smali,
     stagerSmali: stager,
+    installerSmali: installer,
     wallpaperPluginPathsXml: pathsXml,
     landscapeWebActivity: activity,
     jsInterface: JS_INTERFACE,
@@ -264,6 +294,7 @@ function patchWallpaperPluginBridge(decodedDir) {
     protocolVersion: contract.protocolVersion,
     authority: contract.authority,
     fileProviderAuthority: contract.fileProviderAuthority,
+    pluginPackage: contract.pluginPackage,
     contractMirror: smali.contractMirror,
   };
 }
@@ -557,6 +588,7 @@ module.exports = {
   patchWallpaperPluginBridge,
   copyBridgeSmali,
   copyStagerSmali,
+  copyInstallerSmali,
   copyWallpaperPluginPathsXml,
   copyCarSmaliFile,
   resolveDecodedCarSmaliDestDir,

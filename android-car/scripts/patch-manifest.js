@@ -64,6 +64,25 @@ const WALLPAPER_PLUGIN_FILE_PROVIDER_AUTHORITY = 'com.mineradio.app.wallpaperplu
 const WALLPAPER_PLUGIN_PATHS_META = 'android.support.FILE_PROVIDER_PATHS';
 const WALLPAPER_PLUGIN_PATHS_RESOURCE = '@xml/wallpaper_plugin_paths';
 
+// WP-06 package install visibility — literals mirrored from wallpaper-plugin-contract.js
+// (Smali/manifest cannot import JS; keep strings identical for capacity probes).
+const contractInstall = (() => {
+  try {
+    // Lazy require avoids circular load during pure-manifest unit probes.
+    // eslint-disable-next-line global-require
+    return require('./wallpaper-plugin-contract');
+  } catch {
+    return null;
+  }
+})();
+const WP06_REQUEST_INSTALL_PACKAGES =
+  (contractInstall && contractInstall.requestInstallPackages) ||
+  'android.permission.REQUEST_INSTALL_PACKAGES';
+const WP06_PLUGIN_PACKAGE =
+  (contractInstall && contractInstall.pluginPackage) || 'com.motif.wallpaperengine';
+const WP06_WE_CLIENT_PACKAGE =
+  (contractInstall && contractInstall.enginePackage) || 'io.wallpaperengine.weclient';
+
 const WALLPAPER_PLUGIN_FILE_PROVIDER_SNIPPET = `
         <provider
             android:name="${WALLPAPER_PLUGIN_FILE_PROVIDER_CLASS}"
@@ -74,6 +93,15 @@ const WALLPAPER_PLUGIN_FILE_PROVIDER_SNIPPET = `
                 android:name="${WALLPAPER_PLUGIN_PATHS_META}"
                 android:resource="${WALLPAPER_PLUGIN_PATHS_RESOURCE}" />
         </provider>`;
+
+const WP06_REQUEST_INSTALL_PERM_SNIPPET = `
+    <uses-permission android:name="${WP06_REQUEST_INSTALL_PACKAGES}" />`;
+
+const WP06_PACKAGE_QUERIES_SNIPPET = `
+    <queries>
+        <package android:name="${WP06_PLUGIN_PACKAGE}" />
+        <package android:name="${WP06_WE_CLIENT_PACKAGE}" />
+    </queries>`;
 
 /**
  * Inject WP-05 FileProvider into <application> if missing (idempotent).
@@ -96,6 +124,43 @@ function injectWallpaperPluginFileProvider(manifest) {
     throw new Error('Cannot inject FileProvider: <application> missing (fail-closed)');
   }
   return manifest.replace(/<application\b[^>]*>/, (openTag) => `${openTag}${WALLPAPER_PLUGIN_FILE_PROVIDER_SNIPPET}`);
+}
+
+/**
+ * WP-06: inject REQUEST_INSTALL_PACKAGES (sandbox) if missing (idempotent).
+ */
+function injectRequestInstallPackagesPermission(manifest) {
+  requireManifestXml(manifest);
+  if (manifest.includes(WP06_REQUEST_INSTALL_PACKAGES)) {
+    return manifest;
+  }
+  // Prefer insert after last uses-permission; else after <manifest ...>.
+  if (/<uses-permission\b[^/]*\/>/.test(manifest)) {
+    let last = null;
+    const re = /<uses-permission\b[^/]*\/>/g;
+    let m;
+    while ((m = re.exec(manifest)) !== null) last = m;
+    if (last) {
+      const idx = last.index + last[0].length;
+      return manifest.slice(0, idx) + WP06_REQUEST_INSTALL_PERM_SNIPPET + manifest.slice(idx);
+    }
+  }
+  return manifest.replace(/<manifest\b[^>]*>/, (open) => `${open}${WP06_REQUEST_INSTALL_PERM_SNIPPET}`);
+}
+
+/**
+ * WP-06: inject <queries> for WE plugin packages if missing (idempotent).
+ * Single visibility path: both plugin + WE client package names required.
+ */
+function injectWallpaperPackageQueries(manifest) {
+  requireManifestXml(manifest);
+  const hasPlugin = manifest.includes(`android:name="${WP06_PLUGIN_PACKAGE}"`);
+  const hasClient = manifest.includes(`android:name="${WP06_WE_CLIENT_PACKAGE}"`);
+  const hasQueries = /<queries[\s>]/.test(manifest);
+  if (hasPlugin && hasClient && hasQueries) {
+    return manifest;
+  }
+  return manifest.replace(/<manifest\b[^>]*>/, (open) => `${open}${WP06_PACKAGE_QUERIES_SNIPPET}`);
 }
 
 function patchManifest(manifest) {
@@ -121,6 +186,9 @@ function patchManifest(manifest) {
   patched = addCarLauncherFilter(patched);
   // WP-05: FileProvider for importMpkg content:// staging grants.
   patched = injectWallpaperPluginFileProvider(patched);
+  // WP-06: package install permission + package visibility queries.
+  patched = injectRequestInstallPackagesPermission(patched);
+  patched = injectWallpaperPackageQueries(patched);
   return patched;
 }
 
@@ -132,6 +200,11 @@ module.exports = {
   WALLPAPER_PLUGIN_FILE_PROVIDER_AUTHORITY,
   WALLPAPER_PLUGIN_PATHS_META,
   WALLPAPER_PLUGIN_PATHS_RESOURCE,
+  WP06_REQUEST_INSTALL_PACKAGES,
+  WP06_PLUGIN_PACKAGE,
+  WP06_WE_CLIENT_PACKAGE,
   injectWallpaperPluginFileProvider,
+  injectRequestInstallPackagesPermission,
+  injectWallpaperPackageQueries,
   patchManifest,
 };

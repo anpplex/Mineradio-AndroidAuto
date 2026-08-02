@@ -34,12 +34,14 @@ const METHODS = Object.freeze([
   'diagnostics',
 ]);
 
-/** Local Mineradio JS/Smali bridge method names (Task 4 Interfaces). */
+/** Local Mineradio JS/Smali bridge method names (Task 4 + Task 6 Interfaces). */
 const JS_BRIDGE_METHODS = Object.freeze([
   'ping',
   'status',
   'renewAction',
   'importMpkg',
+  'isInstalled',
+  'getPluginVersion',
   'installPlugin',
   'confirmUserAction',
   'openLibrary',
@@ -61,6 +63,36 @@ const CODE = Object.freeze({
   UNTRUSTED_ORIGIN: 61,
 });
 
+/**
+ * WP-06 install / package visibility — single JS source of truth.
+ * Smali/manifest patchers must mirror these literals (assertInstallSmaliMirror).
+ * Result mapping (Task 6):
+ *   installed+compatible → 0
+ *   not installed / PackageInstaller UI opened → 20
+ *   SETTINGS_REQUIRED (unknown sources) → 20 + settingsRequired
+ *   bad URI / package → 40
+ *   system reject → 60
+ * Never silent success (code 0) without PackageManager recheck.
+ */
+const INSTALL_APK_MIME = 'application/vnd.android.package-archive';
+const INSTALL_USER_ACTION_KIND = 'INSTALL_PLUGIN';
+const INSTALL_SETTINGS_REQUIRED = 'SETTINGS_REQUIRED';
+const REQUEST_INSTALL_PACKAGES = 'android.permission.REQUEST_INSTALL_PACKAGES';
+const INSTALLER_SMALI_REL_PATH =
+  'android-car/scripts/smali/com/mineradio/app/car/CarWallpaperPluginInstaller.smali';
+const INSTALL_RESULT = Object.freeze({
+  OK: CODE.OK,
+  USER_ACTION_OR_NOT_INSTALLED: CODE.USER_ACTION_REQUIRED,
+  BAD_INPUT: CODE.UNKNOWN_METHOD,
+  SYSTEM_REJECT: CODE.PLUGIN_CALL_FAILED,
+  SETTINGS_REQUIRED: INSTALL_SETTINGS_REQUIRED,
+  USER_ACTION_KIND: INSTALL_USER_ACTION_KIND,
+  APK_MIME: INSTALL_APK_MIME,
+  PLUGIN_PACKAGE: PLUGIN_PACKAGE,
+  WE_CLIENT_PACKAGE: ENGINE_PACKAGE,
+  REQUEST_INSTALL_PACKAGES,
+});
+
 const ACTION_REGISTRY_MAX_ENTRIES = 16;
 const ACTION_TOKEN_TTL_MS = 10 * 60 * 1000;
 
@@ -76,6 +108,8 @@ const JS_TO_PROVIDER = Object.freeze({
   stop: 'stop',
   diagnostics: 'diagnostics',
   // Local-only (not Provider protocol methods):
+  isInstalled: null,
+  getPluginVersion: null,
   installPlugin: null,
   confirmUserAction: null,
 });
@@ -991,6 +1025,245 @@ function assertFileProviderSmaliMirror(options = {}) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// WP-06 install fixtures (Node harness mirrors Smali installer)
+// ---------------------------------------------------------------------------
+
+/**
+ * Pure install source URI rules: content:// only; reject file/http/absolute.
+ * @param {string|null|undefined} sourceUri
+ */
+function isInstallContentUri(sourceUri) {
+  return isContentUri(sourceUri);
+}
+
+/**
+ * Fail-closed install request preview (no silent success).
+ * @param {string|null|undefined} sourceUri
+ * @param {{ registry?: ActionTokenRegistry, now?: () => number }} [opts]
+ */
+function previewInstallPlugin(sourceUri, opts = {}) {
+  if (sourceUri == null || sourceUri === '') {
+    return {
+      ok: false,
+      code: CODE.UNKNOWN_METHOD,
+      message: 'MISSING_SOURCE_URI',
+      silentSuccess: false,
+    };
+  }
+  if (isForbiddenSourceUri(sourceUri) || !isInstallContentUri(sourceUri)) {
+    return {
+      ok: false,
+      code: CODE.UNKNOWN_METHOD,
+      message: 'FORBIDDEN_URI_SCHEME_OR_NOT_CONTENT',
+      silentSuccess: false,
+    };
+  }
+  // Register one-shot INSTALL_PLUGIN action-token; UI launch only after confirmUserAction.
+  const registry = opts.registry || defaultRegistry;
+  const tokenResult = registry.register({
+    operationId: 'install-plugin',
+    actionEpoch: Number(opts.now ? opts.now() : Date.now()),
+    userActionKind: INSTALL_USER_ACTION_KIND,
+    // PendingIntent stays opaque object — never JSON-serialized string.
+    pendingIntent: {
+      kind: 'PackageInstaller',
+      mime: INSTALL_APK_MIME,
+      sourceUriScheme: 'content',
+      pendingIntentJson: false,
+      send() {
+        return 'install-ui-launched';
+      },
+    },
+  });
+  if (!tokenResult.ok) {
+    return {
+      ok: false,
+      code: tokenResult.code || CODE.PLUGIN_CALL_FAILED,
+      message: tokenResult.message || 'ACTION_TOKEN_REGISTER_FAILED',
+      silentSuccess: false,
+    };
+  }
+  return {
+    ok: true,
+    code: CODE.USER_ACTION_REQUIRED,
+    userActionKind: INSTALL_USER_ACTION_KIND,
+    actionToken: tokenResult.actionToken,
+    apkMime: INSTALL_APK_MIME,
+    pluginPackage: PLUGIN_PACKAGE,
+    message: 'PACKAGE_INSTALLER_UI',
+    pendingIntentJson: false,
+    silentSuccess: false,
+    settingsRequired: INSTALL_SETTINGS_REQUIRED,
+  };
+}
+
+/**
+ * GREEN fixture suite for Task 6 install contracts.
+ * @param {{ registry?: ActionTokenRegistry }} [_opts]
+ */
+function assertInstallFixtures(_opts = {}) {
+  const reg = createActionTokenRegistry({ now: () => 2_000_000 });
+
+  // Reject file:// http absolute and traversal.
+  for (const bad of [
+    'file:///data/local/tmp/x.apk',
+    'http://example.com/x.apk',
+    'https://example.com/x.apk',
+    '/sdcard/x.apk',
+    'content://ok/../evil',
+    null,
+    '',
+  ]) {
+    const r = previewInstallPlugin(bad, { registry: reg });
+    if (r.ok || r.code === CODE.OK || r.silentSuccess) {
+      return {
+        ok: false,
+        message: `install must reject bad URI: ${String(bad)}`,
+        result: r,
+      };
+    }
+  }
+
+  // content:// opens PackageInstaller path (code 20), never silent success.
+  const ok = previewInstallPlugin(
+    'content://com.android.providers.downloads.documents/document/42',
+    { registry: reg },
+  );
+  if (!ok.ok || ok.code !== CODE.USER_ACTION_REQUIRED) {
+    return { ok: false, message: 'content:// must return code 20 USER_ACTION_REQUIRED', result: ok };
+  }
+  if (ok.silentSuccess !== false) {
+    return { ok: false, message: 'silentSuccess must be false' };
+  }
+  if (ok.userActionKind !== INSTALL_USER_ACTION_KIND) {
+    return { ok: false, message: 'userActionKind must be INSTALL_PLUGIN' };
+  }
+  if (ok.apkMime !== INSTALL_APK_MIME) {
+    return { ok: false, message: `apkMime must be ${INSTALL_APK_MIME}` };
+  }
+  if (ok.pluginPackage !== PLUGIN_PACKAGE) {
+    return { ok: false, message: 'pluginPackage mismatch' };
+  }
+  if (ok.pendingIntentJson !== false) {
+    return { ok: false, message: 'PendingIntent must not be JSON-serialized' };
+  }
+  if (!ok.actionToken || typeof ok.actionToken !== 'string') {
+    return { ok: false, message: 'actionToken required for confirmUserAction' };
+  }
+
+  // One-shot token: second consume fails.
+  const first = reg.consume(ok.actionToken);
+  if (!first.ok) {
+    return { ok: false, message: 'first confirmUserAction must succeed', first };
+  }
+  const second = reg.consume(ok.actionToken);
+  if (second.ok) {
+    return { ok: false, message: 'action-token must be one-shot' };
+  }
+
+  // Package constants present for queries / recheck.
+  if (!PLUGIN_PACKAGE || !ENGINE_PACKAGE) {
+    return { ok: false, message: 'WE package constants missing' };
+  }
+  if (!REQUEST_INSTALL_PACKAGES.includes('REQUEST_INSTALL_PACKAGES')) {
+    return { ok: false, message: 'REQUEST_INSTALL_PACKAGES constant missing' };
+  }
+
+  return {
+    ok: true,
+    pluginPackage: INSTALL_RESULT.PLUGIN_PACKAGE,
+    weClientPackage: INSTALL_RESULT.WE_CLIENT_PACKAGE,
+    apkMime: INSTALL_RESULT.APK_MIME,
+    userActionKind: INSTALL_RESULT.USER_ACTION_KIND,
+    requestInstallPermission: INSTALL_RESULT.REQUEST_INSTALL_PACKAGES,
+    codes: {
+      ok: INSTALL_RESULT.OK,
+      userAction: INSTALL_RESULT.USER_ACTION_OR_NOT_INSTALLED,
+      badInput: INSTALL_RESULT.BAD_INPUT,
+      systemReject: INSTALL_RESULT.SYSTEM_REJECT,
+    },
+    settingsRequired: INSTALL_RESULT.SETTINGS_REQUIRED,
+    silentSuccessForbidden: true,
+    resultMapping: INSTALL_RESULT,
+    EffectiveDone: false,
+  };
+}
+
+/**
+ * REFACTOR: installer + bridge Smali must mirror WP-06 install constants.
+ * @param {{ cwd?: string, bridgeSmaliPath?: string, installerSmaliPath?: string }} [options]
+ */
+function assertInstallSmaliMirror(options = {}) {
+  const cwd = options.cwd || path.resolve(__dirname, '..', '..');
+  const bridgePath =
+    options.bridgeSmaliPath || path.join(cwd, SMALI_BRIDGE_REL_PATH);
+  const installerPath =
+    options.installerSmaliPath || path.join(cwd, INSTALLER_SMALI_REL_PATH);
+
+  if (!fs.existsSync(bridgePath)) {
+    return {
+      ok: false,
+      failureReason: 'WP06_BRIDGE_METHODS_MISSING',
+      message: `bridge Smali missing: ${bridgePath}`,
+    };
+  }
+  if (!fs.existsSync(installerPath)) {
+    return {
+      ok: false,
+      failureReason: 'WP06_INSTALLER_SMALI_MISSING',
+      message: `installer Smali missing: ${installerPath}`,
+    };
+  }
+
+  const bridge = fs.readFileSync(bridgePath, 'utf8');
+  const installer = fs.readFileSync(installerPath, 'utf8');
+  const missing = [];
+
+  if (!installer.includes('CarWallpaperPluginInstaller')) missing.push('installerClass');
+  if (!installer.includes(PLUGIN_PACKAGE)) missing.push('pluginPackage');
+  if (!installer.includes('PackageInstaller') && !installer.includes('PACKAGE_INSTALLER')) {
+    if (!/PackageInstaller/i.test(installer)) missing.push('PackageInstaller');
+  }
+  if (!installer.includes('content://')) missing.push('contentScheme');
+  if (!installer.includes(INSTALL_APK_MIME)) missing.push('apkMime');
+  if (!installer.includes(INSTALL_USER_ACTION_KIND)) missing.push('userActionKind');
+  if (!installer.includes(REQUEST_INSTALL_PACKAGES)) missing.push('requestInstallPerm');
+
+  if (!bridge.includes('isInstalled')) missing.push('bridge.isInstalled');
+  if (!bridge.includes('getPluginVersion')) missing.push('bridge.getPluginVersion');
+  if (!bridge.includes('installPlugin')) missing.push('bridge.installPlugin');
+  if (!bridge.includes('CarWallpaperPluginInstaller')) missing.push('bridge.installerCall');
+
+  // Must not keep the WP-04 silent-ish fixed stub without installer route.
+  if (
+    /const-string v0, "\{\\"code\\":20,\\"userActionKind\\":\\"INSTALL_PLUGIN\\"\}"/.test(
+      bridge,
+    ) &&
+    !bridge.includes('CarWallpaperPluginInstaller')
+  ) {
+    missing.push('installPluginStillStub');
+  }
+
+  if (missing.length) {
+    return {
+      ok: false,
+      failureReason: 'WP06_CONTRACT_MIRROR_DRIFT',
+      message: `WP-06 Smali drifts from install contract: ${missing.join(',')}`,
+      missing,
+    };
+  }
+
+  return {
+    ok: true,
+    pluginPackage: PLUGIN_PACKAGE,
+    apkMime: INSTALL_APK_MIME,
+    bridgePath,
+    installerPath,
+    EffectiveDone: false,
+  };
+}
+
 module.exports = Object.freeze({
   protocolVersion: PROTOCOL_VERSION,
   authority: AUTHORITY,
@@ -1019,6 +1292,17 @@ module.exports = Object.freeze({
   assertFileProviderSmaliMirror,
   STAGER_SMALI_REL_PATH,
   SMALI_BRIDGE_REL_PATH,
+  // WP-06 install (single mapping + constants)
+  installApkMime: INSTALL_APK_MIME,
+  installUserActionKind: INSTALL_USER_ACTION_KIND,
+  installSettingsRequired: INSTALL_SETTINGS_REQUIRED,
+  requestInstallPackages: REQUEST_INSTALL_PACKAGES,
+  installResult: INSTALL_RESULT,
+  INSTALLER_SMALI_REL_PATH,
+  isInstallContentUri,
+  previewInstallPlugin,
+  assertInstallFixtures,
+  assertInstallSmaliMirror,
   ActionTokenRegistry,
   createActionTokenRegistry,
   actionTokenRegistry: defaultRegistry,

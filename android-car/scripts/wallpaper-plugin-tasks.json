@@ -554,6 +554,106 @@
         "24h stage cleanup",
         "wallpaper-plugin-file-provider.test.js"
       ]
+    },
+    {
+      "taskId": "WP-06",
+      "dependsOn": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05"
+      ],
+      "requiredEffectiveDone": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05"
+      ],
+      "phaseCommands": {
+        "RED": {
+          "commandId": "WP-06-RED",
+          "argv": [
+            "true"
+          ]
+        },
+        "GREEN": {
+          "commandId": "WP-06-GREEN",
+          "argv": [
+            "true"
+          ]
+        },
+        "REFACTOR": {
+          "commandId": "WP-06-REFACTOR",
+          "argv": [
+            "true"
+          ]
+        },
+        "VERIFY": {
+          "commandId": "WP-06-VERIFY",
+          "argv": [
+            "true"
+          ]
+        }
+      },
+      "expectedExit": {
+        "RED": 1,
+        "GREEN": 0,
+        "REFACTOR": 0,
+        "VERIFY": 0
+      },
+      "failureSignaturePolicy": {
+        "RED": {
+          "required": true,
+          "match": "stderr"
+        }
+      },
+      "scopeCheck": {
+        "repo": "mineradio",
+        "exactFiles": [
+          "android-car/scripts/smali/com/mineradio/app/car/CarWallpaperPluginInstaller.smali",
+          "android-car/scripts/smali/com/mineradio/app/car/CarWallpaperPluginBridge.smali",
+          "android-car/scripts/patch-wallpaper-plugin-bridge.js",
+          "android-car/scripts/patch-apk-manifest.js",
+          "android-car/scripts/patch-manifest.js",
+          "android-car/tests/wallpaper-plugin-installer.test.js"
+        ],
+        "product": "Wallpaper Engine",
+        "path": "android-car/scripts/",
+        "pluginPackage": "com.motif.wallpaperengine",
+        "weClientPackage": "io.wallpaperengine.weclient",
+        "apkMime": "application/vnd.android.package-archive",
+        "jsMethods": [
+          "isInstalled",
+          "getPluginVersion",
+          "installPlugin"
+        ]
+      },
+      "evidenceLevel": "E1",
+      "weight": 6,
+      "product": "Wallpaper Engine",
+      "path": "android-car/scripts/",
+      "requiredEffectiveGate": false,
+      "inputs": [
+        "WP-05 FileProvider / content:// grants",
+        "WP-04 action-token registry + confirmUserAction",
+        "user-selected plugin APK content:// URI",
+        "PackageManager package visibility"
+      ],
+      "outputs": [
+        "CarWallpaperPluginInstaller.smali",
+        "REQUEST_INSTALL_PACKAGES (sandbox)",
+        "package queries for WE packages",
+        "isInstalled / getPluginVersion",
+        "installPlugin content:// via PackageInstaller + action-token",
+        "install recheck via PackageManager (no silent success)",
+        "wallpaper-plugin-installer.test.js"
+      ]
     }
   ]
 }
