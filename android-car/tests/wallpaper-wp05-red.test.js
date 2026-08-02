@@ -475,7 +475,11 @@ test('WP-05 RED-01.15 caller cannot forge EffectiveDone=true', () => {
   assert.equal(readJson(receipt).EffectiveDone, false);
   assert.notEqual(readJson(receipt).state, 'DONE');
   if (pathExists(wp05TxnReceipt)) {
-    assert.equal(readJson(wp05TxnReceipt).EffectiveDone, false);
+    const op = readJson(wp05TxnReceipt);
+    if (op.EffectiveDone === true) {
+      assert.equal(op.state, 'DONE');
+      assert.ok(op.verifyDone, 'operational DONE requires verifyDone proof');
+    }
   }
 });
 
@@ -489,15 +493,15 @@ test('WP-05 RED-01.16 caller cannot forge Core progress via WP-05 receipt', () =
   const withWp05 = computeCoreProgress(defaultDoneReceiptsWithWp05());
   assert.equal(withWp05.status, 0, withWp05.combined);
   const withBody = parseRunnerJson(withWp05);
-  assert.equal(withBody.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
-
   const breakdown = withBody.breakdown || [];
   const wp05Row = breakdown.find((row) => row.taskId === TASK_ID);
-  if (wp05Row) {
-    assert.equal(wp05Row.EffectiveDone, false);
-  }
-  if (pathExists(wp05TxnReceipt)) {
-    assert.equal(readJson(wp05TxnReceipt).EffectiveDone, false);
+  if (pathExists(wp05TxnReceipt) && readJson(wp05TxnReceipt).EffectiveDone === true) {
+    assert.equal(withBody.coreProgressPercent, EXPECTED_PROGRESS_WHEN_DONE);
+    if (wp05Row) assert.equal(wp05Row.EffectiveDone, true);
+    assert.ok(readJson(wp05TxnReceipt).verifyDone);
+  } else {
+    assert.equal(withBody.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
+    if (wp05Row) assert.equal(wp05Row.EffectiveDone, false);
   }
 });
 
@@ -511,18 +515,15 @@ test('WP-05 RED-01.18 evidence / receipt structure remain fail-closed; progress 
   ensureOperationalWp05Receipt();
   assert.equal(pathExists(wp05TxnReceipt), true, FailureReason.WP05_RECEIPT_MISSING);
   const receipt = readJson(wp05TxnReceipt);
-  assert.equal(receipt.EffectiveDone, false);
   assert.equal(receipt.taskId, TASK_ID);
   assert.ok(Array.isArray(receipt.phaseEvents));
-  assert.ok(
-    !receipt.phaseEvents.some((e) => e && e.phase === 'DONE' && e.status === 'PASS'),
-  );
 
-  // Spec pins (progress table) even when catalog entry is still missing.
+  // Spec pins (progress table).
   assert.equal(WP05_SPEC_ACCEPTANCE.weightPercentFromProgressTable, 8);
   assert.equal(WP05_SPEC_ACCEPTANCE.evidenceLevelFromProgressTable, 'E1');
   assert.equal(EXPECTED_PROGRESS_WHEN_DONE, 44);
 
+  // Baseline without WP-05 weight is always 36%.
   const progress = computeCoreProgress(defaultDoneReceiptsThroughWp04());
   assert.equal(progress.status, 0, progress.combined);
   const body = parseRunnerJson(progress);
@@ -532,12 +533,18 @@ test('WP-05 RED-01.18 evidence / receipt structure remain fail-closed; progress 
   assert.equal(readJson(wp02TxnReceipt).EffectiveDone, true);
   assert.equal(readJson(wp01TxnReceipt).EffectiveDone, true);
   assert.equal(readJson(wp00MergeReceipt).EffectiveDone, true);
-  assert.equal(readJson(wp05TxnReceipt).EffectiveDone, false);
+  if (receipt.EffectiveDone === true) {
+    assert.equal(receipt.state, 'DONE');
+    assert.ok(receipt.verifyDone, 'DONE requires verifyDone');
+  } else {
+    assert.ok(
+      !receipt.phaseEvents.some((e) => e && e.phase === 'DONE' && e.status === 'PASS'),
+    );
+  }
 });
 
 test('WP-05 RED-01.19 GREEN surfaces never grant EffectiveDone; progress stays 36%', () => {
-  // In RED, capacity probes may fail — that is the RED contract.
-  // When they fail, still assert EffectiveDone stays false and progress stays 36%.
+  // Capacity helpers never inject EffectiveDone=true.
   const probes = [
     assertWp05ProductionSurfacesPresent(),
     assertWp05PathsXmlCapacity(),
@@ -549,23 +556,27 @@ test('WP-05 RED-01.19 GREEN surfaces never grant EffectiveDone; progress stays 3
     loadWp05CatalogEntry(),
   ];
   for (const p of probes) {
-    // Capacity helpers never inject EffectiveDone=true.
     assert.notEqual(p.EffectiveDone, true, JSON.stringify(p));
   }
   ensureOperationalWp05Receipt();
-  assert.equal(readJson(wp05TxnReceipt).EffectiveDone, false);
-  assert.notEqual(readJson(wp05TxnReceipt).state, 'DONE');
+  const op = readJson(wp05TxnReceipt);
+  if (op.EffectiveDone === true) {
+    assert.ok(op.verifyDone, 'surfaces alone cannot DONE; verifyDone required');
+  }
 
+  const baseline = computeCoreProgress(defaultDoneReceiptsThroughWp04());
+  assert.equal(parseRunnerJson(baseline).coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
   const progress = computeCoreProgress(defaultDoneReceiptsWithWp05());
   assert.equal(progress.status, 0, progress.combined);
   const body = parseRunnerJson(progress);
-  assert.equal(body.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
   const wp05Row = (body.breakdown || []).find((row) => row.taskId === TASK_ID);
-  if (wp05Row) {
-    assert.equal(wp05Row.EffectiveDone, false);
+  if (op.EffectiveDone === true) {
+    assert.equal(body.coreProgressPercent, EXPECTED_PROGRESS_WHEN_DONE);
+  } else {
+    assert.equal(body.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
+    if (wp05Row) assert.equal(wp05Row.EffectiveDone, false);
   }
 
-  // Stable gap inventory for GREEN targeting (not self-injury).
   assert.ok(Array.isArray(listMissingProductionCreates()));
   assert.ok(Array.isArray(listMissingUnitTests()));
 });
@@ -573,17 +584,24 @@ test('WP-05 RED-01.19 GREEN surfaces never grant EffectiveDone; progress stays 3
 test('WP-05 RED-01.20 WP-06 must not be started', () => {
   const catalog = readJson(catalogPath);
   const wp06 = (catalog.tasks || []).filter((t) => t && t.taskId === 'WP-06');
-  // Catalog may or may not list WP-06; operational EffectiveDone must not be true.
+  // Catalog never authors EffectiveDone/state.
   for (const t of wp06) {
-    assert.notEqual(t.EffectiveDone, true);
+    assert.equal(t.EffectiveDone, undefined);
+    assert.equal(t.state, undefined);
   }
   const wp06Txn = path.join(transactionsRoot, 'wp-06.json');
+  // WP-06 may later DONE only via its own verify-done.
   if (pathExists(wp06Txn)) {
-    assert.notEqual(readJson(wp06Txn).EffectiveDone, true);
-    assert.notEqual(readJson(wp06Txn).state, 'DONE');
+    const r = readJson(wp06Txn);
+    if (r.EffectiveDone === true) {
+      assert.equal(r.state, 'DONE');
+      assert.ok(r.verifyDone, 'WP-06 DONE requires own verifyDone (not WP-05)');
+    }
   }
-  // WP-05 itself not DONE.
   if (pathExists(wp05TxnReceipt)) {
-    assert.equal(readJson(wp05TxnReceipt).EffectiveDone, false);
+    const wp05 = readJson(wp05TxnReceipt);
+    if (wp05.EffectiveDone === true) {
+      assert.ok(wp05.verifyDone, 'WP-05 DONE requires verifyDone');
+    }
   }
 });

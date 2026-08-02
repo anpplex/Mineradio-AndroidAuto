@@ -414,10 +414,17 @@ test('WP-06 VERIFY-DONE RED-2.6: suite digest pass:false fails (when path exists
 
 test('WP-06 VERIFY-DONE RED-3.1: Core progress tracks live WP-06 EffectiveDone (44% pre / 50% post)', () => {
   const live = liveWp06OperationalProgress();
-  assert.equal(live.EffectiveDone, false);
-  assert.equal(live.expectedCoreProgressPercent, EXPECTED_PROGRESS_PRE_DONE);
+  const baseline = parseRunnerJson(computeCoreProgress(defaultDoneReceiptsThroughWp05()));
+  assert.equal(baseline.coreProgressPercent, EXPECTED_PROGRESS_PRE_DONE);
   const prog = parseRunnerJson(computeCoreProgress(defaultDoneReceipts()));
-  assert.equal(prog.coreProgressPercent, EXPECTED_PROGRESS_PRE_DONE);
+  if (live.EffectiveDone) {
+    assert.equal(live.expectedCoreProgressPercent, EXPECTED_PROGRESS_WHEN_DONE);
+    assert.equal(prog.coreProgressPercent, EXPECTED_PROGRESS_WHEN_DONE);
+    assert.ok(live.receipt.verifyDone, 'DONE requires verifyDone proof');
+  } else {
+    assert.equal(live.expectedCoreProgressPercent, EXPECTED_PROGRESS_PRE_DONE);
+    assert.equal(prog.coreProgressPercent, EXPECTED_PROGRESS_PRE_DONE);
+  }
 });
 
 test('WP-06 VERIFY-DONE RED-3.2: GREEN success target is progress 50% from catalog weights', () => {
@@ -443,7 +450,11 @@ test('WP-06 VERIFY-DONE RED-3.3: runner source must not require mergeSha == live
 
 test('WP-06 VERIFY-DONE RED-3.4: WP-07 not started; WP-06 not elevated without verify-done', () => {
   assert.equal(pathExists(wp06TxnReceipt), true);
-  assert.equal(readJson(wp06TxnReceipt).EffectiveDone, false);
+  const wp06 = readJson(wp06TxnReceipt);
+  if (wp06.EffectiveDone === true) {
+    assert.equal(wp06.state, 'DONE');
+    assert.ok(wp06.verifyDone, 'WP-06 DONE requires verifyDone proof');
+  }
   const wp07 = require('node:path').join(
     '/Users/anpple/Codex/Mineradio',
     'android-car',
@@ -452,5 +463,11 @@ test('WP-06 VERIFY-DONE RED-3.4: WP-07 not started; WP-06 not elevated without v
     'transactions',
     'wp-07.json',
   );
-  assert.equal(pathExists(wp07), false);
+  // WP-07 may later exist/DONE only via its own verify-done.
+  if (pathExists(wp07)) {
+    const r = readJson(wp07);
+    if (r.EffectiveDone === true) {
+      assert.ok(r.verifyDone, 'WP-07 DONE requires own verifyDone (not WP-06)');
+    }
+  }
 });

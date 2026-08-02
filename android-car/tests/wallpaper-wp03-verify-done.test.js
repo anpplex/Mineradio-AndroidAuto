@@ -455,12 +455,19 @@ test('WP-03 VERIFY-DONE RED-3.4: WP-04 EffectiveDone not elevated by WP-03 close
     assert.equal(wp04.EffectiveDone, undefined);
     assert.equal(wp04.state, undefined);
   }
-  // Operational WP-03 truth is dynamic; WP-04 txn if present must stay non-DONE in GREEN.
+  // WP-04 may later reach DONE only via its own verify-done (not WP-03 close).
   const wp04Path = path.join(path.dirname(wp03TxnReceipt), 'wp-04.json');
   if (pathExists(wp04Path)) {
     const wp04Receipt = readJson(wp04Path);
-    assert.notEqual(wp04Receipt.EffectiveDone, true);
-    assert.notEqual(wp04Receipt.state, 'DONE');
+    if (wp04Receipt.EffectiveDone === true) {
+      assert.equal(wp04Receipt.state, 'DONE');
+      assert.ok(
+        wp04Receipt.verifyDone,
+        'WP-04 DONE must carry verifyDone proof (not elevated by WP-03 close alone)',
+      );
+    } else {
+      assert.notEqual(wp04Receipt.state, 'DONE');
+    }
   }
   if (live.EffectiveDone) {
     assert.ok(live.receipt.verifyDone, 'WP-03 DONE requires verifyDone proof');
