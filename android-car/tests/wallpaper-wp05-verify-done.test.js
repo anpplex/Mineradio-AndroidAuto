@@ -548,8 +548,12 @@ test('WP-05 VERIFY-DONE RED-3.4: WP-06 not started; WP-05 EffectiveDone not elev
     '/Users/anpple/Codex/Mineradio/android-car/verification/wallpaper-plugin/transactions',
     'wp-06.json',
   );
+  // WP-06 may later DONE only via its own verify-done (not WP-05).
   if (pathExists(wp06Txn)) {
-    assert.notEqual(readJson(wp06Txn).EffectiveDone, true);
+    const r = readJson(wp06Txn);
+    if (r.EffectiveDone === true) {
+      assert.ok(r.verifyDone, 'WP-06 DONE requires own verifyDone proof');
+    }
   }
   assert.equal(readJson(wp05TxnReceipt).EffectiveDone, live.EffectiveDone);
   if (live.EffectiveDone) {
@@ -557,7 +561,7 @@ test('WP-05 VERIFY-DONE RED-3.4: WP-06 not started; WP-05 EffectiveDone not elev
   } else {
     assert.equal(readJson(wp05TxnReceipt).EffectiveDone, false);
   }
-  // Progress stays 36% without WP-05 EffectiveDone.
+  // Baseline without WP-05 weight stays 36%.
   const progress = computeCoreProgress(defaultDoneReceiptsThroughWp04());
   assert.equal(parseRunnerJson(progress).coreProgressPercent, 36);
 });

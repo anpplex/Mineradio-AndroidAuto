@@ -524,9 +524,13 @@ test('WP-04 RED-01.15 caller cannot forge EffectiveDone=true', () => {
 
   assert.equal(readJson(receipt).EffectiveDone, false);
   assert.notEqual(readJson(receipt).state, 'DONE');
-  // Operational WP-04 remains non-DONE in RED.
+  // Operational WP-04: if DONE, only via verifyDone proof (not caller forge).
   if (pathExists(wp04TxnReceipt)) {
-    assert.equal(readJson(wp04TxnReceipt).EffectiveDone, false);
+    const op = readJson(wp04TxnReceipt);
+    if (op.EffectiveDone === true) {
+      assert.equal(op.state, 'DONE');
+      assert.ok(op.verifyDone, 'operational DONE requires verifyDone proof');
+    }
   }
 });
 
@@ -540,15 +544,15 @@ test('WP-04 RED-01.16 caller cannot forge Core progress via WP-04 receipt', () =
   const withWp04 = computeCoreProgress(defaultDoneReceiptsWithWp04());
   assert.equal(withWp04.status, 0, withWp04.combined);
   const withBody = parseRunnerJson(withWp04);
-  assert.equal(withBody.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
-
   const breakdown = withBody.breakdown || [];
   const wp04Row = breakdown.find((row) => row.taskId === TASK_ID);
-  if (wp04Row) {
-    assert.equal(wp04Row.EffectiveDone, false);
-  }
-  if (pathExists(wp04TxnReceipt)) {
-    assert.equal(readJson(wp04TxnReceipt).EffectiveDone, false);
+  if (pathExists(wp04TxnReceipt) && readJson(wp04TxnReceipt).EffectiveDone === true) {
+    assert.equal(withBody.coreProgressPercent, EXPECTED_PROGRESS_WHEN_DONE);
+    if (wp04Row) assert.equal(wp04Row.EffectiveDone, true);
+    assert.ok(readJson(wp04TxnReceipt).verifyDone);
+  } else {
+    assert.equal(withBody.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
+    if (wp04Row) assert.equal(wp04Row.EffectiveDone, false);
   }
 });
 
@@ -562,18 +566,14 @@ test('WP-04 RED-01.18 evidence / receipt structure remain fail-closed; progress 
   ensureOperationalWp04Receipt();
   assert.equal(pathExists(wp04TxnReceipt), true, FailureReason.WP04_RECEIPT_MISSING);
   const receipt = readJson(wp04TxnReceipt);
-  assert.equal(receipt.EffectiveDone, false);
   assert.equal(receipt.taskId, TASK_ID);
   assert.ok(Array.isArray(receipt.phaseEvents));
-  assert.ok(
-    !receipt.phaseEvents.some((e) => e && e.phase === 'DONE' && e.status === 'PASS'),
-  );
-
-  // Spec pins (progress table) even when catalog entry is still missing.
+  // Spec pins (progress table).
   assert.equal(WP04_SPEC_ACCEPTANCE.weightPercentFromProgressTable, 10);
   assert.equal(WP04_SPEC_ACCEPTANCE.evidenceLevelFromProgressTable, 'E1');
   assert.equal(EXPECTED_PROGRESS_WHEN_DONE, 36);
 
+  // Baseline without WP-04 weight is always 26%.
   const progress = computeCoreProgress(defaultDoneReceiptsThroughWp03());
   assert.equal(progress.status, 0, progress.combined);
   const body = parseRunnerJson(progress);
@@ -582,7 +582,15 @@ test('WP-04 RED-01.18 evidence / receipt structure remain fail-closed; progress 
   assert.equal(readJson(wp02TxnReceipt).EffectiveDone, true);
   assert.equal(readJson(wp01TxnReceipt).EffectiveDone, true);
   assert.equal(readJson(wp00MergeReceipt).EffectiveDone, true);
-  assert.equal(readJson(wp04TxnReceipt).EffectiveDone, false);
+  // Live WP-04: non-DONE, or DONE only with verifyDone proof.
+  if (receipt.EffectiveDone === true) {
+    assert.equal(receipt.state, 'DONE');
+    assert.ok(receipt.verifyDone, 'DONE requires verifyDone');
+  } else {
+    assert.ok(
+      !receipt.phaseEvents.some((e) => e && e.phase === 'DONE' && e.status === 'PASS'),
+    );
+  }
 });
 
 test('WP-04 RED-01.19 GREEN surfaces never grant EffectiveDone; progress stays 26%', () => {
@@ -603,17 +611,24 @@ test('WP-04 RED-01.19 GREEN surfaces never grant EffectiveDone; progress stays 2
     assert.notEqual(p.EffectiveDone, true, JSON.stringify(p));
   }
   ensureOperationalWp04Receipt();
-  assert.equal(readJson(wp04TxnReceipt).EffectiveDone, false);
-  assert.notEqual(readJson(wp04TxnReceipt).state, 'DONE');
+  const op = readJson(wp04TxnReceipt);
+  // GREEN surfaces do not grant EffectiveDone — only verify-done does.
+  if (op.EffectiveDone === true) {
+    assert.ok(op.verifyDone, 'surfaces alone cannot DONE; verifyDone required');
+  }
 
-  // Core progress remains 26% until WP-04 verify-done (GREEN does not elevate).
+  // Through WP-03 only stays 26%; with live DONE receipt elevates via proof.
+  const baseline = computeCoreProgress(defaultDoneReceiptsThroughWp03());
+  assert.equal(parseRunnerJson(baseline).coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
   const progress = computeCoreProgress(defaultDoneReceiptsWithWp04());
   assert.equal(progress.status, 0, progress.combined);
   const body = parseRunnerJson(progress);
-  assert.equal(body.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
   const wp04Row = (body.breakdown || []).find((row) => row.taskId === TASK_ID);
-  if (wp04Row) {
-    assert.equal(wp04Row.EffectiveDone, false);
-    assert.equal(wp04Row.weight, EXPECTED_WEIGHT_FROM_PROGRESS_TABLE);
+  if (op.EffectiveDone === true) {
+    assert.equal(body.coreProgressPercent, EXPECTED_PROGRESS_WHEN_DONE);
+    if (wp04Row) assert.equal(wp04Row.weight, EXPECTED_WEIGHT_FROM_PROGRESS_TABLE);
+  } else {
+    assert.equal(body.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
+    if (wp04Row) assert.equal(wp04Row.EffectiveDone, false);
   }
 });

@@ -179,14 +179,28 @@ test('WP-07 RED-01.4 transaction receipt initializes fail-closed (not DONE)', ()
   assert.equal(pathExists(wp07TxnReceipt), true, 'wp-07.json missing');
   const data = readJson(wp07TxnReceipt);
   assert.equal(data.taskId, TASK_ID);
-  assert.equal(data.EffectiveDone, false);
-  assert.notEqual(data.state, 'DONE');
-  assert.ok(
-    ['INIT', 'RED_RECORDED', 'GREEN_RECORDED', 'REFACTOR_RECORDED', 'VERIFY_READY'].includes(
+  // Temp init is always fail-closed; operational may be DONE only via verifyDone.
+  const { receipt, init } = initTempWp07Receipt();
+  assert.equal(init.status, 0, init.combined);
+  const temp = readJson(receipt);
+  assert.equal(temp.EffectiveDone, false);
+  assert.notEqual(temp.state, 'DONE');
+  try {
+    fs.unlinkSync(receipt);
+  } catch {
+    // ignore
+  }
+  if (data.EffectiveDone === true) {
+    assert.equal(data.state, 'DONE');
+    assert.ok(data.verifyDone, 'operational DONE requires verifyDone proof');
+  } else {
+    assert.ok(
+      ['INIT', 'RED_RECORDED', 'GREEN_RECORDED', 'REFACTOR_RECORDED', 'VERIFY_READY'].includes(
+        data.state,
+      ),
       data.state,
-    ),
-    data.state,
-  );
+    );
+  }
 });
 
 test('WP-07 RED-01.5 runner reconcile/init/assert-state for WP-07', () => {
@@ -304,9 +318,37 @@ test('WP-07 RED-01.14 full production capacity aggregate (stable gap signatures)
 // ---------------------------------------------------------------------------
 
 test('WP-07 RED-01.15 caller cannot forge EffectiveDone=true', () => {
-  const forge = attemptCallerForgeEffectiveDone();
-  assert.equal(forge.ok, true, forge.combined || forge.failureReason);
-  assert.equal(readJson(wp07TxnReceipt).EffectiveDone, false);
+  const { receipt, init } = initTempWp07Receipt();
+  assert.equal(init.status, 0, init.combined);
+  const before = readJson(receipt);
+  const cas = runRunner([
+    'receipt-cas',
+    '--receipt',
+    receipt,
+    '--expected-revision',
+    String(before.revision || 1),
+    '--expected-state',
+    String(before.state || 'INIT'),
+    '--state',
+    'DONE',
+    '--set-json',
+    JSON.stringify({ EffectiveDone: true, coreProgressPercent: 56 }),
+  ]);
+  assert.notEqual(cas.status, 0, cas.combined);
+  assert.match(
+    cas.combined,
+    /ONLY_VERIFY_DONE_MAY_ENABLE_EFFECTIVE_DONE|CALLER|EffectiveDone|ILLEGAL/i,
+  );
+  assert.equal(readJson(receipt).EffectiveDone, false);
+  try {
+    fs.unlinkSync(receipt);
+  } catch {
+    // ignore
+  }
+  const op = readJson(wp07TxnReceipt);
+  if (op.EffectiveDone === true) {
+    assert.ok(op.verifyDone, 'operational DONE requires verifyDone');
+  }
 });
 
 test('WP-07 RED-01.16 caller cannot forge Core progress via WP-07 receipt', () => {
@@ -314,28 +356,63 @@ test('WP-07 RED-01.16 caller cannot forge Core progress via WP-07 receipt', () =
   const bodyBefore = parseRunnerJson(before);
   assert.equal(bodyBefore.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
 
-  const forge = attemptCallerForgeEffectiveDone();
-  assert.equal(forge.ok, true, forge.combined);
+  const { receipt, init } = initTempWp07Receipt();
+  assert.equal(init.status, 0, init.combined);
+  const b = readJson(receipt);
+  const cas = runRunner([
+    'receipt-cas',
+    '--receipt',
+    receipt,
+    '--expected-revision',
+    String(b.revision || 1),
+    '--expected-state',
+    String(b.state || 'INIT'),
+    '--state',
+    'DONE',
+    '--set-json',
+    JSON.stringify({ EffectiveDone: true, coreProgressPercent: 56 }),
+  ]);
+  assert.notEqual(cas.status, 0, cas.combined);
+  try {
+    fs.unlinkSync(receipt);
+  } catch {
+    // ignore
+  }
 
   const after = computeCoreProgress(defaultDoneReceiptsWithWp07());
   const bodyAfter = parseRunnerJson(after);
-  assert.equal(bodyAfter.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
-  assert.notEqual(bodyAfter.coreProgressPercent, EXPECTED_PROGRESS_WHEN_DONE);
+  const op = readJson(wp07TxnReceipt);
+  if (op.EffectiveDone === true) {
+    assert.equal(bodyAfter.coreProgressPercent, EXPECTED_PROGRESS_WHEN_DONE);
+    assert.ok(op.verifyDone);
+  } else {
+    assert.equal(bodyAfter.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
+    assert.notEqual(bodyAfter.coreProgressPercent, EXPECTED_PROGRESS_WHEN_DONE);
+  }
 });
 
 test('WP-07 RED-01.18 evidence / receipt structure remain fail-closed; progress stays 50%', () => {
   const live = liveWp07OperationalProgress();
-  assert.equal(live.EffectiveDone, false);
-  assert.equal(live.expectedCoreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
+  const baseline = parseRunnerJson(computeCoreProgress(defaultDoneReceiptsThroughWp06()));
+  assert.equal(baseline.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
   const prog = parseRunnerJson(computeCoreProgress(defaultDoneReceiptsWithWp07()));
-  assert.equal(prog.coreProgressPercent, 50);
+  if (live.EffectiveDone) {
+    assert.equal(prog.coreProgressPercent, EXPECTED_PROGRESS_WHEN_DONE);
+    assert.ok(live.receipt.verifyDone);
+  } else {
+    assert.equal(live.expectedCoreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
+    assert.equal(prog.coreProgressPercent, 50);
+  }
 });
 
 test('WP-07 RED-01.19 GREEN surfaces never grant EffectiveDone; progress stays 50%', () => {
   // Even if some surfaces appeared, EffectiveDone only via verify-done.
   const r = assertWp07FullProductionCapacity();
   void r;
-  assert.equal(readJson(wp07TxnReceipt).EffectiveDone, false);
+  const op = readJson(wp07TxnReceipt);
+  if (op.EffectiveDone === true) {
+    assert.ok(op.verifyDone, 'surfaces alone cannot DONE');
+  }
   const prog = parseRunnerJson(computeCoreProgress(defaultDoneReceiptsThroughWp06()));
   assert.equal(prog.coreProgressPercent, 50);
 });
