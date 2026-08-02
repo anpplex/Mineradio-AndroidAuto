@@ -5384,6 +5384,419 @@ def evaluate_wp05_verify_done(
     return True, "", "", record
 
 
+# WP-06 verify-done: single implementation PR (#16) + suite digests + prereq DONE.
+# GREEN-01: WP06_* namespace only — never WP05_/WP04_/WP03_* mis-tags for WP-06.
+# REFACTOR-01: already uses shared single-PR helpers (_verify_merged_implementation_pr,
+# _catalog_unique_task, _assemble_verify_done_record, suite/catalog/prereq digests);
+# installer surface checker remains WP-06-specific. Behavior unchanged.
+# Stable unavailable reason retained for RED contract / documentation (path implemented).
+WP06_VERIFY_DONE_UNAVAILABLE = "WP06_VERIFY_DONE_UNAVAILABLE"
+WP06_CONTRACT_PATH = _FROZEN_SCRIPT_DIR / "wallpaper-plugin-contract.js"
+WP06_PATCHER_PATH = _FROZEN_SCRIPT_DIR / "patch-wallpaper-plugin-bridge.js"
+WP06_MANIFEST_PATCHER_PATH = _FROZEN_SCRIPT_DIR / "patch-apk-manifest.js"
+WP06_SMALI_BRIDGE_REL = (
+    "android-car/scripts/smali/com/mineradio/app/car/CarWallpaperPluginBridge.smali"
+)
+WP06_SMALI_INSTALLER_REL = (
+    "android-car/scripts/smali/com/mineradio/app/car/CarWallpaperPluginInstaller.smali"
+)
+WP06_SMALI_BRIDGE_PATH = (
+    _FROZEN_SCRIPT_DIR / "smali" / "com" / "mineradio" / "app" / "car" / (
+        "CarWallpaperPluginBridge.smali"
+    )
+)
+WP06_SMALI_INSTALLER_PATH = (
+    _FROZEN_SCRIPT_DIR / "smali" / "com" / "mineradio" / "app" / "car" / (
+        "CarWallpaperPluginInstaller.smali"
+    )
+)
+WP06_PLUGIN_PACKAGE = "com.motif.wallpaperengine"
+WP06_WE_CLIENT_PACKAGE = "io.wallpaperengine.weclient"
+WP06_REQUEST_INSTALL = "android.permission.REQUEST_INSTALL_PACKAGES"
+WP06_APK_MIME = "application/vnd.android.package-archive"
+WP06_CALLER_FORGERY_KEYS = WP05_CALLER_FORGERY_KEYS
+WP06_SUITE_KEYS = (
+    "androidUnitTest",
+    "bridgeUnitTest",
+    "wp06InstallerTest",
+    "monorepoImportTest",
+    "fullNodeTest",
+)
+WP06_REQUIRED_PREREQS = (
+    "WP-INFRA",
+    "WP-00",
+    "WP-01",
+    "WP-02",
+    "WP-03",
+    "WP-04",
+    "WP-05",
+)
+WP06_IMPLEMENTATION_SURFACES = (
+    "android-car/scripts/wallpaper-plugin-contract.js",
+    "android-car/scripts/patch-wallpaper-plugin-bridge.js",
+    "android-car/scripts/patch-apk-manifest.js",
+    "android-car/scripts/patch-manifest.js",
+    WP06_SMALI_BRIDGE_REL,
+    WP06_SMALI_INSTALLER_REL,
+)
+_WP06_PREREQ_RECEIPTS = {
+    "WP-INFRA": _BOOTSTRAP_RECEIPTS["WP-INFRA"],
+    "WP-00": _BOOTSTRAP_RECEIPTS["WP-00"],
+    "WP-01": _TXN_RECEIPTS["WP-01"],
+    "WP-02": _TXN_RECEIPTS["WP-02"],
+    "WP-03": _TXN_RECEIPTS["WP-03"],
+    "WP-04": _VERIFICATION_ROOT / "transactions" / "wp-04.json",
+    "WP-05": _VERIFICATION_ROOT / "transactions" / "wp-05.json",
+}
+
+
+def _load_wp06_identity_proofs(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _load_single_pr_identity_proofs(
+        receipt,
+        args,
+        missing_reason="WP06_VERIFY_DONE_PROOF_MISSING",
+        forgery_reason="WP06_VERIFY_DONE_CALLER_FORGERY",
+        forgery_keys=WP06_CALLER_FORGERY_KEYS,
+        empty_label="WP-06",
+    )
+
+
+def _caller_wp06_implementation_pr(
+    proofs: Mapping[str, Any],
+) -> tuple[int | None, str, str]:
+    return _extract_implementation_pr_number(
+        proofs,
+        missing_reason="WP06_VERIFY_DONE_PROOF_MISSING",
+    )
+
+
+def _verify_wp06_catalog_schema_digests(
+    proofs: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, str, str]:
+    return _verify_catalog_schema_digests(
+        proofs,
+        args,
+        invalid_reason="WP06_CATALOG_PROOF_INVALID",
+    )
+
+
+def _wp06_require_implementation_surfaces_on_head(
+    head_sha: str,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    """PR head must carry WP-06 installer / package visibility surfaces."""
+    missing: list[str] = []
+    for rel in WP06_IMPLEMENTATION_SURFACES:
+        if not _git_path_exists_at_commit(head_sha, rel):
+            missing.append(rel)
+    if missing:
+        return (
+            False,
+            "WP06_PR_PROOF_INVALID",
+            "implementation head missing WP-06 surfaces: " + ", ".join(missing),
+            {},
+        )
+
+    inst_rc, inst_text = _git_show_at_commit(head_sha, WP06_SMALI_INSTALLER_REL)
+    if inst_rc < 0:
+        return (
+            False,
+            "WP06_PR_PROOF_INVALID",
+            "cannot read CarWallpaperPluginInstaller.smali at head: git show failed",
+            {},
+        )
+    if (
+        inst_rc != 0
+        or "CarWallpaperPluginInstaller" not in inst_text
+        or "PackageInstaller" not in inst_text
+        or "content://" not in inst_text
+        or WP06_PLUGIN_PACKAGE not in inst_text
+        or WP06_APK_MIME not in inst_text
+    ):
+        return (
+            False,
+            "WP06_PR_PROOF_INVALID",
+            "implementation head installer missing PackageInstaller/content/MIME/package markers",
+            {},
+        )
+
+    bridge_rc, bridge_text = _git_show_at_commit(head_sha, WP06_SMALI_BRIDGE_REL)
+    if bridge_rc < 0:
+        return (
+            False,
+            "WP06_PR_PROOF_INVALID",
+            "cannot read CarWallpaperPluginBridge.smali at head: git show failed",
+            {},
+        )
+    if (
+        bridge_rc != 0
+        or "isInstalled" not in bridge_text
+        or "getPluginVersion" not in bridge_text
+        or "installPlugin" not in bridge_text
+        or "CarWallpaperPluginInstaller" not in bridge_text
+        or "requestInstallFromContentUri" not in bridge_text
+    ):
+        return (
+            False,
+            "WP06_PR_PROOF_INVALID",
+            "implementation head installPlugin must route through CarWallpaperPluginInstaller",
+            {},
+        )
+
+    mp_rc, mp_text = _git_show_at_commit(
+        head_sha, "android-car/scripts/patch-apk-manifest.js"
+    )
+    if mp_rc < 0:
+        return (
+            False,
+            "WP06_PR_PROOF_INVALID",
+            "cannot read patch-apk-manifest.js at head: git show failed",
+            {},
+        )
+    if (
+        mp_rc != 0
+        or WP06_REQUEST_INSTALL not in mp_text
+        or WP06_PLUGIN_PACKAGE not in mp_text
+        or WP06_WE_CLIENT_PACKAGE not in mp_text
+    ):
+        return (
+            False,
+            "WP06_PR_PROOF_INVALID",
+            "implementation head patch-apk-manifest.js missing REQUEST_INSTALL/package queries wire",
+            {},
+        )
+
+    return (
+        True,
+        "",
+        "",
+        {
+            "implementationSurfaces": list(WP06_IMPLEMENTATION_SURFACES),
+            "pluginPackage": WP06_PLUGIN_PACKAGE,
+            "weClientPackage": WP06_WE_CLIENT_PACKAGE,
+            "requestInstallPackages": WP06_REQUEST_INSTALL,
+            "apkMime": WP06_APK_MIME,
+        },
+    )
+
+
+def _verify_wp06_suite_and_blob_proofs(
+    proofs: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    ok, reason, message = _require_suite_pass_digests(
+        proofs,
+        WP06_SUITE_KEYS,
+        missing_reason="WP06_SUITE_RECEIPT_INVALID",
+    )
+    if not ok:
+        return False, reason, message, {}
+
+    for path, label in (
+        (WP06_CONTRACT_PATH, "wallpaper-plugin-contract.js"),
+        (WP06_PATCHER_PATH, "patch-wallpaper-plugin-bridge.js"),
+        (WP06_MANIFEST_PATCHER_PATH, "patch-apk-manifest.js"),
+        (WP06_SMALI_BRIDGE_PATH, "CarWallpaperPluginBridge.smali"),
+        (WP06_SMALI_INSTALLER_PATH, "CarWallpaperPluginInstaller.smali"),
+    ):
+        if not path.is_file():
+            return (
+                False,
+                "WP06_VERIFY_DONE_PROOF_MISSING",
+                f"WP-06 production surface missing: {label} ({path})",
+                {},
+            )
+
+    installer_text = WP06_SMALI_INSTALLER_PATH.read_text(encoding="utf-8")
+    if (
+        "CarWallpaperPluginInstaller" not in installer_text
+        or "PackageInstaller" not in installer_text
+        or WP06_PLUGIN_PACKAGE not in installer_text
+    ):
+        return (
+            False,
+            "WP06_VERIFY_DONE_PROOF_MISSING",
+            "CarWallpaperPluginInstaller.smali missing PackageInstaller/package markers",
+            {},
+        )
+    bridge_text = WP06_SMALI_BRIDGE_PATH.read_text(encoding="utf-8")
+    if (
+        "isInstalled" not in bridge_text
+        or "getPluginVersion" not in bridge_text
+        or "installPlugin" not in bridge_text
+        or "CarWallpaperPluginInstaller" not in bridge_text
+    ):
+        return (
+            False,
+            "WP06_VERIFY_DONE_PROOF_MISSING",
+            "bridge install methods must route through CarWallpaperPluginInstaller",
+            {},
+        )
+    manifest_text = WP06_MANIFEST_PATCHER_PATH.read_text(encoding="utf-8")
+    if (
+        WP06_REQUEST_INSTALL not in manifest_text
+        or WP06_PLUGIN_PACKAGE not in manifest_text
+    ):
+        return (
+            False,
+            "WP06_VERIFY_DONE_PROOF_MISSING",
+            "patch-apk-manifest.js missing REQUEST_INSTALL/package query anchors",
+            {},
+        )
+
+    ok, reason, message, live_catalog_sha, live_schema_sha = _verify_wp06_catalog_schema_digests(
+        proofs, args
+    )
+    if not ok:
+        return False, reason, message, {}
+
+    return (
+        True,
+        "",
+        "",
+        {
+            "catalogSha256": live_catalog_sha,
+            "schemaSha256": live_schema_sha,
+            "androidUnitTest": proofs["androidUnitTest"],
+            "bridgeUnitTest": proofs["bridgeUnitTest"],
+            "wp06InstallerTest": proofs["wp06InstallerTest"],
+            "monorepoImportTest": proofs["monorepoImportTest"],
+            "fullNodeTest": proofs["fullNodeTest"],
+            "contractPath": str(WP06_CONTRACT_PATH),
+            "contractSha256": _sha256_file(WP06_CONTRACT_PATH),
+            "patcherPath": str(WP06_PATCHER_PATH),
+            "patcherSha256": _sha256_file(WP06_PATCHER_PATH),
+            "manifestPatcherPath": str(WP06_MANIFEST_PATCHER_PATH),
+            "manifestPatcherSha256": _sha256_file(WP06_MANIFEST_PATCHER_PATH),
+            "smaliBridgePath": str(WP06_SMALI_BRIDGE_PATH),
+            "smaliBridgeSha256": _sha256_file(WP06_SMALI_BRIDGE_PATH),
+            "smaliInstallerPath": str(WP06_SMALI_INSTALLER_PATH),
+            "smaliInstallerSha256": _sha256_file(WP06_SMALI_INSTALLER_PATH),
+            "pluginPackage": WP06_PLUGIN_PACKAGE,
+            "requestInstallPackages": WP06_REQUEST_INSTALL,
+            "apkMime": WP06_APK_MIME,
+        },
+    )
+
+
+def verify_wp06_merged_implementation_pr(
+    *,
+    pr_number: int,
+    live_base_sha: str,
+    repo: str | None,
+) -> tuple[dict[str, Any] | None, str, str]:
+    """Independently re-read WP-06 implementation PR; ancestry vs live base, not tip equality."""
+    return _verify_merged_implementation_pr(
+        pr_number=pr_number,
+        live_base_sha=live_base_sha,
+        repo=repo,
+        invalid_reason="WP06_PR_PROOF_INVALID",
+        containment_reason="WP06_BASE_CONTAINMENT_FAILED",
+        surface_checker=_wp06_require_implementation_surfaces_on_head,
+    )
+
+
+def _catalog_wp06_task(
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _catalog_unique_task(
+        args,
+        task_id="WP-06",
+        expected_weight=6,
+        expected_evidence="E1",
+        required_prereqs=WP06_REQUIRED_PREREQS,
+        entry_missing_reason="WP06_CATALOG_ENTRY_MISSING",
+        catalog_invalid_reason="WP06_CATALOG_PROOF_INVALID",
+        required_done_missing_reason="WP06_REQUIRED_DONE_MISSING",
+        required_done_message=(
+            "WP-06.requiredEffectiveDone must include WP-INFRA, WP-00, WP-01, WP-02, WP-03, WP-04, WP-05"
+        ),
+    )
+
+
+def _verify_wp06_prerequisite_done_receipts() -> tuple[bool, str, str, dict[str, Any]]:
+    """Real DONE receipts for WP-INFRA/00/01/02/03/04/05 — not caller-forged."""
+    return _verify_prereq_done_receipts(
+        _WP06_PREREQ_RECEIPTS,
+        missing_reason="WP06_REQUIRED_DONE_MISSING",
+        state_done_tasks=frozenset({"WP-01", "WP-02", "WP-03", "WP-04", "WP-05"}),
+    )
+
+
+def _wp06_resolve_live_base(
+    proofs: Mapping[str, Any],
+) -> tuple[str | None, str, str]:
+    return _resolve_live_base_optional_claim(
+        proofs,
+        missing_reason="WP06_VERIFY_DONE_PROOF_MISSING",
+        containment_reason="WP06_BASE_CONTAINMENT_FAILED",
+    )
+
+
+def evaluate_wp06_verify_done(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    """Return (ok, reason, message, proof_record) for WP-06 CLOSE-VERIFY.
+
+    Requires:
+      - unique catalog WP-06 with weight 6 / evidence E1
+      - identity-only proofChain.implementation.prNumber
+      - independent gh PR API: MERGED + approved repo/base/head prefix
+      - merge + head are ancestors of live origin base tip (not tip equality)
+      - head tree carries WP-06 installer / package visibility surfaces
+      - suite digests + catalog/schema SHA match
+      - WP-INFRA…WP-05 EffectiveDone from real receipts
+      - caller cannot forge merged/EffectiveDone/REMOTE_VERIFIED/mergeSha/progress
+    """
+    task, reason, message = _catalog_wp06_task(args)
+    if task is None:
+        return False, reason, message, {}
+
+    ok_prereq, reason, message, prereq_record = _verify_wp06_prerequisite_done_receipts()
+    if not ok_prereq:
+        return False, reason, message, {}
+
+    proofs, reason, message = _load_wp06_identity_proofs(receipt, args)
+    if proofs is None:
+        return False, reason, message, {}
+
+    pr_number, reason, message = _caller_wp06_implementation_pr(proofs)
+    if pr_number is None:
+        return False, reason, message, {}
+
+    ok_suites, reason, message, suite_record = _verify_wp06_suite_and_blob_proofs(proofs, args)
+    if not ok_suites:
+        return False, reason, message, {}
+
+    live_base, reason, message = _wp06_resolve_live_base(proofs)
+    if live_base is None:
+        return False, reason, message, {}
+
+    repo = getattr(args, "repo", None) or APPROVED_GITHUB_REPO
+    impl_proof, reason, message = verify_wp06_merged_implementation_pr(
+        pr_number=pr_number,
+        live_base_sha=live_base,
+        repo=repo,
+    )
+    if impl_proof is None:
+        return False, reason, message, {}
+
+    record = _assemble_verify_done_record(
+        task=task,
+        impl_proof=impl_proof,
+        live_base=live_base,
+        prereq_record=prereq_record,
+        suite_record=suite_record,
+        weight=6,
+        default_path="android-car/scripts/",
+    )
+    return True, "", "", record
+
+
 def cmd_verify_done(args: argparse.Namespace) -> int:
     """Fail-closed DONE only when catalog + proofs + live base containment hold."""
     task_id = require_task(args.task)
@@ -5412,6 +5825,9 @@ def cmd_verify_done(args: argparse.Namespace) -> int:
         elif task_id == "WP-05":
             ok_gate, reason, message, proof_record = evaluate_wp05_verify_done(current, args)
             weight = 8
+        elif task_id == "WP-06":
+            ok_gate, reason, message, proof_record = evaluate_wp06_verify_done(current, args)
+            weight = 6
         else:
             # Never mis-tag later WP tasks as WP03_*.
             if task_id.startswith("WP-"):
@@ -5429,7 +5845,9 @@ def cmd_verify_done(args: argparse.Namespace) -> int:
             fail(
                 reason
                 or (
-                    "WP05_VERIFY_DONE_PROOF_MISSING"
+                    "WP06_VERIFY_DONE_PROOF_MISSING"
+                    if task_id == "WP-06"
+                    else "WP05_VERIFY_DONE_PROOF_MISSING"
                     if task_id == "WP-05"
                     else "WP04_VERIFY_DONE_PROOF_MISSING"
                     if task_id == "WP-04"
