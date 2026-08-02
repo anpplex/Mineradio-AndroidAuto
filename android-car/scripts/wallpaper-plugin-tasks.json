@@ -762,6 +762,110 @@
         "11 UI states; ENGINE_LAUNCHED not shown as 可预览",
         "wallpaper-plugin-runtime.test.js"
       ]
+    },
+    {
+      "taskId": "WP-08",
+      "dependsOn": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07"
+      ],
+      "requiredEffectiveDone": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07"
+      ],
+      "phaseCommands": {
+        "RED": {
+          "commandId": "WP-08-RED",
+          "argv": [
+            "true"
+          ]
+        },
+        "GREEN": {
+          "commandId": "WP-08-GREEN",
+          "argv": [
+            "true"
+          ]
+        },
+        "REFACTOR": {
+          "commandId": "WP-08-REFACTOR",
+          "argv": [
+            "true"
+          ]
+        },
+        "VERIFY": {
+          "commandId": "WP-08-VERIFY",
+          "argv": [
+            "true"
+          ]
+        }
+      },
+      "expectedExit": {
+        "RED": 1,
+        "GREEN": 0,
+        "REFACTOR": 0,
+        "VERIFY": 0
+      },
+      "failureSignaturePolicy": {
+        "RED": {
+          "required": true,
+          "match": "stderr"
+        }
+      },
+      "scopeCheck": {
+        "repo": "wallpaper-engine-plugin",
+        "exactFiles": [
+          "app/src/main/java/com/motif/wallpaperengine/plugin/WallpaperApplyController.kt",
+          "app/src/main/java/com/motif/wallpaperengine/plugin/WallpaperQueue.kt",
+          "app/src/main/java/com/motif/wallpaperengine/plugin/PluginRuntimeState.kt",
+          "app/src/main/java/com/motif/wallpaperengine/plugin/PluginControlProvider.kt",
+          "app/src/main/java/com/motif/wallpaperengine/plugin/PluginActionActivity.kt",
+          "app/src/test/java/com/motif/wallpaperengine/plugin/WallpaperQueueTest.kt",
+          "app/src/test/java/com/motif/wallpaperengine/plugin/PluginRuntimeStateTest.kt"
+        ],
+        "product": "Wallpaper Engine",
+        "path": "app/src/main/java/com/motif/wallpaperengine/plugin/",
+        "publicApi": [
+          "WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER",
+          "EXTRA_LIVE_WALLPAPER_COMPONENT",
+          "getWallpaperInfo",
+          "apply_current",
+          "claimLaunch",
+          "ACTIVE_TARGET"
+        ]
+      },
+      "evidenceLevel": "E1",
+      "weight": 8,
+      "product": "Wallpaper Engine",
+      "path": "app/src/main/java/com/motif/wallpaperengine/plugin/",
+      "requiredEffectiveGate": false,
+      "inputs": [
+        "WP-02 MultiProcessDataStore / claimLaunch lease",
+        "WP-07 HMI status poll runtime",
+        "public WallpaperManager change live wallpaper path",
+        "PackageManager WEWallpaperService ComponentName"
+      ],
+      "outputs": [
+        "WallpaperQueue.kt",
+        "PluginRuntimeState.kt",
+        "WallpaperApplyController.kt",
+        "PluginControlProvider apply/next/previous/stop",
+        "PluginActionActivity public apply + getWallpaperInfo reconcile",
+        "WallpaperQueueTest / PluginRuntimeStateTest"
+      ]
     }
   ]
 }
