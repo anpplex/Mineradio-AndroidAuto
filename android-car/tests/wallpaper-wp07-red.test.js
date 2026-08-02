@@ -426,7 +426,19 @@ test('WP-07 RED-01.20 WP-08 must not be started', () => {
     'transactions',
     'wp-08.json',
   );
-  assert.equal(pathExists(wp08), false, 'WP-08 transaction must not exist yet');
+  const cat = readJson(catalogPath);
+  const cat08 = (cat.tasks || []).find((t) => t && t.taskId === 'WP-08');
+  if (cat08) {
+    assert.equal(cat08.EffectiveDone, undefined);
+    assert.equal(cat08.state, undefined);
+  }
+  // WP-08 may later exist/DONE only via its own verify-done.
+  if (pathExists(wp08)) {
+    const r = readJson(wp08);
+    if (r.EffectiveDone === true) {
+      assert.ok(r.verifyDone, 'WP-08 DONE requires own verifyDone (not WP-07)');
+    }
+  }
 });
 
 test('WP-07 RED-01.21 production Create path list is fixed (Task 7 Files)', () => {

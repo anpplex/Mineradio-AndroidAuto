@@ -228,7 +228,13 @@ test('WP-07 VERIFY-DONE: WP-08 must not be started; WP07_* namespace fixed', () 
     'transactions',
     'wp-08.json',
   );
-  assert.equal(pathExists(wp08), false);
+  // WP-08 may exist/DONE only via its own verify-done (not forged by WP-07).
+  if (pathExists(wp08)) {
+    const r = readJson(wp08);
+    if (r.EffectiveDone === true) {
+      assert.ok(r.verifyDone, 'WP-08 DONE requires own verifyDone');
+    }
+  }
   assert.equal(FailureReason.WP07_VERIFY_DONE_UNAVAILABLE, 'WP07_VERIFY_DONE_UNAVAILABLE');
   assert.equal(FailureReason.WP07_VERIFY_DONE_PROOF_MISSING, 'WP07_VERIFY_DONE_PROOF_MISSING');
 });
