@@ -5797,6 +5797,379 @@ def evaluate_wp06_verify_done(
     return True, "", "", record
 
 
+# WP-07 verify-done: single implementation PR (#18) + suite digests + prereq DONE.
+# WP07_* namespace only — never WP06_/WP05_/… mis-tags for WP-07.
+# Shared helpers: _verify_merged_implementation_pr, _catalog_unique_task,
+# _assemble_verify_done_record, suite/catalog/prereq digests.
+# Stable unavailable reason retained for RED contract / documentation.
+WP07_VERIFY_DONE_UNAVAILABLE = "WP07_VERIFY_DONE_UNAVAILABLE"
+WP07_RUNTIME_PATH = _FROZEN_SCRIPT_DIR / "wallpaper-plugin-runtime.js"
+WP07_HMI_PATCHER_PATH = _FROZEN_SCRIPT_DIR / "patch-car-hmi-assets.js"
+WP07_RUNTIME_REL = "android-car/scripts/wallpaper-plugin-runtime.js"
+WP07_HMI_PATCHER_REL = "android-car/scripts/patch-car-hmi-assets.js"
+WP07_CATALOG_REL = "android-car/scripts/wallpaper-plugin-tasks.json"
+WP07_RUNTIME_TEST_REL = "android-car/tests/wallpaper-plugin-runtime.test.js"
+WP07_GLOBAL = "MineradioWallpaperPlugin"
+WP07_CALLER_FORGERY_KEYS = WP06_CALLER_FORGERY_KEYS
+WP07_SUITE_KEYS = (
+    "androidUnitTest",
+    "bridgeUnitTest",
+    "wp07RuntimeTest",
+    "monorepoImportTest",
+    "fullNodeTest",
+)
+WP07_REQUIRED_PREREQS = (
+    "WP-INFRA",
+    "WP-00",
+    "WP-01",
+    "WP-02",
+    "WP-03",
+    "WP-04",
+    "WP-05",
+    "WP-06",
+)
+WP07_IMPLEMENTATION_SURFACES = (
+    WP07_RUNTIME_REL,
+    WP07_HMI_PATCHER_REL,
+    WP07_CATALOG_REL,
+    WP07_RUNTIME_TEST_REL,
+)
+_WP07_PREREQ_RECEIPTS = {
+    "WP-INFRA": _BOOTSTRAP_RECEIPTS["WP-INFRA"],
+    "WP-00": _BOOTSTRAP_RECEIPTS["WP-00"],
+    "WP-01": _TXN_RECEIPTS["WP-01"],
+    "WP-02": _TXN_RECEIPTS["WP-02"],
+    "WP-03": _TXN_RECEIPTS["WP-03"],
+    "WP-04": _VERIFICATION_ROOT / "transactions" / "wp-04.json",
+    "WP-05": _VERIFICATION_ROOT / "transactions" / "wp-05.json",
+    "WP-06": _VERIFICATION_ROOT / "transactions" / "wp-06.json",
+}
+
+
+def _load_wp07_identity_proofs(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _load_single_pr_identity_proofs(
+        receipt,
+        args,
+        missing_reason="WP07_VERIFY_DONE_PROOF_MISSING",
+        forgery_reason="WP07_VERIFY_DONE_CALLER_FORGERY",
+        forgery_keys=WP07_CALLER_FORGERY_KEYS,
+        empty_label="WP-07",
+    )
+
+
+def _caller_wp07_implementation_pr(
+    proofs: Mapping[str, Any],
+) -> tuple[int | None, str, str]:
+    return _extract_implementation_pr_number(
+        proofs,
+        missing_reason="WP07_VERIFY_DONE_PROOF_MISSING",
+    )
+
+
+def _verify_wp07_catalog_schema_digests(
+    proofs: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, str, str]:
+    return _verify_catalog_schema_digests(
+        proofs,
+        args,
+        invalid_reason="WP07_CATALOG_PROOF_INVALID",
+    )
+
+
+def _wp07_require_implementation_surfaces_on_head(
+    head_sha: str,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    """PR head must carry WP-07 HMI runtime / inject surfaces."""
+    missing: list[str] = []
+    for rel in WP07_IMPLEMENTATION_SURFACES:
+        if not _git_path_exists_at_commit(head_sha, rel):
+            missing.append(rel)
+    if missing:
+        return (
+            False,
+            "WP07_PR_PROOF_INVALID",
+            "implementation head missing WP-07 surfaces: " + ", ".join(missing),
+            {},
+        )
+
+    rt_rc, rt_text = _git_show_at_commit(head_sha, WP07_RUNTIME_REL)
+    if rt_rc < 0:
+        return (
+            False,
+            "WP07_PR_PROOF_INVALID",
+            "cannot read wallpaper-plugin-runtime.js at head: git show failed",
+            {},
+        )
+    if (
+        rt_rc != 0
+        or WP07_GLOBAL not in rt_text
+        or "WallpaperPlugin" not in rt_text
+        or "importMpkg" not in rt_text
+        or "confirmUserAction" not in rt_text
+        or "500" not in rt_text
+        or "5000" not in rt_text
+        or "visibilitychange" not in rt_text
+        or "forbidEngineLaunchedPreview" not in rt_text
+        or "未安装" not in rt_text
+    ):
+        return (
+            False,
+            "WP07_PR_PROOF_INVALID",
+            "implementation head runtime missing MineradioWallpaperPlugin/poll/UI markers",
+            {},
+        )
+
+    hp_rc, hp_text = _git_show_at_commit(head_sha, WP07_HMI_PATCHER_REL)
+    if hp_rc < 0:
+        return (
+            False,
+            "WP07_PR_PROOF_INVALID",
+            "cannot read patch-car-hmi-assets.js at head: git show failed",
+            {},
+        )
+    if (
+        hp_rc != 0
+        or "wallpaper-plugin-runtime.js" not in hp_text
+        or WP07_GLOBAL not in hp_text
+        or "wallpaper-plugin-card" not in hp_text
+    ):
+        return (
+            False,
+            "WP07_PR_PROOF_INVALID",
+            "implementation head HMI patcher missing runtime/status-card inject",
+            {},
+        )
+
+    cat_rc, cat_text = _git_show_at_commit(head_sha, WP07_CATALOG_REL)
+    if cat_rc < 0:
+        return (
+            False,
+            "WP07_PR_PROOF_INVALID",
+            "cannot read wallpaper-plugin-tasks.json at head: git show failed",
+            {},
+        )
+    if cat_rc != 0 or (
+        '"taskId": "WP-07"' not in cat_text and '"taskId":"WP-07"' not in cat_text
+    ):
+        return (
+            False,
+            "WP07_PR_PROOF_INVALID",
+            "implementation head catalog missing WP-07 task entry",
+            {},
+        )
+
+    return (
+        True,
+        "",
+        "",
+        {
+            "implementationSurfaces": list(WP07_IMPLEMENTATION_SURFACES),
+            "globalName": WP07_GLOBAL,
+            "pollActiveMs": 500,
+            "pollIdleMs": 5000,
+        },
+    )
+
+
+def _verify_wp07_suite_and_blob_proofs(
+    proofs: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    ok, reason, message = _require_suite_pass_digests(
+        proofs,
+        WP07_SUITE_KEYS,
+        missing_reason="WP07_SUITE_RECEIPT_INVALID",
+    )
+    if not ok:
+        return False, reason, message, {}
+
+    for path, label in (
+        (WP07_RUNTIME_PATH, "wallpaper-plugin-runtime.js"),
+        (WP07_HMI_PATCHER_PATH, "patch-car-hmi-assets.js"),
+    ):
+        if not path.is_file():
+            return (
+                False,
+                "WP07_VERIFY_DONE_PROOF_MISSING",
+                f"WP-07 production surface missing: {label} ({path})",
+                {},
+            )
+
+    runtime_text = WP07_RUNTIME_PATH.read_text(encoding="utf-8")
+    if (
+        WP07_GLOBAL not in runtime_text
+        or "forbidEngineLaunchedPreview" not in runtime_text
+        or "importMpkg" not in runtime_text
+        or "confirmUserAction" not in runtime_text
+    ):
+        return (
+            False,
+            "WP07_VERIFY_DONE_PROOF_MISSING",
+            "wallpaper-plugin-runtime.js missing MineradioWallpaperPlugin API markers",
+            {},
+        )
+    patcher_text = WP07_HMI_PATCHER_PATH.read_text(encoding="utf-8")
+    if (
+        "wallpaper-plugin-runtime.js" not in patcher_text
+        or WP07_GLOBAL not in patcher_text
+        or "wallpaper-plugin-card" not in patcher_text
+    ):
+        return (
+            False,
+            "WP07_VERIFY_DONE_PROOF_MISSING",
+            "patch-car-hmi-assets.js missing runtime/status-card inject anchors",
+            {},
+        )
+
+    ok, reason, message, live_catalog_sha, live_schema_sha = _verify_wp07_catalog_schema_digests(
+        proofs, args
+    )
+    if not ok:
+        return False, reason, message, {}
+
+    return (
+        True,
+        "",
+        "",
+        {
+            "catalogSha256": live_catalog_sha,
+            "schemaSha256": live_schema_sha,
+            "androidUnitTest": proofs["androidUnitTest"],
+            "bridgeUnitTest": proofs["bridgeUnitTest"],
+            "wp07RuntimeTest": proofs["wp07RuntimeTest"],
+            "monorepoImportTest": proofs["monorepoImportTest"],
+            "fullNodeTest": proofs["fullNodeTest"],
+            "runtimePath": str(WP07_RUNTIME_PATH),
+            "runtimeSha256": _sha256_file(WP07_RUNTIME_PATH),
+            "hmiPatcherPath": str(WP07_HMI_PATCHER_PATH),
+            "hmiPatcherSha256": _sha256_file(WP07_HMI_PATCHER_PATH),
+            "globalName": WP07_GLOBAL,
+        },
+    )
+
+
+def verify_wp07_merged_implementation_pr(
+    *,
+    pr_number: int,
+    live_base_sha: str,
+    repo: str | None,
+) -> tuple[dict[str, Any] | None, str, str]:
+    """Independently re-read WP-07 implementation PR; ancestry vs live base."""
+    return _verify_merged_implementation_pr(
+        pr_number=pr_number,
+        live_base_sha=live_base_sha,
+        repo=repo,
+        invalid_reason="WP07_PR_PROOF_INVALID",
+        containment_reason="WP07_BASE_CONTAINMENT_FAILED",
+        surface_checker=_wp07_require_implementation_surfaces_on_head,
+    )
+
+
+def _catalog_wp07_task(
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _catalog_unique_task(
+        args,
+        task_id="WP-07",
+        expected_weight=6,
+        expected_evidence="E1",
+        required_prereqs=WP07_REQUIRED_PREREQS,
+        entry_missing_reason="WP07_CATALOG_ENTRY_MISSING",
+        catalog_invalid_reason="WP07_CATALOG_PROOF_INVALID",
+        required_done_missing_reason="WP07_REQUIRED_DONE_MISSING",
+        required_done_message=(
+            "WP-07.requiredEffectiveDone must include "
+            "WP-INFRA, WP-00, WP-01, WP-02, WP-03, WP-04, WP-05, WP-06"
+        ),
+    )
+
+
+def _verify_wp07_prerequisite_done_receipts() -> tuple[bool, str, str, dict[str, Any]]:
+    """Real DONE receipts for WP-INFRA/00…06 — not caller-forged."""
+    return _verify_prereq_done_receipts(
+        _WP07_PREREQ_RECEIPTS,
+        missing_reason="WP07_REQUIRED_DONE_MISSING",
+        state_done_tasks=frozenset(
+            {"WP-01", "WP-02", "WP-03", "WP-04", "WP-05", "WP-06"}
+        ),
+    )
+
+
+def _wp07_resolve_live_base(
+    proofs: Mapping[str, Any],
+) -> tuple[str | None, str, str]:
+    return _resolve_live_base_optional_claim(
+        proofs,
+        missing_reason="WP07_VERIFY_DONE_PROOF_MISSING",
+        containment_reason="WP07_BASE_CONTAINMENT_FAILED",
+    )
+
+
+def evaluate_wp07_verify_done(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    """Return (ok, reason, message, proof_record) for WP-07 CLOSE-VERIFY.
+
+    Requires:
+      - unique catalog WP-07 with weight 6 / evidence E1
+      - identity-only proofChain.implementation.prNumber
+      - independent gh PR API: MERGED + approved repo/base/head prefix
+      - merge + head are ancestors of live origin base tip (not tip equality)
+      - head tree carries WP-07 runtime / HMI inject surfaces
+      - suite digests + catalog/schema SHA match
+      - WP-INFRA…WP-06 EffectiveDone from real receipts
+      - caller cannot forge merged/EffectiveDone/REMOTE_VERIFIED/mergeSha/progress
+    """
+    task, reason, message = _catalog_wp07_task(args)
+    if task is None:
+        return False, reason, message, {}
+
+    ok_prereq, reason, message, prereq_record = _verify_wp07_prerequisite_done_receipts()
+    if not ok_prereq:
+        return False, reason, message, {}
+
+    proofs, reason, message = _load_wp07_identity_proofs(receipt, args)
+    if proofs is None:
+        return False, reason, message, {}
+
+    pr_number, reason, message = _caller_wp07_implementation_pr(proofs)
+    if pr_number is None:
+        return False, reason, message, {}
+
+    ok_suites, reason, message, suite_record = _verify_wp07_suite_and_blob_proofs(proofs, args)
+    if not ok_suites:
+        return False, reason, message, {}
+
+    live_base, reason, message = _wp07_resolve_live_base(proofs)
+    if live_base is None:
+        return False, reason, message, {}
+
+    repo = getattr(args, "repo", None) or APPROVED_GITHUB_REPO
+    impl_proof, reason, message = verify_wp07_merged_implementation_pr(
+        pr_number=pr_number,
+        live_base_sha=live_base,
+        repo=repo,
+    )
+    if impl_proof is None:
+        return False, reason, message, {}
+
+    record = _assemble_verify_done_record(
+        task=task,
+        impl_proof=impl_proof,
+        live_base=live_base,
+        prereq_record=prereq_record,
+        suite_record=suite_record,
+        weight=6,
+        default_path="android-car/scripts/",
+    )
+    return True, "", "", record
+
+
 def cmd_verify_done(args: argparse.Namespace) -> int:
     """Fail-closed DONE only when catalog + proofs + live base containment hold."""
     task_id = require_task(args.task)
@@ -5828,6 +6201,9 @@ def cmd_verify_done(args: argparse.Namespace) -> int:
         elif task_id == "WP-06":
             ok_gate, reason, message, proof_record = evaluate_wp06_verify_done(current, args)
             weight = 6
+        elif task_id == "WP-07":
+            ok_gate, reason, message, proof_record = evaluate_wp07_verify_done(current, args)
+            weight = 6
         else:
             # Never mis-tag later WP tasks as WP03_*.
             if task_id.startswith("WP-"):
@@ -5845,7 +6221,9 @@ def cmd_verify_done(args: argparse.Namespace) -> int:
             fail(
                 reason
                 or (
-                    "WP06_VERIFY_DONE_PROOF_MISSING"
+                    "WP07_VERIFY_DONE_PROOF_MISSING"
+                    if task_id == "WP-07"
+                    else "WP06_VERIFY_DONE_PROOF_MISSING"
                     if task_id == "WP-06"
                     else "WP05_VERIFY_DONE_PROOF_MISSING"
                     if task_id == "WP-05"
