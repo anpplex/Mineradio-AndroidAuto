@@ -6594,6 +6594,497 @@ def evaluate_wp08_verify_done(
     return True, "", "", record
 
 
+# WP-09 verify-done: dual-repo (Mineradio verifier PR + plugin cert-inject PR).
+# WP09_* namespace only. Weight 6 E2; prereqs INFRA…WP-08.
+WP09_VERIFY_DONE_UNAVAILABLE = "WP09_VERIFY_DONE_UNAVAILABLE"
+WP09_CALLER_FORGERY_KEYS = WP08_CALLER_FORGERY_KEYS
+WP09_SUITE_KEYS = (
+    "androidUnitTest",
+    "bridgeUnitTest",
+    "wp09CapacityTest",
+    "pluginUnitTest",
+    "fullNodeTest",
+)
+WP09_REQUIRED_PREREQS = (
+    "WP-INFRA",
+    "WP-00",
+    "WP-01",
+    "WP-02",
+    "WP-03",
+    "WP-04",
+    "WP-05",
+    "WP-06",
+    "WP-07",
+    "WP-08",
+)
+WP09_IMPLEMENTATION_SURFACES = (
+    "android-car/scripts/wallpaper-plugin-tasks.json",
+    "android-car/scripts/verify-wallpaper-plugin.js",
+    "android-car/scripts/verify-wallpaper-plugin.sh",
+    "android-car/scripts/wp09-transaction.py",
+    "android-car/tests/verify-wallpaper-plugin.test.js",
+    "android-car/tests/wallpaper-wp09-red-helpers.js",
+    "android-car/tests/wallpaper-wp09-red.test.js",
+    "android-car/tests/wp09-transaction.test.js",
+)
+WP09_PLUGIN_GITHUB_REPO = "anpplex/plugin-WallpaperEngine"
+WP09_PLUGIN_SANDBOX = Path(
+    "/Users/anpple/Codex/WallpaperEngine/.worktrees/mineradio-plugin-sandbox"
+)
+WP09_PLUGIN_SURFACE_RELS = (
+    "app/build.gradle.kts",
+    "app/src/main/AndroidManifest.xml",
+)
+_WP09_PREREQ_RECEIPTS = {
+    "WP-INFRA": _BOOTSTRAP_RECEIPTS["WP-INFRA"],
+    "WP-00": _BOOTSTRAP_RECEIPTS["WP-00"],
+    "WP-01": _TXN_RECEIPTS["WP-01"],
+    "WP-02": _TXN_RECEIPTS["WP-02"],
+    "WP-03": _TXN_RECEIPTS["WP-03"],
+    "WP-04": _VERIFICATION_ROOT / "transactions" / "wp-04.json",
+    "WP-05": _VERIFICATION_ROOT / "transactions" / "wp-05.json",
+    "WP-06": _VERIFICATION_ROOT / "transactions" / "wp-06.json",
+    "WP-07": _VERIFICATION_ROOT / "transactions" / "wp-07.json",
+    "WP-08": _VERIFICATION_ROOT / "transactions" / "wp-08.json",
+}
+
+
+def _load_wp09_identity_proofs(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _load_single_pr_identity_proofs(
+        receipt,
+        args,
+        missing_reason="WP09_VERIFY_DONE_PROOF_MISSING",
+        forgery_reason="WP09_VERIFY_DONE_CALLER_FORGERY",
+        forgery_keys=WP09_CALLER_FORGERY_KEYS,
+        empty_label="WP-09",
+    )
+
+
+def _caller_wp09_implementation_pr(
+    proofs: Mapping[str, Any],
+) -> tuple[int | None, str, str]:
+    return _extract_implementation_pr_number(
+        proofs,
+        missing_reason="WP09_VERIFY_DONE_PROOF_MISSING",
+    )
+
+
+def _caller_wp09_plugin_pr(
+    proofs: Mapping[str, Any],
+) -> tuple[int | None, str, str]:
+    chain = proofs.get("proofChain")
+    if not isinstance(chain, dict):
+        return None, "WP09_VERIFY_DONE_PROOF_MISSING", "proofChain.plugin.prNumber required"
+    plugin = chain.get("plugin")
+    if not isinstance(plugin, dict):
+        return None, "WP09_VERIFY_DONE_PROOF_MISSING", "proofChain.plugin.prNumber required"
+    raw = plugin.get("prNumber")
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        return None, "WP09_VERIFY_DONE_PROOF_MISSING", "proofChain.plugin.prNumber must be int"
+    if n <= 0:
+        return None, "WP09_VERIFY_DONE_PROOF_MISSING", "proofChain.plugin.prNumber must be positive"
+    return n, "", ""
+
+
+def _verify_wp09_catalog_schema_digests(
+    proofs: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, str, str]:
+    return _verify_catalog_schema_digests(
+        proofs,
+        args,
+        invalid_reason="WP09_CATALOG_PROOF_INVALID",
+    )
+
+
+def _wp09_require_implementation_surfaces_on_head(
+    head_sha: str,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    missing: list[str] = []
+    for rel in WP09_IMPLEMENTATION_SURFACES:
+        if not _git_path_exists_at_commit(head_sha, rel):
+            missing.append(rel)
+    if missing:
+        return (
+            False,
+            "WP09_PR_PROOF_INVALID",
+            "implementation head missing WP-09 surfaces: " + ", ".join(missing),
+            {},
+        )
+    cat_rc, cat_text = _git_show_at_commit(
+        head_sha, "android-car/scripts/wallpaper-plugin-tasks.json"
+    )
+    if cat_rc != 0 or (
+        '"taskId": "WP-09"' not in cat_text and '"taskId":"WP-09"' not in cat_text
+    ):
+        return (
+            False,
+            "WP09_PR_PROOF_INVALID",
+            "implementation head catalog missing WP-09 task entry",
+            {},
+        )
+    ver_rc, ver_text = _git_show_at_commit(
+        head_sha, "android-car/scripts/verify-wallpaper-plugin.js"
+    )
+    if ver_rc != 0 or "mineradioCallerCertSha256" not in ver_text:
+        return (
+            False,
+            "WP09_PR_PROOF_INVALID",
+            "verify-wallpaper-plugin.js missing cert allowlist markers",
+            {},
+        )
+    txn_rc, txn_text = _git_show_at_commit(head_sha, "android-car/scripts/wp09-transaction.py")
+    if txn_rc != 0 or "allocate-evidence" not in txn_text:
+        return (
+            False,
+            "WP09_PR_PROOF_INVALID",
+            "wp09-transaction.py missing allocate-evidence surface",
+            {},
+        )
+    return (
+        True,
+        "",
+        "",
+        {
+            "implementationSurfaces": list(WP09_IMPLEMENTATION_SURFACES),
+            "weight": 6,
+            "evidenceLevel": "E2",
+        },
+    )
+
+
+def _verify_wp09_suite_and_blob_proofs(
+    proofs: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    ok, reason, message = _require_suite_pass_digests(
+        proofs,
+        WP09_SUITE_KEYS,
+        missing_reason="WP09_SUITE_RECEIPT_INVALID",
+    )
+    if not ok:
+        return False, reason, message, {}
+
+    catalog_path = Path(args.catalog_path) if args.catalog_path else DEFAULT_CATALOG_BLOB_PATH
+    if not catalog_path.is_file():
+        return (
+            False,
+            "WP09_VERIFY_DONE_PROOF_MISSING",
+            f"catalog missing: {catalog_path}",
+            {},
+        )
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    matches = [
+        t for t in (catalog.get("tasks") or []) if isinstance(t, dict) and t.get("taskId") == "WP-09"
+    ]
+    if len(matches) != 1:
+        return (
+            False,
+            "WP09_CATALOG_ENTRY_MISSING",
+            "live catalog must contain unique WP-09",
+            {},
+        )
+    task = matches[0]
+    if int(task.get("weight") or 0) != 6 or task.get("evidenceLevel") != "E2":
+        return (
+            False,
+            "WP09_CATALOG_PROOF_INVALID",
+            "WP-09 catalog weight/evidenceLevel must be 6/E2",
+            {},
+        )
+
+    for rel in WP09_PLUGIN_SURFACE_RELS:
+        p = WP09_PLUGIN_SANDBOX / rel
+        if not p.is_file():
+            return (
+                False,
+                "WP09_VERIFY_DONE_PROOF_MISSING",
+                f"plugin sandbox missing surface: {rel}",
+                {},
+            )
+    gradle_text = (WP09_PLUGIN_SANDBOX / "app/build.gradle.kts").read_text(encoding="utf-8")
+    if "mineradioCallerCertSha256" not in gradle_text:
+        return (
+            False,
+            "WP09_VERIFY_DONE_PROOF_MISSING",
+            "plugin build.gradle.kts missing mineradioCallerCertSha256 inject",
+            {},
+        )
+    man_text = (WP09_PLUGIN_SANDBOX / "app/src/main/AndroidManifest.xml").read_text(
+        encoding="utf-8"
+    )
+    if "mineradioCallerCertSha256" not in man_text:
+        return (
+            False,
+            "WP09_VERIFY_DONE_PROOF_MISSING",
+            "plugin AndroidManifest missing mineradioCallerCertSha256 meta-data",
+            {},
+        )
+
+    # Local verifier capacity (query-only static fixtures)
+    repo_root = Path(__file__).resolve().parents[2]
+    verifier_js = repo_root / "android-car" / "scripts" / "verify-wallpaper-plugin.js"
+    if not verifier_js.is_file():
+        return (
+            False,
+            "WP09_VERIFY_DONE_PROOF_MISSING",
+            f"verify-wallpaper-plugin.js missing at {verifier_js}",
+            {},
+        )
+    vtext = verifier_js.read_text(encoding="utf-8")
+    for marker in (
+        "com.mineradio.app",
+        "com.motif.wallpaperengine",
+        "io.wallpaperengine.weclient",
+        "certMismatch",
+        "splitSignerMismatch",
+        "mineradioCallerCertSha256",
+        ":we_runtime",
+    ):
+        if marker not in vtext:
+            return (
+                False,
+                "WP09_VERIFY_DONE_PROOF_MISSING",
+                f"verifier missing marker {marker!r}",
+                {},
+            )
+
+    ok, reason, message, live_catalog_sha, live_schema_sha = _verify_wp09_catalog_schema_digests(
+        proofs, args
+    )
+    if not ok:
+        return False, reason, message, {}
+
+    return (
+        True,
+        "",
+        "",
+        {
+            "catalogSha256": live_catalog_sha,
+            "schemaSha256": live_schema_sha,
+            "androidUnitTest": proofs["androidUnitTest"],
+            "bridgeUnitTest": proofs["bridgeUnitTest"],
+            "wp09CapacityTest": proofs["wp09CapacityTest"],
+            "pluginUnitTest": proofs["pluginUnitTest"],
+            "fullNodeTest": proofs["fullNodeTest"],
+            "pluginSurfaces": list(WP09_PLUGIN_SURFACE_RELS),
+            "evidenceLevel": "E2",
+        },
+    )
+
+
+def verify_wp09_merged_implementation_pr(
+    *,
+    pr_number: int,
+    live_base_sha: str,
+    repo: str | None,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _verify_merged_implementation_pr(
+        pr_number=pr_number,
+        live_base_sha=live_base_sha,
+        repo=repo,
+        invalid_reason="WP09_PR_PROOF_INVALID",
+        containment_reason="WP09_BASE_CONTAINMENT_FAILED",
+        surface_checker=_wp09_require_implementation_surfaces_on_head,
+    )
+
+
+def _verify_wp09_merged_plugin_pr(
+    *,
+    pr_number: int,
+    repo: str = WP09_PLUGIN_GITHUB_REPO,
+) -> tuple[dict[str, Any] | None, str, str]:
+    """Independent re-read of plugin PR on plugin-WallpaperEngine (not Mineradio repo)."""
+    data, reason, message = _gh_pr_view_json_soft(
+        pr_number,
+        repo=repo,
+        invalid_reason="WP09_PLUGIN_PR_PROOF_INVALID",
+    )
+    if data is None:
+        return None, reason, message
+
+    head_repo = data.get("headRepository") if isinstance(data.get("headRepository"), dict) else {}
+    name_with_owner = str(head_repo.get("nameWithOwner") or "")
+    url = str(data.get("url") or "")
+    if name_with_owner and name_with_owner != repo:
+        return (
+            None,
+            "WP09_PLUGIN_PR_PROOF_INVALID",
+            f"plugin PR #{pr_number} repository {name_with_owner!r} != {repo}",
+        )
+    if repo not in url and name_with_owner != repo:
+        return (
+            None,
+            "WP09_PLUGIN_PR_PROOF_INVALID",
+            f"plugin PR #{pr_number} URL does not match {repo}",
+        )
+
+    state = str(data.get("state") or "").upper()
+    if state != "MERGED" or not data.get("mergedAt"):
+        return (
+            None,
+            "WP09_PLUGIN_PR_PROOF_INVALID",
+            f"plugin PR #{pr_number} state is {state!r}, not MERGED",
+        )
+
+    base_ref = str(data.get("baseRefName") or "")
+    if base_ref not in {"main", "master"}:
+        return (
+            None,
+            "WP09_PLUGIN_PR_PROOF_INVALID",
+            f"plugin PR base.ref {base_ref!r} is not main/master",
+        )
+
+    head_sha_raw = data.get("headRefOid")
+    if not is_git_sha40(head_sha_raw):
+        return None, "WP09_PLUGIN_PR_PROOF_INVALID", "plugin PR head.sha invalid"
+    head_sha = str(head_sha_raw).lower()
+
+    merge_commit = data.get("mergeCommit")
+    if not isinstance(merge_commit, dict) or not is_git_sha40(merge_commit.get("oid")):
+        return None, "WP09_PLUGIN_PR_PROOF_INVALID", "plugin PR missing merge_commit_sha"
+    merge_sha = str(merge_commit.get("oid")).lower()
+
+    return (
+        {
+            "role": "plugin",
+            "prNumber": pr_number,
+            "repository": name_with_owner or repo,
+            "state": "MERGED",
+            "mergedAt": data.get("mergedAt"),
+            "baseRef": base_ref,
+            "headRef": data.get("headRefName"),
+            "headSha": head_sha,
+            "mergeSha": merge_sha,
+            "url": url,
+            "source": "gh-pr-api",
+        },
+        "",
+        "",
+    )
+
+
+def _catalog_wp09_task(
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _catalog_unique_task(
+        args,
+        task_id="WP-09",
+        expected_weight=6,
+        expected_evidence="E2",
+        required_prereqs=WP09_REQUIRED_PREREQS,
+        entry_missing_reason="WP09_CATALOG_ENTRY_MISSING",
+        catalog_invalid_reason="WP09_CATALOG_PROOF_INVALID",
+        required_done_missing_reason="WP09_REQUIRED_DONE_MISSING",
+        required_done_message=(
+            "WP-09.requiredEffectiveDone must include "
+            "WP-INFRA, WP-00…WP-08"
+        ),
+    )
+
+
+def _verify_wp09_prerequisite_done_receipts() -> tuple[bool, str, str, dict[str, Any]]:
+    return _verify_prereq_done_receipts(
+        _WP09_PREREQ_RECEIPTS,
+        missing_reason="WP09_REQUIRED_DONE_MISSING",
+        state_done_tasks=frozenset(
+            {
+                "WP-01",
+                "WP-02",
+                "WP-03",
+                "WP-04",
+                "WP-05",
+                "WP-06",
+                "WP-07",
+                "WP-08",
+            }
+        ),
+    )
+
+
+def _wp09_resolve_live_base(
+    proofs: Mapping[str, Any],
+) -> tuple[str | None, str, str]:
+    return _resolve_live_base_optional_claim(
+        proofs,
+        missing_reason="WP09_VERIFY_DONE_PROOF_MISSING",
+        containment_reason="WP09_BASE_CONTAINMENT_FAILED",
+    )
+
+
+def evaluate_wp09_verify_done(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    """Return (ok, reason, message, proof_record) for WP-09 CLOSE-VERIFY.
+
+    Dual-repo:
+      - Mineradio implementation PR (verifier + transaction + catalog) merged
+      - plugin-WallpaperEngine PR (caller cert inject) merged into main
+      - local plugin sandbox + verifier surfaces present
+    """
+    task, reason, message = _catalog_wp09_task(args)
+    if task is None:
+        return False, reason, message, {}
+
+    ok_prereq, reason, message, prereq_record = _verify_wp09_prerequisite_done_receipts()
+    if not ok_prereq:
+        return False, reason, message, {}
+
+    proofs, reason, message = _load_wp09_identity_proofs(receipt, args)
+    if proofs is None:
+        return False, reason, message, {}
+
+    pr_number, reason, message = _caller_wp09_implementation_pr(proofs)
+    if pr_number is None:
+        return False, reason, message, {}
+
+    plugin_pr, reason, message = _caller_wp09_plugin_pr(proofs)
+    if plugin_pr is None:
+        return False, reason, message, {}
+
+    ok_suites, reason, message, suite_record = _verify_wp09_suite_and_blob_proofs(proofs, args)
+    if not ok_suites:
+        return False, reason, message, {}
+
+    live_base, reason, message = _wp09_resolve_live_base(proofs)
+    if live_base is None:
+        return False, reason, message, {}
+
+    repo = getattr(args, "repo", None) or APPROVED_GITHUB_REPO
+    impl_proof, reason, message = verify_wp09_merged_implementation_pr(
+        pr_number=pr_number,
+        live_base_sha=live_base,
+        repo=repo,
+    )
+    if impl_proof is None:
+        return False, reason, message, {}
+
+    plugin_proof, reason, message = _verify_wp09_merged_plugin_pr(pr_number=plugin_pr)
+    if plugin_proof is None:
+        return False, reason, message, {}
+
+    record = _assemble_verify_done_record(
+        task=task,
+        impl_proof=impl_proof,
+        live_base=live_base,
+        prereq_record=prereq_record,
+        suite_record=suite_record,
+        weight=6,
+        default_path="android-car/scripts/",
+    )
+    record["pluginProof"] = plugin_proof
+    record["dualRepo"] = True
+    record["pluginRepository"] = WP09_PLUGIN_GITHUB_REPO
+    record["evidenceLevel"] = "E2"
+    return True, "", "", record
+
+
 def cmd_verify_done(args: argparse.Namespace) -> int:
     """Fail-closed DONE only when catalog + proofs + live base containment hold."""
     task_id = require_task(args.task)
@@ -6631,6 +7122,9 @@ def cmd_verify_done(args: argparse.Namespace) -> int:
         elif task_id == "WP-08":
             ok_gate, reason, message, proof_record = evaluate_wp08_verify_done(current, args)
             weight = 8
+        elif task_id == "WP-09":
+            ok_gate, reason, message, proof_record = evaluate_wp09_verify_done(current, args)
+            weight = 6
         else:
             # Never mis-tag later WP tasks as WP03_*.
             if task_id.startswith("WP-"):
@@ -6648,7 +7142,9 @@ def cmd_verify_done(args: argparse.Namespace) -> int:
             fail(
                 reason
                 or (
-                    "WP08_VERIFY_DONE_PROOF_MISSING"
+                    "WP09_VERIFY_DONE_PROOF_MISSING"
+                    if task_id == "WP-09"
+                    else "WP08_VERIFY_DONE_PROOF_MISSING"
                     if task_id == "WP-08"
                     else "WP07_VERIFY_DONE_PROOF_MISSING"
                     if task_id == "WP-07"
