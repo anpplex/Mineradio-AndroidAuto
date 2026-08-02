@@ -654,6 +654,114 @@
         "install recheck via PackageManager (no silent success)",
         "wallpaper-plugin-installer.test.js"
       ]
+    },
+    {
+      "taskId": "WP-07",
+      "dependsOn": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06"
+      ],
+      "requiredEffectiveDone": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06"
+      ],
+      "phaseCommands": {
+        "RED": {
+          "commandId": "WP-07-RED",
+          "argv": [
+            "true"
+          ]
+        },
+        "GREEN": {
+          "commandId": "WP-07-GREEN",
+          "argv": [
+            "true"
+          ]
+        },
+        "REFACTOR": {
+          "commandId": "WP-07-REFACTOR",
+          "argv": [
+            "true"
+          ]
+        },
+        "VERIFY": {
+          "commandId": "WP-07-VERIFY",
+          "argv": [
+            "true"
+          ]
+        }
+      },
+      "expectedExit": {
+        "RED": 1,
+        "GREEN": 0,
+        "REFACTOR": 0,
+        "VERIFY": 0
+      },
+      "failureSignaturePolicy": {
+        "RED": {
+          "required": true,
+          "match": "stderr"
+        }
+      },
+      "scopeCheck": {
+        "repo": "mineradio",
+        "exactFiles": [
+          "android-car/scripts/wallpaper-plugin-runtime.js",
+          "android-car/scripts/patch-car-hmi-assets.js",
+          "android-car/tests/wallpaper-plugin-runtime.test.js",
+          "android-car/docs/VISUAL-LAYER.zh-CN.md"
+        ],
+        "product": "Wallpaper Engine",
+        "path": "android-car/scripts/",
+        "jsGlobal": "MineradioWallpaperPlugin",
+        "jsBridge": "WallpaperPlugin",
+        "jsMethods": [
+          "refresh",
+          "importMpkg",
+          "installPlugin",
+          "confirmUserAction",
+          "renewAction",
+          "openLibrary",
+          "applyCurrent",
+          "next",
+          "previous",
+          "stop",
+          "diagnostics"
+        ],
+        "pollActiveMs": 500,
+        "pollIdleMs": 5000
+      },
+      "evidenceLevel": "E1",
+      "weight": 6,
+      "product": "Wallpaper Engine",
+      "path": "android-car/scripts/",
+      "requiredEffectiveGate": false,
+      "inputs": [
+        "WP-06 installPlugin / isInstalled / PackageInstaller action-token",
+        "WP-04 confirmUserAction + renewAction registry",
+        "window.WallpaperPlugin native bridge",
+        "car HMI MENC assets via patch-car-hmi-assets.js"
+      ],
+      "outputs": [
+        "wallpaper-plugin-runtime.js",
+        "window.MineradioWallpaperPlugin 1:1 bridge map",
+        "status poll 500ms active / 5s idle / stop on page hide",
+        "HMI status card inject (settings/experimental only)",
+        "11 UI states; ENGINE_LAUNCHED not shown as 可预览",
+        "wallpaper-plugin-runtime.test.js"
+      ]
     }
   ]
 }
