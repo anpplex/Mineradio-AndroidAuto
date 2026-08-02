@@ -236,12 +236,39 @@
     return-object v1
 .end method
 
+.method public isInstalled()Ljava/lang/String;
+    .locals 1
+    .annotation runtime Landroid/webkit/JavascriptInterface;
+    .end annotation
+
+    # WP-06: PackageManager recheck for com.motif.wallpaperengine (package visibility).
+    invoke-static {}, Lcom/mineradio/app/car/CarWallpaperPluginInstaller;->queryPluginInstalled()Ljava/lang/String;
+
+    move-result-object v0
+
+    return-object v0
+.end method
+
+.method public getPluginVersion()Ljava/lang/String;
+    .locals 1
+    .annotation runtime Landroid/webkit/JavascriptInterface;
+    .end annotation
+
+    # WP-06: PackageManager version recheck — never trust install UI alone.
+    invoke-static {}, Lcom/mineradio/app/car/CarWallpaperPluginInstaller;->queryPluginVersion()Ljava/lang/String;
+
+    move-result-object v0
+
+    return-object v0
+.end method
+
 .method public installPlugin(Ljava/lang/String;)Ljava/lang/String;
     .locals 1
     .annotation runtime Landroid/webkit/JavascriptInterface;
     .end annotation
 
-    # Local-only action; still requires confirmUserAction for real UI.
+    # WP-06: single install path → CarWallpaperPluginInstaller.requestInstallFromContentUri.
+    # Result mapping lives in installer/contract (code 20 UI; never silent success).
     if-nez p1, :cond_0
 
     invoke-static {}, Lcom/mineradio/app/car/CarWallpaperPluginBridge;->failClosed()Ljava/lang/String;
@@ -251,7 +278,9 @@
     return-object v0
 
     :cond_0
-    const-string v0, "{\"code\":20,\"userActionKind\":\"INSTALL_PLUGIN\"}"
+    invoke-static {p1}, Lcom/mineradio/app/car/CarWallpaperPluginInstaller;->requestInstallFromContentUri(Ljava/lang/String;)Ljava/lang/String;
+
+    move-result-object v0
 
     return-object v0
 .end method
