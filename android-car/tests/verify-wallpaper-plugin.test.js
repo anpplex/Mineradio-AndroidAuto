@@ -74,3 +74,25 @@ test('verifier GREEN: assertVerifyFixtures covers cert/split mismatch', () => {
   assert.equal(v.PACKAGES.official, 'io.wallpaperengine.weclient');
   assert.ok(String(v.BUILD_PROP_CALLER_CERT).includes('mineradioCallerCertSha256'));
 });
+test('verifier GREEN: E3 fixtures fail-closed; correctE3 passes', () => {
+  // eslint-disable-next-line import/no-dynamic-require, global-require
+  const v = require('../scripts/verify-wallpaper-plugin.js');
+  assert.equal(typeof v.verifyE3Evidence, 'function');
+  assert.equal(typeof v.buildE3Fixture, 'function');
+  assert.equal(typeof v.parseContentCallBundle, 'function');
+  const r = v.assertE3Fixtures();
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.ok(v.E3_FIXTURE_NAMES.includes('shellCallerOnly'));
+  assert.ok(v.E3_FIXTURE_NAMES.includes('runtimePidEqualsMineradio'));
+  const shell = v.verifyE3Evidence(v.buildE3Fixture('shellCallerOnly'));
+  assert.equal(shell.ok, false);
+  assert.ok(shell.errors.includes('shellCallerOnly'));
+  const good = v.verifyE3Evidence(v.buildE3Fixture('correctE3'));
+  assert.equal(good.ok, true, JSON.stringify(good));
+  const parsed = v.parseContentCallBundle(
+    'Result: Bundle[{code=20, callId=abc, operationId=op1, actionEpoch=1, actionToken=t, runtimePid=9}]',
+  );
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.code, 20);
+  assert.equal(parsed.runtimePid, 9);
+});

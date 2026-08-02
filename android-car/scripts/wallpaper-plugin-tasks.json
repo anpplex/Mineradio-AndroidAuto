@@ -759,7 +759,7 @@
         "window.MineradioWallpaperPlugin 1:1 bridge map",
         "status poll 500ms active / 5s idle / stop on page hide",
         "HMI status card inject (settings/experimental only)",
-        "11 UI states; ENGINE_LAUNCHED not shown as 可预览",
+        "11 UI states; ENGINE_LAUNCHED not shown as \u53ef\u9884\u89c8",
         "wallpaper-plugin-runtime.test.js"
       ]
     },
@@ -971,6 +971,113 @@
         "three-package static JSON",
         "cert allowlist match mineradioCallerCertSha256",
         "split signer uniqueness"
+      ]
+    },
+    {
+      "taskId": "WP-10A",
+      "dependsOn": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07",
+        "WP-08",
+        "WP-09"
+      ],
+      "requiredEffectiveDone": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07",
+        "WP-08",
+        "WP-09"
+      ],
+      "phaseCommands": {
+        "RED": {
+          "commandId": "WP-10A-RED",
+          "argv": [
+            "true"
+          ]
+        },
+        "GREEN": {
+          "commandId": "WP-10A-GREEN",
+          "argv": [
+            "true"
+          ]
+        },
+        "REFACTOR": {
+          "commandId": "WP-10A-REFACTOR",
+          "argv": [
+            "true"
+          ]
+        },
+        "VERIFY": {
+          "commandId": "WP-10A-VERIFY",
+          "argv": [
+            "true"
+          ]
+        }
+      },
+      "expectedExit": {
+        "RED": 1,
+        "GREEN": 0,
+        "REFACTOR": 0,
+        "VERIFY": 0
+      },
+      "failureSignaturePolicy": {
+        "RED": {
+          "required": true,
+          "match": "stderr"
+        }
+      },
+      "scopeCheck": {
+        "repo": "mineradio",
+        "exactFiles": [
+          "android-car/scripts/verify-wallpaper-plugin.js",
+          "android-car/scripts/wallpaper-task.py",
+          "android-car/tests/wallpaper-wp10a-red.test.js"
+        ],
+        "product": "Wallpaper Engine",
+        "path": "android-car/scripts/",
+        "packages": [
+          "com.mineradio.app",
+          "com.motif.wallpaperengine",
+          "io.wallpaperengine.weclient"
+        ],
+        "device": {
+          "serial": "LD249H019625",
+          "user": 12,
+          "androidRelease": "12",
+          "apiLevel": 31,
+          "abi": "arm64-v8a"
+        }
+      },
+      "evidenceLevel": "E3",
+      "weight": 6,
+      "product": "Wallpaper Engine",
+      "path": "android-car/scripts/",
+      "requiredEffectiveGate": false,
+      "deviceEvidence": true,
+      "inputs": [
+        "WP-09 E2 three-package static verifier",
+        "device LD249H019625 user 12",
+        "Mineradio real UI caller chain",
+        "plugin :we_runtime PID isolation"
+      ],
+      "outputs": [
+        "assert-device-context",
+        "verifyE3Evidence + E3 fail fixtures",
+        "parseContentCallBundle",
+        "user12 install + real caller + PID isolation evidence"
       ]
     }
   ]

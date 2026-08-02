@@ -395,10 +395,215 @@ function runToolsOnApk(apkPath, buildTools) {
   return out;
 }
 
+/**
+ * WP-10A E3: parse adb `content call` Bundle dump into structured fields.
+ * Empty Bundle / code=10 / timeout / cold-start handled by callers.
+ * Never treats whole-line grep as a Gate.
+ *
+ * @param {string} raw
+ * @returns {{ok:boolean, code?:number, callId?:string, operationId?:string,
+ *   actionEpoch?:number, actionToken?:string, runtimePid?:number,
+ *   operationState?:string, bindingState?:string, sourceConsumed?:boolean,
+ *   errors:string[]}}
+ */
+function parseContentCallBundle(raw) {
+  const errors = [];
+  if (raw == null || String(raw).trim() === '') {
+    return { ok: false, errors: ['empty Bundle'], code: null };
+  }
+  const text = String(raw);
+  const out = { errors: [] };
+  const codeM = /(?:Result: Bundle\[|Bundle\[|{)?[^\n]*\bcode[=:](\d+)/i.exec(text)
+    || /\bcode\s*[:=]\s*(\d+)/i.exec(text);
+  if (codeM) out.code = Number(codeM[1]);
+  const pick = (key) => {
+    const re = new RegExp(`(?:^|[,\\[{\\s])${key}\\s*[=:]\\s*([^,\\]}\\s]+)`, 'i');
+    const m = re.exec(text);
+    if (!m) return undefined;
+    return m[1].replace(/^["']|["']$/g, '').replace(/\]+$/, '');
+  };
+  out.callId = pick('callId');
+  out.operationId = pick('operationId');
+  const epoch = pick('actionEpoch');
+  if (epoch != null && epoch !== '') {
+    const n = Number(epoch);
+    if (Number.isFinite(n)) out.actionEpoch = n;
+  }
+  out.actionToken = pick('actionToken');
+  const pid = pick('runtimePid');
+  if (pid != null && pid !== '') {
+    const n = Number(pid);
+    if (Number.isFinite(n)) out.runtimePid = n;
+  }
+  out.operationState = pick('operationState');
+  out.bindingState = pick('bindingState');
+  const sc = pick('sourceConsumed');
+  if (sc != null) out.sourceConsumed = /^(true|1|yes)$/i.test(sc);
+  if (out.code === undefined) errors.push('code missing');
+  out.errors = errors;
+  out.ok = errors.length === 0;
+  return out;
+}
+
+/** Alias for Bundle parser (RED capacity pin name). */
+const parseProviderBundle = parseContentCallBundle;
+
+const E3_FIXTURE_NAMES = Object.freeze([
+  'missingUser12',
+  'shellCallerOnly',
+  'actionTokenMissing',
+  'actionTokenReplay',
+  'confirmUserActionSkipped',
+  'sourceConsumedMissing',
+  'sourceUriNotRevoked',
+  'runtimePidEmpty',
+  'runtimePidDuplicate',
+  'runtimePidEqualsMineradio',
+  'correctE3',
+]);
+
+/**
+ * Build structured E3 evidence report fixture for unit tests.
+ * @param {string} name
+ * @param {object} [overrides]
+ */
+function buildE3Fixture(name, overrides = {}) {
+  const good = {
+    targetUser: 12,
+    currentUser: 12,
+    caller: 'mineradio-ui', // not shell
+    packagesOnUser12: [
+      PACKAGES.mineradio,
+      PACKAGES.plugin,
+      PACKAGES.official,
+    ],
+    callId: '00000000-0000-4000-8000-000000000001',
+    operationId: 'op-stable-1',
+    actionEpoch: 1,
+    actionToken: 'rand-token-once',
+    actionTokenConsumed: true,
+    confirmUserActionCalled: true,
+    importMpkgCalled: true,
+    sourceConsumed: true,
+    sourceUriRevoked: true,
+    runtimePid: 4242,
+    mineradioPid: 1111,
+    pluginRuntimePids: [4242],
+    shellCallerUsedForE3: false,
+    ...overrides,
+  };
+  switch (name) {
+    case 'correctE3':
+      return good;
+    case 'missingUser12':
+      return { ...good, targetUser: 0, currentUser: 0, packagesOnUser12: [] };
+    case 'shellCallerOnly':
+      return { ...good, caller: 'shell', shellCallerUsedForE3: true };
+    case 'actionTokenMissing':
+      return { ...good, actionToken: '', actionTokenConsumed: false };
+    case 'actionTokenReplay':
+      return { ...good, actionTokenConsumed: false, actionTokenReplayed: true };
+    case 'confirmUserActionSkipped':
+      return { ...good, confirmUserActionCalled: false, actionTokenConsumed: false };
+    case 'sourceConsumedMissing':
+      return { ...good, sourceConsumed: false };
+    case 'sourceUriNotRevoked':
+      return { ...good, sourceUriRevoked: false };
+    case 'runtimePidEmpty':
+      return { ...good, runtimePid: null, pluginRuntimePids: [] };
+    case 'runtimePidDuplicate':
+      return { ...good, pluginRuntimePids: [4242, 4242], runtimePid: 4242 };
+    case 'runtimePidEqualsMineradio':
+      return { ...good, runtimePid: 1111, mineradioPid: 1111, pluginRuntimePids: [1111] };
+    default:
+      throw new Error(`unknown E3 fixture: ${name}`);
+  }
+}
+
+/**
+ * Verify E3 evidence report (Task 10A). Pure — no adb.
+ * Shell caller / missing token / PID isolation failures are fail-closed.
+ * @param {object} report
+ */
+function verifyE3Evidence(report) {
+  const errors = [];
+  if (!report || typeof report !== 'object') {
+    return { ok: false, code: 'E3_REPORT_MISSING', errors: ['report missing'] };
+  }
+  if (Number(report.targetUser) !== 12 || Number(report.currentUser) !== 12) {
+    errors.push('missingUser12');
+  }
+  const pkgs = report.packagesOnUser12 || [];
+  for (const p of [PACKAGES.mineradio, PACKAGES.plugin, PACKAGES.official]) {
+    if (!pkgs.includes(p)) errors.push(`package missing on user12: ${p}`);
+  }
+  if (report.shellCallerUsedForE3 === true || report.caller === 'shell') {
+    errors.push('shellCallerOnly');
+  }
+  if (!report.actionToken) errors.push('actionTokenMissing');
+  if (report.actionTokenReplayed === true || report.actionTokenConsumed === false) {
+    if (report.actionTokenReplayed) errors.push('actionTokenReplay');
+  }
+  if (!report.confirmUserActionCalled) errors.push('confirmUserActionSkipped');
+  if (report.sourceConsumed !== true) errors.push('sourceConsumedMissing');
+  if (report.sourceUriRevoked !== true) errors.push('sourceUriNotRevoked');
+  const rp = report.runtimePid;
+  if (rp == null || rp === '' || Number(rp) <= 0) errors.push('runtimePidEmpty');
+  const pids = report.pluginRuntimePids || (rp != null ? [rp] : []);
+  if (pids.length !== 1) {
+    if (pids.length > 1) errors.push('runtimePidDuplicate');
+    else if (!errors.includes('runtimePidEmpty')) errors.push('runtimePidEmpty');
+  }
+  if (
+    report.mineradioPid != null &&
+    rp != null &&
+    Number(rp) === Number(report.mineradioPid)
+  ) {
+    errors.push('runtimePidEqualsMineradio');
+  }
+  if (!report.importMpkgCalled) errors.push('importMpkg skipped');
+  if (!report.callId || !report.operationId) errors.push('callId/operationId missing');
+
+  const code = errors[0] || 'OK';
+  return {
+    ok: errors.length === 0,
+    code,
+    errors,
+    evidenceLevel: errors.length === 0 ? 'E3' : 'E3-OBSERVED',
+  };
+}
+
+/** Alias expected by RED capacity pin. */
+const verifyE3 = verifyE3Evidence;
+
+function assertE3Fixtures() {
+  const results = [];
+  for (const name of E3_FIXTURE_NAMES) {
+    if (name === 'correctE3') continue;
+    const r = verifyE3Evidence(buildE3Fixture(name));
+    const ok = r.ok === false;
+    results.push({ name, ok, code: r.code });
+    if (!ok) {
+      return { ok: false, message: `fixture ${name} should fail`, results };
+    }
+  }
+  const good = verifyE3Evidence(buildE3Fixture('correctE3'));
+  if (!good.ok) {
+    return { ok: false, message: `correctE3 should pass: ${good.errors}`, results };
+  }
+  results.push({ name: 'correctE3', ok: true, code: good.code });
+  return { ok: results.every((x) => x.ok), results, E3_FIXTURE_NAMES };
+}
+
 function main(argv) {
   const args = argv.slice(2);
   if (args[0] === '--fixtures') {
     const r = assertVerifyFixtures();
+    process.stdout.write(`${JSON.stringify(r)}\n`);
+    process.exit(r.ok ? 0 : 1);
+  }
+  if (args[0] === '--e3-fixtures') {
+    const r = assertE3Fixtures();
     process.stdout.write(`${JSON.stringify(r)}\n`);
     process.exit(r.ok ? 0 : 1);
   }
@@ -408,13 +613,20 @@ function main(argv) {
     process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);
     process.exit(r.ok ? 0 : 1);
   }
+  if (args[0] === '--e3-report-json') {
+    const report = JSON.parse(fs.readFileSync(args[1], 'utf8'));
+    const r = verifyE3Evidence(report);
+    process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);
+    process.exit(r.ok ? 0 : 1);
+  }
   // Default: document query-only shell contract
   process.stderr.write(
-    'verify-wallpaper-plugin.js: use --fixtures or --report-json <file>\n' +
+    'verify-wallpaper-plugin.js: use --fixtures | --e3-fixtures | --report-json <file>\n' +
       'Shell wrapper is query-only (no uninstall/pm clear).\n' +
       'Tools: aapt apksigner zipalign; packages com.mineradio.app / ' +
       'com.motif.wallpaperengine / io.wallpaperengine.weclient; process :we_runtime; ' +
-      'BrowseActivity WEWallpaperService arm64-v8a certificate sha256 split.\n',
+      'BrowseActivity WEWallpaperService arm64-v8a certificate sha256 split.\n' +
+      'E3: user 12 + Mineradio real caller + PID isolation (not shell content call).\n',
   );
   process.exit(2);
 }
@@ -428,9 +640,17 @@ module.exports = {
   ABI,
   BUILD_PROP_CALLER_CERT,
   FIXTURE_NAMES,
+  E3_FIXTURE_NAMES,
+  WP10A_E3_FAIL_FIXTURES: E3_FIXTURE_NAMES.filter((n) => n !== 'correctE3'),
   verifyStaticReport,
   buildFixture,
   assertVerifyFixtures,
+  parseContentCallBundle,
+  parseProviderBundle,
+  buildE3Fixture,
+  verifyE3Evidence,
+  verifyE3,
+  assertE3Fixtures,
   runToolsOnApk,
   sha256File,
   sha256Hex,
