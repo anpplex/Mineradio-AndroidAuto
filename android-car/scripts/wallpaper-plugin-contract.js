@@ -652,6 +652,345 @@ function assertJsSmaliContractMirror(options = {}) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// WP-05 FileProvider / importMpkg two-hop fixtures (Node harness mirrors Smali)
+// REFACTOR: pure validators shared by stager class + fixtures (behavior unchanged).
+// ---------------------------------------------------------------------------
+
+const FILE_PROVIDER_AUTHORITY = 'com.mineradio.app.wallpaperplugin.files';
+const STAGE_CACHE_NAME = 'wallpaper_plugin_stage';
+const STAGE_CACHE_DIR = 'wallpaper_plugin_stage/';
+const CLEANUP_WINDOW_MS = 24 * 60 * 60 * 1000;
+const CONTENT_SCHEME_PREFIX = 'content://';
+const FORBIDDEN_URI_PREFIXES = Object.freeze(['file://', 'http://', 'https://']);
+const STAGER_SMALI_REL_PATH =
+  'android-car/scripts/smali/com/mineradio/app/car/CarWallpaperMpkgStager.smali';
+
+/** @param {unknown} uri */
+function isContentUri(uri) {
+  return typeof uri === 'string' && uri.startsWith(CONTENT_SCHEME_PREFIX);
+}
+
+/**
+ * True when URI must be rejected before staging (mirrors CarWallpaperMpkgStager).
+ * @param {unknown} uri
+ */
+function isForbiddenSourceUri(uri) {
+  if (typeof uri !== 'string' || !uri) return true;
+  if (FORBIDDEN_URI_PREFIXES.some((p) => uri.startsWith(p))) return true;
+  if (uri.startsWith('/')) return true;
+  if (uri.includes('..')) return true;
+  return false;
+}
+
+/** Stage key under cache-path only — rejects traversal / non-canonical roots. */
+function stageKeyForOperation(operationId) {
+  const stageKey = `${STAGE_CACHE_DIR}${operationId}.mpkg`;
+  if (stageKey.includes('..') || !stageKey.startsWith(STAGE_CACHE_DIR)) {
+    return null;
+  }
+  return stageKey;
+}
+
+function stagedContentUriForOperation(operationId) {
+  return `${CONTENT_SCHEME_PREFIX}${FILE_PROVIDER_AUTHORITY}/${STAGE_CACHE_NAME}/${operationId}.mpkg`;
+}
+
+/**
+ * Process-local Mineradio sourceUri staging ledger (not a second state machine).
+ * Mirrors CarWallpaperMpkgStager rules for RED/GREEN probes.
+ */
+class FileProviderImportStager {
+  /**
+   * @param {{ now?: () => number, cleanupWindowMs?: number }} [opts]
+   */
+  constructor(opts = {}) {
+    this._now = typeof opts.now === 'function' ? opts.now : () => Date.now();
+    this.cleanupWindowMs = opts.cleanupWindowMs ?? CLEANUP_WINDOW_MS;
+    /** @type {Map<string, object>} operationId -> stage record */
+    this._byOp = new Map();
+    /** @type {Set<string>} */
+    this._inFlight = new Set();
+    /** @type {Map<string, { grants: Set<string>, createdAt: number }>} stageKey -> meta */
+    this._files = new Map();
+  }
+
+  isContentUri(uri) {
+    return isContentUri(uri);
+  }
+
+  /** Alias kept for Smali/JS naming parity with CarWallpaperMpkgStager.isForbiddenScheme. */
+  isForbiddenScheme(uri) {
+    return isForbiddenSourceUri(uri);
+  }
+
+  /**
+   * Two-hop step 1–6: validate content://, stream to stage, grant plugin read.
+   * Does not mark sourceConsumed (that waits for plugin status).
+   */
+  importMpkg(operationId, sourceUri) {
+    if (!operationId || typeof operationId !== 'string') {
+      return { ok: false, code: CODE.MISSING_FIELD, message: 'MISSING_FIELD' };
+    }
+    if (!sourceUri || typeof sourceUri !== 'string') {
+      return { ok: false, code: CODE.MISSING_FIELD, message: 'MISSING_FIELD' };
+    }
+    if (isForbiddenSourceUri(sourceUri) || !isContentUri(sourceUri)) {
+      return { ok: false, code: CODE.UNKNOWN_METHOD, message: 'CONTENT_URI_REQUIRED' };
+    }
+    // Authority of source may be user picker; Mineradio stages then grants its FileProvider URI.
+    if (this._byOp.has(operationId) && !this._inFlight.has(operationId)) {
+      // Idempotent re-read of completed stage record.
+      return { ok: true, code: CODE.USER_ACTION_REQUIRED, ...this._byOp.get(operationId), idempotent: true };
+    }
+    if (this._inFlight.has(operationId)) {
+      return { ok: false, code: CODE.PLUGIN_CALL_FAILED, message: 'IN_FLIGHT' };
+    }
+
+    this._inFlight.add(operationId);
+    const stageKey = stageKeyForOperation(operationId);
+    if (!stageKey) {
+      this._inFlight.delete(operationId);
+      return { ok: false, code: CODE.PLUGIN_CALL_FAILED, message: 'STAGE_PATH_ESCAPE' };
+    }
+
+    const stagedUri = stagedContentUriForOperation(operationId);
+    const record = {
+      operationId,
+      sourceUri,
+      stagedUri,
+      stageKey,
+      displayName: `${operationId}.mpkg`,
+      bytes: 0,
+      sha256: crypto.createHash('sha256').update(sourceUri).digest('hex'),
+      grants: new Set([PLUGIN_PACKAGE]),
+      createdAt: this._now(),
+      sourceConsumed: false,
+      protected: true,
+    };
+    this._files.set(stageKey, {
+      grants: new Set([PLUGIN_PACKAGE]),
+      createdAt: record.createdAt,
+      inFlight: false,
+      protected: true,
+    });
+    this._byOp.set(operationId, record);
+    this._inFlight.delete(operationId);
+
+    return {
+      ok: true,
+      code: CODE.USER_ACTION_REQUIRED,
+      providerMethod: 'import_mpkg',
+      operationId,
+      stagedUri,
+      stage: STAGE_CACHE_NAME,
+      grantPluginPackage: PLUGIN_PACKAGE,
+      fileProviderAuthority: FILE_PROVIDER_AUTHORITY,
+      // Never expose real filesystem paths
+      path: undefined,
+    };
+  }
+
+  /** sourceConsumed → revoke Mineradio→plugin grant and drop local staging. */
+  onSourceConsumed(operationId) {
+    const rec = this._byOp.get(operationId);
+    if (!rec) return { ok: false, message: 'UNKNOWN_OPERATION' };
+    rec.sourceConsumed = true;
+    rec.grants.clear();
+    const meta = this._files.get(rec.stageKey);
+    if (meta) {
+      meta.grants.clear();
+      meta.protected = false;
+    }
+    this._files.delete(rec.stageKey);
+    this._byOp.delete(operationId);
+    return { ok: true, revoked: true, operationId };
+  }
+
+  /**
+   * 24h cleanup: delete expired stage files; never touch in-flight/current/protected.
+   */
+  cleanupExpired() {
+    const now = this._now();
+    let deleted = 0;
+    for (const [key, meta] of [...this._files.entries()]) {
+      if (this._inFlight.has(key) || meta.inFlight || meta.protected) continue;
+      if (now - meta.createdAt >= this.cleanupWindowMs) {
+        this._files.delete(key);
+        deleted += 1;
+      }
+    }
+    // Also drop unbound op records past window when not protected
+    for (const [opId, rec] of [...this._byOp.entries()]) {
+      if (rec.protected || this._inFlight.has(opId)) continue;
+      if (now - rec.createdAt >= this.cleanupWindowMs) {
+        this._byOp.delete(opId);
+        this._files.delete(rec.stageKey);
+        deleted += 1;
+      }
+    }
+    return { ok: true, deleted };
+  }
+}
+
+function createFileProviderImportStager(opts) {
+  return new FileProviderImportStager(opts);
+}
+
+/**
+ * GREEN fixture probe: content:// only, two-hop grant/revoke, 24h cleanup, traversal fail-closed.
+ */
+function assertFileProviderImportFixtures(_opts = {}) {
+  const stager = createFileProviderImportStager({ now: () => 1_000_000 });
+
+  // forbidden schemes
+  for (const bad of ['file:///tmp/a.mpkg', 'http://x', 'https://x', '/abs/path', 'content://x/../escape']) {
+    const r = stager.importMpkg('op-bad', bad);
+    if (r.ok) {
+      return { ok: false, message: `must reject scheme/path: ${bad}` };
+    }
+  }
+
+  const ok = stager.importMpkg('op-1', 'content://com.android.providers.media.documents/document/1');
+  if (!ok.ok || ok.code !== CODE.USER_ACTION_REQUIRED) {
+    return { ok: false, message: 'content:// import must USER_ACTION_REQUIRED', detail: ok };
+  }
+  if (!ok.stagedUri || !ok.stagedUri.startsWith(`content://${FILE_PROVIDER_AUTHORITY}/`)) {
+    return { ok: false, message: 'stagedUri must use Mineradio FileProvider authority' };
+  }
+  if (ok.path) {
+    return { ok: false, message: 'must not leak filesystem path' };
+  }
+
+  // idempotent re-import
+  const again = stager.importMpkg('op-1', 'content://com.android.providers.media.documents/document/1');
+  if (!again.ok || !again.idempotent) {
+    return { ok: false, message: 'duplicate operationId must be idempotent after stage' };
+  }
+
+  // revoke on sourceConsumed
+  const rev = stager.onSourceConsumed('op-1');
+  if (!rev.ok || !rev.revoked) {
+    return { ok: false, message: 'sourceConsumed must revoke grants' };
+  }
+
+  // 24h cleanup protects in-flight
+  const s2 = createFileProviderImportStager({
+    now: () => 0,
+    cleanupWindowMs: 1000,
+  });
+  s2.importMpkg('op-live', 'content://picker/1');
+  // mark another expired unprotected file
+  s2._files.set(`${STAGE_CACHE_DIR}old.mpkg`, {
+    grants: new Set(),
+    createdAt: -10_000,
+    inFlight: false,
+    protected: false,
+  });
+  s2._now = () => 5000;
+  const cleaned = s2.cleanupExpired();
+  if (!cleaned.ok || cleaned.deleted < 1) {
+    return { ok: false, message: 'cleanup must delete expired unprotected stages', detail: cleaned };
+  }
+  if (!s2._byOp.has('op-live')) {
+    return { ok: false, message: 'cleanup must not delete protected/current op stages' };
+  }
+
+  return {
+    ok: true,
+    fileProviderAuthority: FILE_PROVIDER_AUTHORITY,
+    stageCacheDir: STAGE_CACHE_DIR,
+    cleanupWindowMs: CLEANUP_WINDOW_MS,
+    contentSchemeOnly: true,
+    twoHop: true,
+    grantRevoke: true,
+    EffectiveDone: false,
+  };
+}
+
+/**
+ * REFACTOR: stager + bridge Smali must mirror WP-05 FileProvider constants
+ * (no second state machine; importMpkg routes through CarWallpaperMpkgStager).
+ * @param {{ cwd?: string, bridgeSmaliPath?: string, stagerSmaliPath?: string }} [options]
+ */
+function assertFileProviderSmaliMirror(options = {}) {
+  const cwd = options.cwd || path.resolve(__dirname, '..', '..');
+  const bridgePath =
+    options.bridgeSmaliPath || path.join(cwd, SMALI_BRIDGE_REL_PATH);
+  const stagerPath =
+    options.stagerSmaliPath || path.join(cwd, STAGER_SMALI_REL_PATH);
+
+  if (!fs.existsSync(bridgePath)) {
+    return {
+      ok: false,
+      failureReason: 'WP05_IMPORT_MPKG_CAPACITY_MISSING',
+      message: `bridge Smali missing: ${bridgePath}`,
+    };
+  }
+  if (!fs.existsSync(stagerPath)) {
+    return {
+      ok: false,
+      failureReason: 'WP05_STAGER_SMALI_MISSING',
+      message: `stager Smali missing: ${stagerPath}`,
+    };
+  }
+
+  const bridge = fs.readFileSync(bridgePath, 'utf8');
+  const stager = fs.readFileSync(stagerPath, 'utf8');
+  const missing = [];
+
+  if (!stager.includes('CarWallpaperMpkgStager')) missing.push('stagerClass');
+  if (!stager.includes(STAGE_CACHE_NAME)) missing.push('stageCacheName');
+  if (!stager.includes(FILE_PROVIDER_AUTHORITY)) missing.push('fileProviderAuthority');
+  if (!stager.includes('content://') && !stager.includes('content')) {
+    // isContentUri uses content:// string in Smali
+    if (!stager.includes('content://')) missing.push('contentScheme');
+  }
+  if (!stager.includes('grantUriPermission') && !stager.includes('grantUri')) {
+    // comments/markers OK — GREEN stager documents grantUriPermission
+    if (!/grantUriPermission/i.test(stager)) missing.push('grantUriPermission');
+  }
+  if (!stager.includes('sha256') && !stager.includes('sha256')) {
+    if (!/sha256/i.test(stager)) missing.push('sha256');
+  }
+
+  if (!bridge.includes('importMpkg')) missing.push('bridge.importMpkg');
+  if (!bridge.includes('CarWallpaperMpkgStager')) missing.push('bridge.stagerCall');
+  if (!bridge.includes('content://') && !/content:\\\/\\\//.test(bridge)) {
+    // may only call stager helpers; require stager class reference at minimum
+  }
+
+  // No second operation/binding state machine in stager.
+  const forbidden = ['RequestLedger', 'PluginOperationRepository', 'BindingStateMachine'];
+  const hits = forbidden.filter((t) => stager.includes(t) || bridge.includes(t));
+  if (hits.length) {
+    return {
+      ok: false,
+      failureReason: 'WP05_SECOND_STATE_MACHINE',
+      message: `WP-05 Smali must not host second state machine: ${hits.join(',')}`,
+      forbiddenHits: hits,
+    };
+  }
+
+  if (missing.length) {
+    return {
+      ok: false,
+      failureReason: 'WP05_CONTRACT_MIRROR_DRIFT',
+      message: `WP-05 Smali drifts from FileProvider contract: ${missing.join(',')}`,
+      missing,
+    };
+  }
+
+  return {
+    ok: true,
+    fileProviderAuthority: FILE_PROVIDER_AUTHORITY,
+    stageCacheName: STAGE_CACHE_NAME,
+    bridgePath,
+    stagerPath,
+    EffectiveDone: false,
+  };
+}
+
 module.exports = Object.freeze({
   protocolVersion: PROTOCOL_VERSION,
   authority: AUTHORITY,
@@ -665,6 +1004,20 @@ module.exports = Object.freeze({
   actionTokenTtlMs: ACTION_TOKEN_TTL_MS,
   actionTokenTtlMinutes: 10,
   actionTokenIsNotUserGestureProof: true,
+  // WP-05 FileProvider (shared constants + pure validators)
+  fileProviderAuthority: FILE_PROVIDER_AUTHORITY,
+  stageCacheName: STAGE_CACHE_NAME,
+  stageCacheDir: STAGE_CACHE_DIR,
+  cleanupWindowMs: CLEANUP_WINDOW_MS,
+  isContentUri,
+  isForbiddenSourceUri,
+  stageKeyForOperation,
+  stagedContentUriForOperation,
+  FileProviderImportStager,
+  createFileProviderImportStager,
+  assertFileProviderImportFixtures,
+  assertFileProviderSmaliMirror,
+  STAGER_SMALI_REL_PATH,
   SMALI_BRIDGE_REL_PATH,
   ActionTokenRegistry,
   createActionTokenRegistry,

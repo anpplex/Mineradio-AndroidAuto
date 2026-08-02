@@ -6,50 +6,158 @@
       "dependsOn": [],
       "requiredEffectiveDone": [],
       "phaseCommands": {
-        "RED": { "commandId": "WP-INFRA-RED", "argv": ["true"] },
-        "GREEN": { "commandId": "WP-INFRA-GREEN", "argv": ["true"] },
-        "REFACTOR": { "commandId": "WP-INFRA-REFACTOR", "argv": ["true"] },
-        "VERIFY": { "commandId": "WP-INFRA-VERIFY", "argv": ["true"] }
+        "RED": {
+          "commandId": "WP-INFRA-RED",
+          "argv": [
+            "true"
+          ]
+        },
+        "GREEN": {
+          "commandId": "WP-INFRA-GREEN",
+          "argv": [
+            "true"
+          ]
+        },
+        "REFACTOR": {
+          "commandId": "WP-INFRA-REFACTOR",
+          "argv": [
+            "true"
+          ]
+        },
+        "VERIFY": {
+          "commandId": "WP-INFRA-VERIFY",
+          "argv": [
+            "true"
+          ]
+        }
       },
-      "expectedExit": { "RED": 1, "GREEN": 0, "REFACTOR": 0, "VERIFY": 0 },
-      "failureSignaturePolicy": { "RED": { "required": true, "match": "stderr" } },
-      "scopeCheck": { "repo": "mineradio", "exactFiles": [] },
+      "expectedExit": {
+        "RED": 1,
+        "GREEN": 0,
+        "REFACTOR": 0,
+        "VERIFY": 0
+      },
+      "failureSignaturePolicy": {
+        "RED": {
+          "required": true,
+          "match": "stderr"
+        }
+      },
+      "scopeCheck": {
+        "repo": "mineradio",
+        "exactFiles": []
+      },
       "evidenceLevel": "E0",
       "weight": 0,
       "requiredEffectiveGate": true
     },
     {
       "taskId": "WP-00",
-      "dependsOn": ["WP-INFRA"],
-      "requiredEffectiveDone": ["WP-INFRA"],
+      "dependsOn": [
+        "WP-INFRA"
+      ],
+      "requiredEffectiveDone": [
+        "WP-INFRA"
+      ],
       "phaseCommands": {
-        "RED": { "commandId": "WP-00-RED", "argv": ["true"] },
-        "GREEN": { "commandId": "WP-00-GREEN", "argv": ["true"] },
-        "REFACTOR": { "commandId": "WP-00-REFACTOR", "argv": ["true"] },
-        "VERIFY": { "commandId": "WP-00-VERIFY", "argv": ["true"] }
+        "RED": {
+          "commandId": "WP-00-RED",
+          "argv": [
+            "true"
+          ]
+        },
+        "GREEN": {
+          "commandId": "WP-00-GREEN",
+          "argv": [
+            "true"
+          ]
+        },
+        "REFACTOR": {
+          "commandId": "WP-00-REFACTOR",
+          "argv": [
+            "true"
+          ]
+        },
+        "VERIFY": {
+          "commandId": "WP-00-VERIFY",
+          "argv": [
+            "true"
+          ]
+        }
       },
-      "expectedExit": { "RED": 1, "GREEN": 0, "REFACTOR": 0, "VERIFY": 0 },
-      "failureSignaturePolicy": { "RED": { "required": true, "match": "stderr" } },
-      "scopeCheck": { "repo": "mineradio", "exactFiles": [] },
+      "expectedExit": {
+        "RED": 1,
+        "GREEN": 0,
+        "REFACTOR": 0,
+        "VERIFY": 0
+      },
+      "failureSignaturePolicy": {
+        "RED": {
+          "required": true,
+          "match": "stderr"
+        }
+      },
+      "scopeCheck": {
+        "repo": "mineradio",
+        "exactFiles": []
+      },
       "evidenceLevel": "E0",
       "weight": 4,
       "requiredEffectiveGate": true
     },
     {
       "taskId": "WP-01",
-      "dependsOn": ["WP-INFRA", "WP-00"],
-      "requiredEffectiveDone": ["WP-INFRA", "WP-00"],
+      "dependsOn": [
+        "WP-INFRA",
+        "WP-00"
+      ],
+      "requiredEffectiveDone": [
+        "WP-INFRA",
+        "WP-00"
+      ],
       "phaseCommands": {
-        "RED": { "commandId": "WP-01-RED", "argv": ["true"] },
-        "GREEN": { "commandId": "WP-01-GREEN", "argv": ["true"] },
-        "REFACTOR": { "commandId": "WP-01-REFACTOR", "argv": ["true"] },
-        "VERIFY": { "commandId": "WP-01-VERIFY", "argv": ["true"] }
+        "RED": {
+          "commandId": "WP-01-RED",
+          "argv": [
+            "true"
+          ]
+        },
+        "GREEN": {
+          "commandId": "WP-01-GREEN",
+          "argv": [
+            "true"
+          ]
+        },
+        "REFACTOR": {
+          "commandId": "WP-01-REFACTOR",
+          "argv": [
+            "true"
+          ]
+        },
+        "VERIFY": {
+          "commandId": "WP-01-VERIFY",
+          "argv": [
+            "true"
+          ]
+        }
       },
-      "expectedExit": { "RED": 1, "GREEN": 0, "REFACTOR": 0, "VERIFY": 0 },
-      "failureSignaturePolicy": { "RED": { "required": true, "match": "stderr" } },
+      "expectedExit": {
+        "RED": 1,
+        "GREEN": 0,
+        "REFACTOR": 0,
+        "VERIFY": 0
+      },
+      "failureSignaturePolicy": {
+        "RED": {
+          "required": true,
+          "match": "stderr"
+        }
+      },
       "scopeCheck": {
         "repo": "mineradio",
-        "exactFiles": ["wallpaper-plugin/"],
+        "exactFiles": [
+          "wallpaper-plugin/"
+        ],
         "product": "Wallpaper Engine",
         "path": "wallpaper-plugin/"
       },
@@ -92,16 +200,54 @@
     },
     {
       "taskId": "WP-02",
-      "dependsOn": ["WP-INFRA", "WP-00", "WP-01"],
-      "requiredEffectiveDone": ["WP-INFRA", "WP-00", "WP-01"],
+      "dependsOn": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01"
+      ],
+      "requiredEffectiveDone": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01"
+      ],
       "phaseCommands": {
-        "RED": { "commandId": "WP-02-RED", "argv": ["true"] },
-        "GREEN": { "commandId": "WP-02-GREEN", "argv": ["true"] },
-        "REFACTOR": { "commandId": "WP-02-REFACTOR", "argv": ["true"] },
-        "VERIFY": { "commandId": "WP-02-VERIFY", "argv": ["true"] }
+        "RED": {
+          "commandId": "WP-02-RED",
+          "argv": [
+            "true"
+          ]
+        },
+        "GREEN": {
+          "commandId": "WP-02-GREEN",
+          "argv": [
+            "true"
+          ]
+        },
+        "REFACTOR": {
+          "commandId": "WP-02-REFACTOR",
+          "argv": [
+            "true"
+          ]
+        },
+        "VERIFY": {
+          "commandId": "WP-02-VERIFY",
+          "argv": [
+            "true"
+          ]
+        }
       },
-      "expectedExit": { "RED": 1, "GREEN": 0, "REFACTOR": 0, "VERIFY": 0 },
-      "failureSignaturePolicy": { "RED": { "required": true, "match": "stderr" } },
+      "expectedExit": {
+        "RED": 1,
+        "GREEN": 0,
+        "REFACTOR": 0,
+        "VERIFY": 0
+      },
+      "failureSignaturePolicy": {
+        "RED": {
+          "required": true,
+          "match": "stderr"
+        }
+      },
       "scopeCheck": {
         "repo": "mineradio",
         "exactFiles": [
@@ -137,16 +283,56 @@
     },
     {
       "taskId": "WP-03",
-      "dependsOn": ["WP-INFRA", "WP-00", "WP-01", "WP-02"],
-      "requiredEffectiveDone": ["WP-INFRA", "WP-00", "WP-01", "WP-02"],
+      "dependsOn": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02"
+      ],
+      "requiredEffectiveDone": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02"
+      ],
       "phaseCommands": {
-        "RED": { "commandId": "WP-03-RED", "argv": ["true"] },
-        "GREEN": { "commandId": "WP-03-GREEN", "argv": ["true"] },
-        "REFACTOR": { "commandId": "WP-03-REFACTOR", "argv": ["true"] },
-        "VERIFY": { "commandId": "WP-03-VERIFY", "argv": ["true"] }
+        "RED": {
+          "commandId": "WP-03-RED",
+          "argv": [
+            "true"
+          ]
+        },
+        "GREEN": {
+          "commandId": "WP-03-GREEN",
+          "argv": [
+            "true"
+          ]
+        },
+        "REFACTOR": {
+          "commandId": "WP-03-REFACTOR",
+          "argv": [
+            "true"
+          ]
+        },
+        "VERIFY": {
+          "commandId": "WP-03-VERIFY",
+          "argv": [
+            "true"
+          ]
+        }
       },
-      "expectedExit": { "RED": 1, "GREEN": 0, "REFACTOR": 0, "VERIFY": 0 },
-      "failureSignaturePolicy": { "RED": { "required": true, "match": "stderr" } },
+      "expectedExit": {
+        "RED": 1,
+        "GREEN": 0,
+        "REFACTOR": 0,
+        "VERIFY": 0
+      },
+      "failureSignaturePolicy": {
+        "RED": {
+          "required": true,
+          "match": "stderr"
+        }
+      },
       "scopeCheck": {
         "repo": "mineradio",
         "exactFiles": [
@@ -186,16 +372,58 @@
     },
     {
       "taskId": "WP-04",
-      "dependsOn": ["WP-INFRA", "WP-00", "WP-01", "WP-02", "WP-03"],
-      "requiredEffectiveDone": ["WP-INFRA", "WP-00", "WP-01", "WP-02", "WP-03"],
+      "dependsOn": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03"
+      ],
+      "requiredEffectiveDone": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03"
+      ],
       "phaseCommands": {
-        "RED": { "commandId": "WP-04-RED", "argv": ["true"] },
-        "GREEN": { "commandId": "WP-04-GREEN", "argv": ["true"] },
-        "REFACTOR": { "commandId": "WP-04-REFACTOR", "argv": ["true"] },
-        "VERIFY": { "commandId": "WP-04-VERIFY", "argv": ["true"] }
+        "RED": {
+          "commandId": "WP-04-RED",
+          "argv": [
+            "true"
+          ]
+        },
+        "GREEN": {
+          "commandId": "WP-04-GREEN",
+          "argv": [
+            "true"
+          ]
+        },
+        "REFACTOR": {
+          "commandId": "WP-04-REFACTOR",
+          "argv": [
+            "true"
+          ]
+        },
+        "VERIFY": {
+          "commandId": "WP-04-VERIFY",
+          "argv": [
+            "true"
+          ]
+        }
       },
-      "expectedExit": { "RED": 1, "GREEN": 0, "REFACTOR": 0, "VERIFY": 0 },
-      "failureSignaturePolicy": { "RED": { "required": true, "match": "stderr" } },
+      "expectedExit": {
+        "RED": 1,
+        "GREEN": 0,
+        "REFACTOR": 0,
+        "VERIFY": 0
+      },
+      "failureSignaturePolicy": {
+        "RED": {
+          "required": true,
+          "match": "stderr"
+        }
+      },
       "scopeCheck": {
         "repo": "mineradio",
         "exactFiles": [
@@ -232,6 +460,99 @@
         "WallpaperPlugin JS interface",
         "wallpaper-plugin-bridge.test.js",
         "build-car-apk.sh wire"
+      ]
+    },
+    {
+      "taskId": "WP-05",
+      "dependsOn": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04"
+      ],
+      "requiredEffectiveDone": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04"
+      ],
+      "phaseCommands": {
+        "RED": {
+          "commandId": "WP-05-RED",
+          "argv": [
+            "true"
+          ]
+        },
+        "GREEN": {
+          "commandId": "WP-05-GREEN",
+          "argv": [
+            "true"
+          ]
+        },
+        "REFACTOR": {
+          "commandId": "WP-05-REFACTOR",
+          "argv": [
+            "true"
+          ]
+        },
+        "VERIFY": {
+          "commandId": "WP-05-VERIFY",
+          "argv": [
+            "true"
+          ]
+        }
+      },
+      "expectedExit": {
+        "RED": 1,
+        "GREEN": 0,
+        "REFACTOR": 0,
+        "VERIFY": 0
+      },
+      "failureSignaturePolicy": {
+        "RED": {
+          "required": true,
+          "match": "stderr"
+        }
+      },
+      "scopeCheck": {
+        "repo": "mineradio",
+        "exactFiles": [
+          "android-car/scripts/resources/xml/wallpaper_plugin_paths.xml",
+          "android-car/scripts/smali/com/mineradio/app/car/CarWallpaperMpkgStager.smali",
+          "android-car/scripts/patch-wallpaper-plugin-bridge.js",
+          "android-car/scripts/patch-apk-manifest.js",
+          "android-car/scripts/smali/com/mineradio/app/car/CarWallpaperPluginBridge.smali",
+          "android-car/tests/wallpaper-plugin-file-provider.test.js"
+        ],
+        "product": "Wallpaper Engine",
+        "path": "android-car/scripts/",
+        "fileProviderAuthority": "com.mineradio.app.wallpaperplugin.files",
+        "cachePath": "wallpaper_plugin_stage/",
+        "jsMethod": "importMpkg"
+      },
+      "evidenceLevel": "E1",
+      "weight": 8,
+      "product": "Wallpaper Engine",
+      "path": "android-car/scripts/",
+      "requiredEffectiveGate": false,
+      "inputs": [
+        "WP-04 WallpaperPlugin JS interface",
+        "WP-04 CarWallpaperPluginBridge.smali",
+        "WP-03 plugin import_mpkg / staging contract",
+        "user content:// URI with Mineradio read grant"
+      ],
+      "outputs": [
+        "wallpaper_plugin_paths.xml",
+        "CarWallpaperMpkgStager.smali",
+        "FileProvider authority com.mineradio.app.wallpaperplugin.files",
+        "importMpkg content:// only",
+        "URI two-hop grant/revoke",
+        "24h stage cleanup",
+        "wallpaper-plugin-file-provider.test.js"
       ]
     }
   ]

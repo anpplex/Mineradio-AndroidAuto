@@ -70,13 +70,46 @@ function atomicWriteFile(filePath, content) {
   fs.renameSync(tmp, filePath);
 }
 
+/** WP-05 paths XML: only cache-path wallpaper_plugin_stage/ (Task 5). */
+const FORBIDDEN_PROVIDER_PATH_TAGS_RE =
+  /<(files-path|external-path|external-files-path|root-path)\b/;
+const PATHS_XML_BASENAME = 'wallpaper_plugin_paths.xml';
+const STAGER_SMALI_BASENAME = 'CarWallpaperMpkgStager.smali';
+const BRIDGE_SMALI_BASENAME = 'CarWallpaperPluginBridge.smali';
+
 function resolveSmaliSourceRoot() {
   return path.join(__dirname, 'smali', 'com', 'mineradio', 'app', 'car');
 }
 
+/** Decoded APK smali_classes3/.../car destination for bridge + stager. */
+function resolveDecodedCarSmaliDestDir(decodedDir) {
+  return path.join(decodedDir, 'smali_classes3', 'com', 'mineradio', 'app', 'car');
+}
+
+/**
+ * Atomic copy of a Smali source into decoded car package dir.
+ * @param {string} decodedDir
+ * @param {string} basename e.g. CarWallpaperPluginBridge.smali
+ * @param {(text: string) => void} [validateText] fail-closed pre-write check
+ */
+function copyCarSmaliFile(decodedDir, basename, validateText) {
+  const src = path.join(resolveSmaliSourceRoot(), basename);
+  if (!fs.existsSync(src)) {
+    throw new Error(`${basename} missing at ${src}`);
+  }
+  const body = fs.readFileSync(src);
+  if (typeof validateText === 'function') {
+    validateText(body.toString('utf8'));
+  }
+  const destRoot = resolveDecodedCarSmaliDestDir(decodedDir);
+  fs.mkdirSync(destRoot, { recursive: true });
+  const dest = path.join(destRoot, basename);
+  atomicWriteFile(dest, body);
+  return { dest, changed: true, src };
+}
+
 function copyBridgeSmali(decodedDir) {
-  const srcRoot = resolveSmaliSourceRoot();
-  const bridgeSrc = path.join(srcRoot, 'CarWallpaperPluginBridge.smali');
+  const bridgeSrc = path.join(resolveSmaliSourceRoot(), BRIDGE_SMALI_BASENAME);
   if (!fs.existsSync(bridgeSrc)) {
     throw new Error(`CarWallpaperPluginBridge.smali missing at ${bridgeSrc}`);
   }
@@ -87,20 +120,64 @@ function copyBridgeSmali(decodedDir) {
       `JS/Smali contract mirror failed before copy: ${mirror.failureReason}: ${mirror.message}`,
     );
   }
-  const destRoot = path.join(
-    decodedDir,
-    'smali_classes3',
-    'com',
-    'mineradio',
-    'app',
-    'car',
-  );
-  fs.mkdirSync(destRoot, { recursive: true });
-  const dest = path.join(destRoot, 'CarWallpaperPluginBridge.smali');
-  const body = fs.readFileSync(bridgeSrc);
-  // Always refresh bridge body (deterministic); rename is atomic per file.
-  atomicWriteFile(dest, body);
-  return { dest, changed: true, contractMirror: mirror };
+  const copied = copyCarSmaliFile(decodedDir, BRIDGE_SMALI_BASENAME);
+  return { dest: copied.dest, changed: true, contractMirror: mirror };
+}
+
+/**
+ * WP-05: copy CarWallpaperMpkgStager.smali next to bridge (idempotent refresh).
+ */
+function copyStagerSmali(decodedDir) {
+  const fpMirror = contract.assertFileProviderSmaliMirror({
+    cwd: path.resolve(__dirname, '..', '..'),
+  });
+  if (!fpMirror.ok) {
+    throw new Error(
+      `FileProvider Smali mirror failed before stager copy: ${fpMirror.failureReason}: ${fpMirror.message}`,
+    );
+  }
+  const copied = copyCarSmaliFile(decodedDir, STAGER_SMALI_BASENAME, (text) => {
+    if (!text.includes('CarWallpaperMpkgStager') || !text.includes('wallpaper_plugin_stage')) {
+      throw new Error('CarWallpaperMpkgStager.smali missing required stage markers (fail-closed)');
+    }
+  });
+  return { dest: copied.dest, changed: true, stager: 'CarWallpaperMpkgStager' };
+}
+
+/**
+ * Validate Task 5 paths XML text (cache-path only). Shared by copy + tests.
+ * @param {string} text
+ */
+function assertWallpaperPluginPathsXmlText(text) {
+  if (typeof text !== 'string' || !text.includes('cache-path') || !text.includes('wallpaper_plugin_stage')) {
+    throw new Error('wallpaper_plugin_paths.xml must only expose cache-path wallpaper_plugin_stage/');
+  }
+  if (FORBIDDEN_PROVIDER_PATH_TAGS_RE.test(text)) {
+    throw new Error('wallpaper_plugin_paths.xml forbids files/external/root paths (fail-closed)');
+  }
+}
+
+/**
+ * WP-05: copy wallpaper_plugin_paths.xml into decoded APK res/xml/.
+ * Input structure + target authority validated; original APK never overwritten.
+ */
+function copyWallpaperPluginPathsXml(decodedDir) {
+  const src = path.join(__dirname, 'resources', 'xml', PATHS_XML_BASENAME);
+  if (!fs.existsSync(src)) {
+    throw new Error(`wallpaper_plugin_paths.xml missing at ${src}`);
+  }
+  const text = fs.readFileSync(src, 'utf8');
+  assertWallpaperPluginPathsXmlText(text);
+  const destDir = path.join(decodedDir, 'res', 'xml');
+  fs.mkdirSync(destDir, { recursive: true });
+  const dest = path.join(destDir, PATHS_XML_BASENAME);
+  atomicWriteFile(dest, text);
+  return {
+    dest,
+    changed: true,
+    authority: contract.fileProviderAuthority,
+    resource: '@xml/wallpaper_plugin_paths',
+  };
 }
 
 function findLandscapeWebActivity(decodedDir) {
@@ -172,15 +249,21 @@ function patchWallpaperPluginBridge(decodedDir) {
   }
 
   const smali = copyBridgeSmali(root);
+  // WP-05: FileProvider paths XML → res/xml/ + CarWallpaperMpkgStager.smali
+  const pathsXml = copyWallpaperPluginPathsXml(root);
+  const stager = copyStagerSmali(root);
   const activity = patchLandscapeWebActivity(root);
   return {
     smaliDir: path.dirname(smali.dest),
     bridgeSmali: smali,
+    stagerSmali: stager,
+    wallpaperPluginPathsXml: pathsXml,
     landscapeWebActivity: activity,
     jsInterface: JS_INTERFACE,
     hookMarker: HOOK_MARKER,
     protocolVersion: contract.protocolVersion,
     authority: contract.authority,
+    fileProviderAuthority: contract.fileProviderAuthority,
     contractMirror: smali.contractMirror,
   };
 }
@@ -473,6 +556,12 @@ function main(argv) {
 module.exports = {
   patchWallpaperPluginBridge,
   copyBridgeSmali,
+  copyStagerSmali,
+  copyWallpaperPluginPathsXml,
+  copyCarSmaliFile,
+  resolveDecodedCarSmaliDestDir,
+  assertWallpaperPluginPathsXmlText,
+  FORBIDDEN_PROVIDER_PATH_TAGS_RE,
   patchLandscapeWebActivity,
   atomicWriteFile,
   buildAttachSnippet,

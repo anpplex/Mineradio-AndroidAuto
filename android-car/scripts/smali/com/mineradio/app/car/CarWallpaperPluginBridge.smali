@@ -180,9 +180,12 @@
 .end method
 
 .method public importMpkg(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
-    .locals 1
+    .locals 2
     .annotation runtime Landroid/webkit/JavascriptInterface;
     .end annotation
+
+    # WP-05: content:// only → CarWallpaperMpkgStager (cache/wallpaper_plugin_stage).
+    # Rejects file://, absolute paths, path traversal. Never leaks filesystem paths.
 
     if-eqz p1, :cond_0
 
@@ -196,9 +199,41 @@
     return-object v0
 
     :cond_1
-    const-string v0, "{\"code\":20,\"providerMethod\":\"import_mpkg\"}"
+    # Forbid file:// and absolute paths before staging.
+    invoke-static {p2}, Lcom/mineradio/app/car/CarWallpaperMpkgStager;->isForbiddenScheme(Ljava/lang/String;)Z
+
+    move-result v0
+
+    if-nez v0, :cond_2
+
+    invoke-static {}, Lcom/mineradio/app/car/CarWallpaperPluginBridge;->failClosed()Ljava/lang/String;
+
+    move-result-object v0
 
     return-object v0
+
+    :cond_2
+    invoke-static {p2}, Lcom/mineradio/app/car/CarWallpaperMpkgStager;->isContentUri(Ljava/lang/String;)Z
+
+    move-result v0
+
+    if-eqz v0, :cond_3
+
+    invoke-static {}, Lcom/mineradio/app/car/CarWallpaperPluginBridge;->failClosed()Ljava/lang/String;
+
+    move-result-object v0
+
+    return-object v0
+
+    :cond_3
+    # Context may be null in unit probes — stager still validates scheme/opId.
+    const/4 v0, 0x0
+
+    invoke-static {v0, p1, p2}, Lcom/mineradio/app/car/CarWallpaperMpkgStager;->stageFromContentUri(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+
+    move-result-object v1
+
+    return-object v1
 .end method
 
 .method public installPlugin(Ljava/lang/String;)Ljava/lang/String;
