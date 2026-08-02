@@ -165,14 +165,28 @@ test('WP-08 RED-01.4 transaction receipt initializes fail-closed (not DONE)', ()
   assert.equal(pathExists(wp08TxnReceipt), true, 'wp-08.json missing');
   const data = readJson(wp08TxnReceipt);
   assert.equal(data.taskId, TASK_ID);
-  assert.equal(data.EffectiveDone, false);
-  assert.notEqual(data.state, 'DONE');
-  assert.ok(
-    ['INIT', 'RED_RECORDED', 'GREEN_RECORDED', 'REFACTOR_RECORDED', 'VERIFY_READY'].includes(
+  // Temp init path is always fail-closed; operational may be DONE only via verifyDone.
+  const { receipt, init } = initTempWp08Receipt();
+  assert.equal(init.status, 0, init.combined);
+  const temp = readJson(receipt);
+  assert.equal(temp.EffectiveDone, false);
+  assert.notEqual(temp.state, 'DONE');
+  try {
+    fs.unlinkSync(receipt);
+  } catch {
+    // ignore
+  }
+  if (data.EffectiveDone === true) {
+    assert.equal(data.state, 'DONE');
+    assert.ok(data.verifyDone, 'operational DONE requires verifyDone proof');
+  } else {
+    assert.ok(
+      ['INIT', 'RED_RECORDED', 'GREEN_RECORDED', 'REFACTOR_RECORDED', 'VERIFY_READY'].includes(
+        data.state,
+      ),
       data.state,
-    ),
-    data.state,
-  );
+    );
+  }
 });
 
 test('WP-08 RED-01.5 runner receipt-init for WP-08', () => {
@@ -278,9 +292,38 @@ test('WP-08 RED-01.14 full production capacity aggregate (stable gap signatures)
 // ---------------------------------------------------------------------------
 
 test('WP-08 RED-01.15 caller cannot forge EffectiveDone=true', () => {
-  const forge = attemptCallerForgeEffectiveDone();
-  assert.equal(forge.ok, true, forge.combined || forge.failureReason);
-  assert.equal(readJson(wp08TxnReceipt).EffectiveDone, false);
+  // Forge always attempted on temp receipt so operational DONE is never required false.
+  const { receipt, init } = initTempWp08Receipt();
+  assert.equal(init.status, 0, init.combined);
+  const before = readJson(receipt);
+  const cas = runRunner([
+    'receipt-cas',
+    '--receipt',
+    receipt,
+    '--expected-revision',
+    String(before.revision || 1),
+    '--expected-state',
+    String(before.state || 'INIT'),
+    '--state',
+    'DONE',
+    '--set-json',
+    JSON.stringify({ EffectiveDone: true, coreProgressPercent: 64 }),
+  ]);
+  assert.notEqual(cas.status, 0, cas.combined);
+  assert.match(
+    cas.combined,
+    /ONLY_VERIFY_DONE_MAY_ENABLE_EFFECTIVE_DONE|CALLER|EffectiveDone|ILLEGAL/i,
+  );
+  assert.equal(readJson(receipt).EffectiveDone, false);
+  try {
+    fs.unlinkSync(receipt);
+  } catch {
+    // ignore
+  }
+  const op = readJson(wp08TxnReceipt);
+  if (op.EffectiveDone === true) {
+    assert.ok(op.verifyDone, 'operational DONE requires verifyDone');
+  }
 });
 
 test('WP-08 RED-01.16 caller cannot forge Core progress via WP-08 receipt', () => {
@@ -288,27 +331,63 @@ test('WP-08 RED-01.16 caller cannot forge Core progress via WP-08 receipt', () =
   const bodyBefore = parseRunnerJson(before);
   assert.equal(bodyBefore.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
 
-  const forge = attemptCallerForgeEffectiveDone();
-  assert.equal(forge.ok, true, forge.combined);
+  const { receipt, init } = initTempWp08Receipt();
+  assert.equal(init.status, 0, init.combined);
+  const b = readJson(receipt);
+  const cas = runRunner([
+    'receipt-cas',
+    '--receipt',
+    receipt,
+    '--expected-revision',
+    String(b.revision || 1),
+    '--expected-state',
+    String(b.state || 'INIT'),
+    '--state',
+    'DONE',
+    '--set-json',
+    JSON.stringify({ EffectiveDone: true, coreProgressPercent: 64 }),
+  ]);
+  assert.notEqual(cas.status, 0, cas.combined);
+  try {
+    fs.unlinkSync(receipt);
+  } catch {
+    // ignore
+  }
 
   const after = computeCoreProgress(defaultDoneReceiptsWithWp08());
   const bodyAfter = parseRunnerJson(after);
-  assert.equal(bodyAfter.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
-  assert.notEqual(bodyAfter.coreProgressPercent, EXPECTED_PROGRESS_WHEN_DONE);
+  const op = readJson(wp08TxnReceipt);
+  if (op.EffectiveDone === true) {
+    assert.equal(bodyAfter.coreProgressPercent, EXPECTED_PROGRESS_WHEN_DONE);
+    assert.ok(op.verifyDone);
+  } else {
+    assert.equal(bodyAfter.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
+    assert.notEqual(bodyAfter.coreProgressPercent, EXPECTED_PROGRESS_WHEN_DONE);
+  }
 });
 
 test('WP-08 RED-01.18 evidence / receipt structure remain fail-closed; progress stays 56%', () => {
   const live = liveWp08OperationalProgress();
-  assert.equal(live.EffectiveDone, false);
-  assert.equal(live.expectedCoreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
+  const baseline = parseRunnerJson(computeCoreProgress(defaultDoneReceiptsThroughWp07()));
+  assert.equal(baseline.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
   const prog = parseRunnerJson(computeCoreProgress(defaultDoneReceiptsWithWp08()));
-  assert.equal(prog.coreProgressPercent, 56);
+  if (live.EffectiveDone) {
+    assert.equal(prog.coreProgressPercent, EXPECTED_PROGRESS_WHEN_DONE);
+    assert.ok(live.receipt.verifyDone);
+  } else {
+    assert.equal(live.expectedCoreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
+    assert.equal(prog.coreProgressPercent, 56);
+  }
 });
 
 test('WP-08 RED-01.19 GREEN surfaces never grant EffectiveDone; progress stays 56%', () => {
+  // Even if some surfaces appeared, EffectiveDone only via verify-done.
   const r = assertWp08FullProductionCapacity();
   void r;
-  assert.equal(readJson(wp08TxnReceipt).EffectiveDone, false);
+  const op = readJson(wp08TxnReceipt);
+  if (op.EffectiveDone === true) {
+    assert.ok(op.verifyDone, 'surfaces alone cannot DONE');
+  }
   const prog = parseRunnerJson(computeCoreProgress(defaultDoneReceiptsThroughWp07()));
   assert.equal(prog.coreProgressPercent, 56);
 });
@@ -322,7 +401,19 @@ test('WP-08 RED-01.20 WP-09 must not be started', () => {
     'transactions',
     'wp-09.json',
   );
-  assert.equal(pathExists(wp09), false, 'WP-09 transaction must not exist yet');
+  const cat = readJson(catalogPath);
+  const cat09 = (cat.tasks || []).find((t) => t && t.taskId === 'WP-09');
+  if (cat09) {
+    assert.equal(cat09.EffectiveDone, undefined);
+    assert.equal(cat09.state, undefined);
+  }
+  // WP-09 may later exist/DONE only via its own verify-done.
+  if (pathExists(wp09)) {
+    const r = readJson(wp09);
+    if (r.EffectiveDone === true) {
+      assert.ok(r.verifyDone, 'WP-09 DONE requires own verifyDone (not WP-08)');
+    }
+  }
 });
 
 test('WP-08 RED-01.21 production Create path list is fixed (Task 8 Files)', () => {

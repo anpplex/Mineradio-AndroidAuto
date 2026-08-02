@@ -866,6 +866,112 @@
         "PluginActionActivity public apply + getWallpaperInfo reconcile",
         "WallpaperQueueTest / PluginRuntimeStateTest"
       ]
+    },
+    {
+      "taskId": "WP-09",
+      "dependsOn": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07",
+        "WP-08"
+      ],
+      "requiredEffectiveDone": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07",
+        "WP-08"
+      ],
+      "phaseCommands": {
+        "RED": {
+          "commandId": "WP-09-RED",
+          "argv": [
+            "true"
+          ]
+        },
+        "GREEN": {
+          "commandId": "WP-09-GREEN",
+          "argv": [
+            "true"
+          ]
+        },
+        "REFACTOR": {
+          "commandId": "WP-09-REFACTOR",
+          "argv": [
+            "true"
+          ]
+        },
+        "VERIFY": {
+          "commandId": "WP-09-VERIFY",
+          "argv": [
+            "true"
+          ]
+        }
+      },
+      "expectedExit": {
+        "RED": 1,
+        "GREEN": 0,
+        "REFACTOR": 0,
+        "VERIFY": 0
+      },
+      "failureSignaturePolicy": {
+        "RED": {
+          "required": true,
+          "match": "stderr"
+        }
+      },
+      "scopeCheck": {
+        "repo": "mineradio",
+        "exactFiles": [
+          "android-car/scripts/verify-wallpaper-plugin.js",
+          "android-car/scripts/verify-wallpaper-plugin.sh",
+          "android-car/scripts/wp09-transaction.py",
+          "android-car/tests/verify-wallpaper-plugin.test.js",
+          "android-car/tests/wp09-transaction.test.js"
+        ],
+        "product": "Wallpaper Engine",
+        "path": "android-car/scripts/",
+        "packages": [
+          "com.mineradio.app",
+          "com.motif.wallpaperengine",
+          "io.wallpaperengine.weclient"
+        ],
+        "tools": [
+          "aapt",
+          "apksigner",
+          "zipalign"
+        ],
+        "abi": "arm64-v8a"
+      },
+      "evidenceLevel": "E2",
+      "weight": 6,
+      "product": "Wallpaper Engine",
+      "path": "android-car/scripts/",
+      "requiredEffectiveGate": false,
+      "inputs": [
+        "WP-08 dual-repo plugin queue/apply",
+        "Mineradio + plugin APK same-cycle builds",
+        "official WE APK or device pull",
+        "aapt/apksigner/zipalign"
+      ],
+      "outputs": [
+        "verify-wallpaper-plugin.js/sh",
+        "wp09-transaction.py",
+        "three-package static JSON",
+        "cert allowlist match mineradioCallerCertSha256",
+        "split signer uniqueness"
+      ]
     }
   ]
 }
