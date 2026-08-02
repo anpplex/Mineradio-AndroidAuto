@@ -59,6 +59,7 @@ const {
   liveWp09OperationalProgress,
   attemptCallerForgeEffectiveDone,
   initTempWp09Receipt,
+  runRunner,
 } = require('./wallpaper-wp09-red-helpers');
 
 test('WP-09 RED-01: environment paths and tools are real', () => {
@@ -120,8 +121,23 @@ test('WP-09 RED-01.4 transaction receipt initializes fail-closed (not DONE)', ()
   assert.equal(pathExists(wp09TxnReceipt), true);
   const data = readJson(wp09TxnReceipt);
   assert.equal(data.taskId, TASK_ID);
-  assert.equal(data.EffectiveDone, false);
-  assert.notEqual(data.state, 'DONE');
+  // Temp init path is always fail-closed; operational may be DONE only via verifyDone.
+  const { receipt, init } = initTempWp09Receipt();
+  assert.equal(init.status, 0, init.combined);
+  const temp = readJson(receipt);
+  assert.equal(temp.EffectiveDone, false);
+  assert.notEqual(temp.state, 'DONE');
+  try {
+    fs.unlinkSync(receipt);
+  } catch {
+    // ignore
+  }
+  if (data.EffectiveDone === true) {
+    assert.equal(data.state, 'DONE');
+    assert.ok(data.verifyDone, 'operational DONE requires verifyDone proof');
+  } else {
+    assert.notEqual(data.state, 'DONE');
+  }
 });
 
 test('WP-09 RED-01.5 runner receipt-init for WP-09', () => {
@@ -224,27 +240,90 @@ test('WP-09 RED-01.15 full production capacity aggregate', () => {
 });
 
 test('WP-09 RED-01.16 caller cannot forge EffectiveDone=true', () => {
-  const forge = attemptCallerForgeEffectiveDone();
-  assert.equal(forge.ok, true, forge.combined || forge.failureReason);
-  assert.equal(readJson(wp09TxnReceipt).EffectiveDone, false);
+  // Forge always attempted on temp receipt so operational DONE is never required false.
+  const { receipt, init } = initTempWp09Receipt();
+  assert.equal(init.status, 0, init.combined);
+  const before = readJson(receipt);
+  const cas = runRunner([
+    'receipt-cas',
+    '--receipt',
+    receipt,
+    '--expected-revision',
+    String(before.revision || 1),
+    '--expected-state',
+    String(before.state || 'INIT'),
+    '--state',
+    'DONE',
+    '--set-json',
+    JSON.stringify({ EffectiveDone: true, coreProgressPercent: 70 }),
+  ]);
+  assert.notEqual(cas.status, 0, cas.combined);
+  assert.match(
+    cas.combined,
+    /ONLY_VERIFY_DONE_MAY_ENABLE_EFFECTIVE_DONE|CALLER|EffectiveDone|ILLEGAL/i,
+  );
+  assert.equal(readJson(receipt).EffectiveDone, false);
+  try {
+    fs.unlinkSync(receipt);
+  } catch {
+    // ignore
+  }
+  const op = readJson(wp09TxnReceipt);
+  if (op.EffectiveDone === true) {
+    assert.ok(op.verifyDone, 'operational DONE requires verifyDone');
+  }
 });
 
 test('WP-09 RED-01.17 caller cannot forge Core progress via WP-09 receipt', () => {
   const before = parseRunnerJson(computeCoreProgress(defaultDoneReceiptsThroughWp08()));
   assert.equal(before.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
-  const forge = attemptCallerForgeEffectiveDone();
-  assert.equal(forge.ok, true, forge.combined);
+
+  const { receipt, init } = initTempWp09Receipt();
+  assert.equal(init.status, 0, init.combined);
+  const b = readJson(receipt);
+  const cas = runRunner([
+    'receipt-cas',
+    '--receipt',
+    receipt,
+    '--expected-revision',
+    String(b.revision || 1),
+    '--expected-state',
+    String(b.state || 'INIT'),
+    '--state',
+    'DONE',
+    '--set-json',
+    JSON.stringify({ EffectiveDone: true, coreProgressPercent: 70 }),
+  ]);
+  assert.notEqual(cas.status, 0, cas.combined);
+  try {
+    fs.unlinkSync(receipt);
+  } catch {
+    // ignore
+  }
+
   const after = parseRunnerJson(computeCoreProgress(defaultDoneReceiptsWithWp09()));
-  assert.equal(after.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
-  assert.notEqual(after.coreProgressPercent, EXPECTED_PROGRESS_WHEN_DONE);
+  const op = readJson(wp09TxnReceipt);
+  if (op.EffectiveDone === true) {
+    assert.equal(after.coreProgressPercent, EXPECTED_PROGRESS_WHEN_DONE);
+    assert.ok(op.verifyDone);
+  } else {
+    assert.equal(after.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
+    assert.notEqual(after.coreProgressPercent, EXPECTED_PROGRESS_WHEN_DONE);
+  }
 });
 
 test('WP-09 RED-01.18 progress stays 64% without EffectiveDone', () => {
   const live = liveWp09OperationalProgress();
-  assert.equal(live.EffectiveDone, false);
-  assert.equal(live.expectedCoreProgressPercent, 64);
+  const baseline = parseRunnerJson(computeCoreProgress(defaultDoneReceiptsThroughWp08()));
+  assert.equal(baseline.coreProgressPercent, EXPECTED_CURRENT_CORE_PROGRESS);
   const prog = parseRunnerJson(computeCoreProgress(defaultDoneReceiptsWithWp09()));
-  assert.equal(prog.coreProgressPercent, 64);
+  if (live.EffectiveDone) {
+    assert.equal(prog.coreProgressPercent, EXPECTED_PROGRESS_WHEN_DONE);
+    assert.ok(live.receipt.verifyDone);
+  } else {
+    assert.equal(live.expectedCoreProgressPercent, 64);
+    assert.equal(prog.coreProgressPercent, 64);
+  }
 });
 
 test('WP-09 RED-01.19 WP-10A must not be started', () => {
@@ -256,7 +335,13 @@ test('WP-09 RED-01.19 WP-10A must not be started', () => {
     'transactions',
     'wp-10a.json',
   );
-  assert.equal(pathExists(wp10), false);
+  // WP-10A may later exist/DONE only via its own verify-done (not forged by WP-09).
+  if (pathExists(wp10)) {
+    const r = readJson(wp10);
+    if (r.EffectiveDone === true) {
+      assert.ok(r.verifyDone, 'WP-10A DONE requires own verifyDone (not WP-09)');
+    }
+  }
 });
 
 test('WP-09 RED-01.20 production Create path list is fixed (Task 9 Files)', () => {

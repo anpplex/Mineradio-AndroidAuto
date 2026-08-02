@@ -514,6 +514,139 @@ def cmd_open_attempt(args: argparse.Namespace) -> int:
     return emit_ok("open-attempt", taskId=task_id)
 
 
+def _adb_shell(serial: str, shell_args: list[str], timeout: float = 20.0) -> tuple[int, str, str]:
+    cmd = ["adb", "-s", serial, "shell", *shell_args]
+    try:
+        r = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except FileNotFoundError:
+        return 127, "", "adb not found on PATH"
+    except subprocess.TimeoutExpired:
+        return 124, "", "adb timed out"
+    return int(r.returncode), r.stdout or "", r.stderr or ""
+
+
+def cmd_assert_device_context(args: argparse.Namespace) -> int:
+    """WP-10A+ device Gate: serial/user/release/api/abi/unlocked fail-closed.
+
+    Does not install packages. Offline / mismatch → BLOCKED_DEVICE (non-zero).
+    """
+    task_id = require_task(args.task) if args.task else None
+    serial = getattr(args, "serial", None) or ""
+    if not serial:
+        fail("BLOCKED_DEVICE", "missing --serial (no default)")
+    user = getattr(args, "user", None)
+    if user is None or str(user) == "":
+        fail("BLOCKED_DEVICE", "missing --user (no default)")
+    user_s = str(user)
+    expect_release = str(getattr(args, "android_release", None) or "12")
+    expect_api = int(getattr(args, "api_level", None) or 31)
+    expect_abi = str(getattr(args, "abi", None) or "arm64-v8a")
+    require_unlocked = bool(getattr(args, "require_unlocked", False))
+    current_user = getattr(args, "current_user", None)
+    if current_user is not None and str(current_user) != "":
+        if str(current_user) != user_s:
+            fail(
+                "BLOCKED_DEVICE",
+                f"--current-user {current_user} != --user {user_s}",
+            )
+
+    # State
+    try:
+        st = subprocess.run(
+            ["adb", "-s", serial, "get-state"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except FileNotFoundError:
+        fail("BLOCKED_DEVICE", "adb not found on PATH")
+    except subprocess.TimeoutExpired:
+        fail("BLOCKED_DEVICE", f"adb get-state timed out for {serial}")
+    state = (st.stdout or "").strip()
+    if st.returncode != 0 or state != "device":
+        fail(
+            "BLOCKED_DEVICE",
+            f"device {serial} not online (state={state or 'missing'})",
+        )
+
+    # Properties
+    rc, out, err = _adb_shell(serial, ["getprop", "ro.build.version.release"])
+    release = out.strip()
+    if rc != 0 or release != expect_release:
+        fail(
+            "BLOCKED_DEVICE",
+            f"android-release {release!r} != {expect_release!r} ({err.strip()})",
+        )
+    rc, out, err = _adb_shell(serial, ["getprop", "ro.build.version.sdk"])
+    try:
+        api = int((out or "").strip())
+    except ValueError:
+        api = -1
+    if rc != 0 or api != expect_api:
+        fail("BLOCKED_DEVICE", f"api-level {api} != {expect_api}")
+
+    rc, out, err = _adb_shell(serial, ["getprop", "ro.product.cpu.abilist"])
+    abilist = (out or "").strip()
+    if rc != 0 or expect_abi not in abilist.split(","):
+        # also accept single abi prop
+        rc2, out2, _ = _adb_shell(serial, ["getprop", "ro.product.cpu.abi"])
+        if expect_abi not in ((out2 or "").strip(),) and expect_abi not in abilist:
+            fail(
+                "BLOCKED_DEVICE",
+                f"abi {expect_abi!r} not in abilist={abilist!r} abi={out2.strip()!r}",
+            )
+
+    # User exists + current user
+    rc, out, err = _adb_shell(serial, ["pm", "list", "users"])
+    if rc != 0 or f"UserInfo{{{user_s}:" not in out and f"UserInfo{{{user_s}," not in out:
+        # Android formats: UserInfo{12:name:flags}
+        if f"{{{user_s}:" not in out and f"UserInfo{{{user_s}" not in out:
+            fail("BLOCKED_DEVICE", f"user {user_s} not present: {out.strip()[:200]}")
+
+    rc, out, err = _adb_shell(serial, ["am", "get-current-user"])
+    cur = (out or "").strip()
+    if rc != 0 or cur != user_s:
+        fail(
+            "BLOCKED_DEVICE",
+            f"current user {cur!r} != required {user_s}",
+        )
+
+    if require_unlocked:
+        rc, out, err = _adb_shell(serial, ["dumpsys", "window", "policy"])
+        blob = f"{out}\n{err}".lower()
+        # Fail-closed if clearly locked; if dumpsys empty, still require screen interactive if available
+        if "mshowinglockscreen=true" in blob.replace(" ", "") or "isstatusbarkeyguardshowing=true" in blob.replace(
+            " ", ""
+        ):
+            fail("BLOCKED_DEVICE", "device is locked (require-unlocked)")
+        rc2, out2, _ = _adb_shell(serial, ["dumpsys", "power"])
+        pblob = (out2 or "").lower()
+        if "mholdingwakelocksuspendblocker=false" in pblob.replace(" ", "") and "mwakefulness=asleep" in pblob.replace(
+            " ", ""
+        ):
+            fail("BLOCKED_DEVICE", "device asleep (require-unlocked)")
+
+    fields: dict[str, Any] = {
+        "serial": serial,
+        "user": user_s,
+        "androidRelease": release,
+        "apiLevel": api,
+        "abi": expect_abi,
+        "state": state,
+        "unlocked": require_unlocked,
+    }
+    if task_id:
+        fields["taskId"] = task_id
+    return emit_ok("assert-device-context", **fields)
+
+
 # ---------------------------------------------------------------------------
 # Receipt surface: exclusive-create, 0600, lock, revision/state CAS,
 # atomic fsync replace, independent readback, IN_FLIGHT recovery, append-only.
@@ -7290,6 +7423,7 @@ COMMANDS = {
     "collect-raw": cmd_collect_raw,
     "collector-write": cmd_collector_write,
     "open-attempt": cmd_open_attempt,
+    "assert-device-context": cmd_assert_device_context,
     "receipt-init": cmd_receipt_init,
     "receipt-cas": cmd_receipt_cas,
     "receipt-read": cmd_receipt_read,
@@ -7392,6 +7526,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     # WP-01 verify-done / progress (CONTEXT-CATALOG-REPAIR)
     parser.add_argument("--proofs-json")
     parser.add_argument("--done-receipts-json")
+    # WP-10A+ device context Gate
+    parser.add_argument("--serial")
+    parser.add_argument("--user")
+    parser.add_argument("--current-user", dest="current_user")
+    parser.add_argument("--android-release", dest="android_release")
+    parser.add_argument("--api-level", dest="api_level", type=int)
+    parser.add_argument("--abi")
+    parser.add_argument("--require-unlocked", action="store_true")
+    parser.add_argument("--evidence")
     # Test receipt surface (RED-10 / GREEN-10)
     # dest must not collide with positional `command` (subcommand name).
     parser.add_argument("--command", dest="test_command")
