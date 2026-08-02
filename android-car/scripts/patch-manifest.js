@@ -58,10 +58,48 @@ function addCarLauncherFilter(xml) {
   return result;
 }
 
-function patchManifest(manifest) {
+/** WP-05 Mineradio FileProvider (Task 5) — reuse AndroidX class, do not re-inject library. */
+const WALLPAPER_PLUGIN_FILE_PROVIDER_CLASS = 'androidx.core.content.FileProvider';
+const WALLPAPER_PLUGIN_FILE_PROVIDER_AUTHORITY = 'com.mineradio.app.wallpaperplugin.files';
+const WALLPAPER_PLUGIN_PATHS_META = 'android.support.FILE_PROVIDER_PATHS';
+const WALLPAPER_PLUGIN_PATHS_RESOURCE = '@xml/wallpaper_plugin_paths';
+
+const WALLPAPER_PLUGIN_FILE_PROVIDER_SNIPPET = `
+        <provider
+            android:name="${WALLPAPER_PLUGIN_FILE_PROVIDER_CLASS}"
+            android:authorities="${WALLPAPER_PLUGIN_FILE_PROVIDER_AUTHORITY}"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="${WALLPAPER_PLUGIN_PATHS_META}"
+                android:resource="${WALLPAPER_PLUGIN_PATHS_RESOURCE}" />
+        </provider>`;
+
+/**
+ * Inject WP-05 FileProvider into <application> if missing (idempotent).
+ * Fail-closed: requires <application> open tag.
+ */
+function requireManifestXml(manifest) {
   if (typeof manifest !== 'string' || !manifest.includes('<manifest')) {
     throw new TypeError('Expected decoded AndroidManifest.xml text');
   }
+  return manifest;
+}
+
+function injectWallpaperPluginFileProvider(manifest) {
+  requireManifestXml(manifest);
+  if (manifest.includes(WALLPAPER_PLUGIN_FILE_PROVIDER_AUTHORITY)) {
+    // Already wired (authority unique).
+    return manifest;
+  }
+  if (!/<application\b[^>]*>/.test(manifest)) {
+    throw new Error('Cannot inject FileProvider: <application> missing (fail-closed)');
+  }
+  return manifest.replace(/<application\b[^>]*>/, (openTag) => `${openTag}${WALLPAPER_PLUGIN_FILE_PROVIDER_SNIPPET}`);
+}
+
+function patchManifest(manifest) {
+  requireManifestXml(manifest);
 
   let patched = manifest.replace(/android:screenOrientation="portrait"/g, 'android:screenOrientation="landscape"');
   patched = patched.replace(/<application\b([^>]*)>/, (_match, attributes) => (
@@ -81,6 +119,8 @@ function patchManifest(manifest) {
   });
   patched = removeLauncherFilterFromActivity(patched, MAIN_ACTIVITY);
   patched = addCarLauncherFilter(patched);
+  // WP-05: FileProvider for importMpkg content:// staging grants.
+  patched = injectWallpaperPluginFileProvider(patched);
   return patched;
 }
 
@@ -88,5 +128,10 @@ module.exports = {
   CAR_CONFIG_CHANGES,
   LANDSCAPE_ACTIVITY,
   MAIN_ACTIVITY,
+  WALLPAPER_PLUGIN_FILE_PROVIDER_CLASS,
+  WALLPAPER_PLUGIN_FILE_PROVIDER_AUTHORITY,
+  WALLPAPER_PLUGIN_PATHS_META,
+  WALLPAPER_PLUGIN_PATHS_RESOURCE,
+  injectWallpaperPluginFileProvider,
   patchManifest,
 };

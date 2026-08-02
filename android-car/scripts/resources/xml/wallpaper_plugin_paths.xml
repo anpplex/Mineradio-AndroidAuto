@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  WP-05 Mineradio FileProvider paths (Task 5).
+  Authority: com.mineradio.app.wallpaperplugin.files
+  Only cache-path wallpaper_plugin_stage/ — no files-path / external-path / root-path.
+-->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="wallpaper_plugin_stage" path="wallpaper_plugin_stage/" />
+</paths>
