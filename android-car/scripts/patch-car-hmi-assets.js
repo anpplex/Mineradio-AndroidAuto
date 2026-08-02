@@ -13,8 +13,61 @@ const CAR_VISUAL_RUNTIME_NAME = 'car-visual-runtime.js';
 const CAR_LOGIN_ENTRY_ID = 'car-login-entry';
 const CAR_LOGIN_ENTRY = `<button type="button" id="${CAR_LOGIN_ENTRY_ID}" aria-label="网易云扫码登录" title="网易云扫码登录" onclick="showLoginModal()">网易云扫码登录</button>`;
 
+/** WP-07: wallpaper plugin HMI runtime + status card (settings / 实验 only). */
+const WALLPAPER_PLUGIN_RUNTIME_NAME = 'wallpaper-plugin-runtime.js';
+const WALLPAPER_PLUGIN_CARD_ID = 'wallpaper-plugin-card';
+const WALLPAPER_PLUGIN_STATUS_CARD = `<!-- wallpaper-plugin status card: settings/实验 only; not default playback main ops -->
+<section id="${WALLPAPER_PLUGIN_CARD_ID}" class="wallpaper-plugin-card wallpaper-plugin settings-experimental" data-wallpaper-plugin-status="1" aria-label="壁纸插件状态" hidden>
+  <header class="wallpaper-plugin-card-title">壁纸插件状态</header>
+  <p class="wallpaper-plugin-status" data-role="status">未安装</p>
+  <div class="wallpaper-plugin-actions">
+    <button type="button" class="wallpaper-plugin-primary" data-action="install" style="min-width:64px;min-height:64px">安装插件</button>
+    <button type="button" class="wallpaper-plugin-secondary" data-action="refresh" style="min-width:48px;min-height:48px">刷新</button>
+    <button type="button" class="wallpaper-plugin-secondary" data-action="confirm" style="min-width:48px;min-height:48px">确认</button>
+  </div>
+  <script>
+  (function bindWallpaperPluginCard(){
+    /* REFACTOR: single projection — only paint structured getUiState(); no raw bridge strings */
+    var card = document.getElementById('${WALLPAPER_PLUGIN_CARD_ID}');
+    if (!card) return;
+    function ui(){ return window.MineradioWallpaperPlugin; }
+    function paint(){
+      var api = ui();
+      var el = card.querySelector('[data-role="status"]');
+      if (!el || !api || typeof api.getUiState !== 'function') return;
+      el.textContent = api.getUiState();
+      var st = api.getLastStatus && api.getLastStatus();
+      if (st && st.actionToken) card.setAttribute('data-has-action-token', '1');
+      else card.removeAttribute('data-has-action-token');
+    }
+    card.addEventListener('click', function(ev){
+      var t = ev.target && ev.target.getAttribute && ev.target.getAttribute('data-action');
+      var api = ui();
+      if (!api || !t) return;
+      if (t === 'refresh' && api.refresh) api.refresh();
+      if (t === 'confirm' && api.confirmUserAction) {
+        var st = api.getLastStatus && api.getLastStatus();
+        if (st && st.actionToken) api.confirmUserAction(st.actionToken);
+      }
+      paint();
+    });
+    var api0 = ui();
+    if (api0) {
+      if (api0.startStatusPoll) api0.startStatusPoll(false);
+      /* subscribe single projection callback if exposed via createRuntime options not available here —
+         poll/refresh already project; paint on interval via status poll onUiState is host-wired */
+    }
+    paint();
+  })();
+  </script>
+</section>`;
+
 const CAR_VISUAL_RUNTIME_SOURCE = fs.readFileSync(
   path.join(__dirname, 'car-visual-runtime.js'),
+  'utf8',
+);
+const WALLPAPER_PLUGIN_RUNTIME_SOURCE = fs.readFileSync(
+  path.join(__dirname, WALLPAPER_PLUGIN_RUNTIME_NAME),
   'utf8',
 );
 
@@ -1317,6 +1370,37 @@ function injectCarHmiStylesheet(document) {
     }
   }
 
+  // WP-07: inject wallpaper-plugin-runtime.js + status card (settings/实验).
+  patched = injectWallpaperPluginHmi(patched);
+
+  return patched;
+}
+
+/**
+ * Inject MineradioWallpaperPlugin runtime script + status card into MENC HMI.
+ * Entry is settings/experimental only — not default playback main ops.
+ */
+function injectWallpaperPluginHmi(document) {
+  let patched = document;
+
+  const runtimePattern = new RegExp(
+    `<script\\b[^>]*\\bsrc=["']${WALLPAPER_PLUGIN_RUNTIME_NAME}["'][^>]*>\\s*</script>`,
+    'i',
+  );
+  if (!runtimePattern.test(patched)) {
+    const runtimeTag = `\n<script src="${WALLPAPER_PLUGIN_RUNTIME_NAME}" defer></script>`;
+    patched = /<\/body>/i.test(patched)
+      ? patched.replace(/<\/body>/i, `${runtimeTag}\n</body>`)
+      : `${patched}${runtimeTag}`;
+  }
+
+  if (!patched.includes(`id="${WALLPAPER_PLUGIN_CARD_ID}"`)) {
+    const card = `\n${WALLPAPER_PLUGIN_STATUS_CARD}\n`;
+    patched = /<\/body>/i.test(patched)
+      ? patched.replace(/<\/body>/i, `${card}</body>`)
+      : `${patched}${card}`;
+  }
+
   return patched;
 }
 
@@ -1339,6 +1423,11 @@ function patchCarHmiAssets(decodedDir) {
     path.join(assetDir, CAR_VISUAL_RUNTIME_NAME),
     encryptMineradioAsset(Buffer.from(CAR_VISUAL_RUNTIME_SOURCE, 'utf8')),
   );
+  // WP-07 wallpaper plugin runtime (plaintext encode then MENC like other assets)
+  fs.writeFileSync(
+    path.join(assetDir, WALLPAPER_PLUGIN_RUNTIME_NAME),
+    encryptMineradioAsset(Buffer.from(WALLPAPER_PLUGIN_RUNTIME_SOURCE, 'utf8')),
+  );
 }
 
 function main(argv) {
@@ -1357,8 +1446,13 @@ module.exports = {
   CAR_HMI_STYLESHEET_NAME,
   CAR_VISUAL_RUNTIME_NAME,
   CAR_VISUAL_RUNTIME_SOURCE,
+  WALLPAPER_PLUGIN_RUNTIME_NAME,
+  WALLPAPER_PLUGIN_RUNTIME_SOURCE,
+  WALLPAPER_PLUGIN_CARD_ID,
+  WALLPAPER_PLUGIN_STATUS_CARD,
   decryptMineradioAsset,
   encryptMineradioAsset,
   injectCarHmiStylesheet,
+  injectWallpaperPluginHmi,
   patchCarHmiAssets,
 };

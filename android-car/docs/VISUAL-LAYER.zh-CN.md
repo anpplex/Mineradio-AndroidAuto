@@ -144,7 +144,22 @@ API：`MineradioCarVisual.setAudioDuck(true|false, reason)`、`isAudioDuckActive
 - `LandscapeWebActivity` 在 `KeepApp` 注入后 `attachWebView`  
 - focus：`-1/-2/-3` duck，`1` gain unduck；与 Web pause/hide 钩子并存
 
-## 8. 后续可增强（未做）
+## 8. 壁纸插件状态卡（WP-07）
+
+`window.MineradioWallpaperPlugin` 由 `wallpaper-plugin-runtime.js` 提供，经
+`patch-car-hmi-assets.js` 注入 MENC 资源。
+
+| 项 | 约定 |
+| --- | --- |
+| 入口 | **仅**设置 / 实验功能区（`#wallpaper-plugin-card`），**不**进入默认播放主操作区 |
+| 触控 | 次级按钮 ≥ **48×48 CSS px**；主操作 ≥ **64×64 CSS px** |
+| 轮询 | 前台执行态 **500ms**，空闲 **5s**；`visibilitychange` / `document.hidden` 后停止 |
+| UI 状态 | 固定 11 态中文标签；`ENGINE_LAUNCHED` **不得**显示为「可预览」 |
+| Bridge | 仅 1:1 映射 `window.WallpaperPlugin`，不定义第二套协议 |
+
+实现文件：`scripts/wallpaper-plugin-runtime.js`、`scripts/patch-car-hmi-assets.js`（runtime + status card inject）。
+
+## 9. 后续可增强（未做）
 
 - 驻车信号（若未来有合法 Car API）自动建议切 stage  
-- 将 Windows 2.0 模块化视觉预算表完整导入 runtime  
+- 将 Windows 2.0 模块化视觉预算表完整导入 runtime
