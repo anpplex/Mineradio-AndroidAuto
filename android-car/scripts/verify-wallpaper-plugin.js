@@ -439,6 +439,15 @@ function parseContentCallBundle(raw) {
   out.bindingState = pick('bindingState');
   const sc = pick('sourceConsumed');
   if (sc != null) out.sourceConsumed = /^(true|1|yes)$/i.test(sc);
+  // Fallback for Android Bundle dump: key=value forms without word boundaries.
+  if (out.actionToken == null) {
+    const tm = /actionToken[=:]([0-9a-fA-F-]{8,})/.exec(text);
+    if (tm) out.actionToken = tm[1];
+  }
+  if (out.sourceConsumed === undefined) {
+    const sm = /sourceConsumed[=:](true|false)/i.exec(text);
+    if (sm) out.sourceConsumed = /^true$/i.test(sm[1]);
+  }
   if (out.code === undefined) errors.push('code missing');
   out.errors = errors;
   out.ok = errors.length === 0;
