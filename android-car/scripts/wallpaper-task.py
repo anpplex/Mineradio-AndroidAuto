@@ -9195,11 +9195,12 @@ def _verify_wp11b_e6_evidence(
             "e6Evidence.pssGrowthMiB must be number",
             {},
         )
-    if pss_growth < 0 or pss_growth > WP11B_E6_PSS_GROWTH_MIB:
+    # Negative growth (memory decrease) is fine; only growth above +64 MiB fails.
+    if pss_growth > WP11B_E6_PSS_GROWTH_MIB:
         return (
             False,
             "WP11B_E6_PSS_FAILED",
-            f"e6Evidence.pssGrowthMiB must be 0..{WP11B_E6_PSS_GROWTH_MIB}",
+            f"e6Evidence.pssGrowthMiB must be <= {WP11B_E6_PSS_GROWTH_MIB}, got {pss_growth}",
             {},
         )
     if e6.get("interactionsPass") is not True:
