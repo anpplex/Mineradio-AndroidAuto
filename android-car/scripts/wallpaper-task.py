@@ -8989,6 +8989,425 @@ def evaluate_wp11a_verify_done(
     return True, "", "", record
 
 
+# ---------------------------------------------------------------------------
+# WP-11B verify-done: E6 30-min soak (7 samples @ 5 min) + parent WP-11A.
+# ---------------------------------------------------------------------------
+WP11B_CALLER_FORGERY_KEYS = WP11A_CALLER_FORGERY_KEYS
+WP11B_SUITE_KEYS = (
+    "androidUnitTest",
+    "wp11bCapacityTest",
+    "pluginUnitTest",
+    "fullNodeTest",
+    "e6Evidence",
+)
+WP11B_REQUIRED_PREREQS = WP11A_REQUIRED_PREREQS + ("WP-11A",)
+WP11B_IMPLEMENTATION_SURFACES = (
+    "android-car/scripts/wallpaper-plugin-tasks.json",
+    "android-car/scripts/wallpaper-task.py",
+    "android-car/scripts/verify-wallpaper-plugin.js",
+    "android-car/tests/wallpaper-wp11b-red.test.js",
+)
+_WP11B_PREREQ_RECEIPTS = {
+    **_WP11A_PREREQ_RECEIPTS,
+    "WP-11A": _VERIFICATION_ROOT / "transactions" / "wp-11a.json",
+}
+WP11B_E6_DURATION_MS = 1800000
+WP11B_E6_SAMPLE_COUNT = 7
+WP11B_E6_PSS_GROWTH_MIB = 64
+
+
+def _load_wp11b_identity_proofs(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _load_single_pr_identity_proofs(
+        receipt,
+        args,
+        missing_reason="WP11B_VERIFY_DONE_PROOF_MISSING",
+        forgery_reason="WP11B_VERIFY_DONE_CALLER_FORGERY",
+        forgery_keys=WP11B_CALLER_FORGERY_KEYS,
+        empty_label="WP-11B",
+    )
+
+
+def _catalog_wp11b_task(
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _catalog_unique_task(
+        args,
+        task_id="WP-11B",
+        expected_weight=3,
+        expected_evidence="E6",
+        required_prereqs=WP11B_REQUIRED_PREREQS,
+        entry_missing_reason="WP11B_CATALOG_ENTRY_MISSING",
+        catalog_invalid_reason="WP11B_CATALOG_PROOF_INVALID",
+        required_done_missing_reason="WP11B_REQUIRED_DONE_MISSING",
+        required_done_message=(
+            "WP-11B.requiredEffectiveDone must include WP-INFRA, WP-00…WP-11A"
+        ),
+    )
+
+
+def _verify_wp11b_prerequisite_done_receipts() -> tuple[bool, str, str, dict[str, Any]]:
+    return _verify_prereq_done_receipts(
+        _WP11B_PREREQ_RECEIPTS,
+        missing_reason="WP11B_REQUIRED_DONE_MISSING",
+        state_done_tasks=frozenset(
+            {
+                "WP-01",
+                "WP-02",
+                "WP-03",
+                "WP-04",
+                "WP-05",
+                "WP-06",
+                "WP-07",
+                "WP-08",
+                "WP-09",
+                "WP-10A",
+                "WP-10B",
+                "WP-10C",
+                "WP-11A",
+            }
+        ),
+    )
+
+
+def _wp11b_require_implementation_surfaces_on_head(
+    head_sha: str,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    missing: list[str] = []
+    for rel in WP11B_IMPLEMENTATION_SURFACES:
+        if not _git_path_exists_at_commit(head_sha, rel):
+            missing.append(rel)
+    if missing:
+        return (
+            False,
+            "WP11B_PR_PROOF_INVALID",
+            "implementation head missing WP-11B surfaces: " + ", ".join(missing),
+            {},
+        )
+    cat_rc, cat_text = _git_show_at_commit(
+        head_sha, "android-car/scripts/wallpaper-plugin-tasks.json"
+    )
+    if cat_rc != 0 or (
+        '"taskId": "WP-11B"' not in cat_text and '"taskId":"WP-11B"' not in cat_text
+    ):
+        return (
+            False,
+            "WP11B_PR_PROOF_INVALID",
+            "implementation head catalog missing WP-11B task entry",
+            {},
+        )
+    ver_rc, ver_text = _git_show_at_commit(
+        head_sha, "android-car/scripts/verify-wallpaper-plugin.js"
+    )
+    if ver_rc != 0 or "verifyE6Evidence" not in ver_text:
+        return (
+            False,
+            "WP11B_PR_PROOF_INVALID",
+            "verify-wallpaper-plugin.js missing verifyE6Evidence",
+            {},
+        )
+    return (
+        True,
+        "",
+        "",
+        {"implementationSurfaces": list(WP11B_IMPLEMENTATION_SURFACES)},
+    )
+
+
+def _verify_wp11b_e6_evidence(
+    proofs: Mapping[str, Any],
+) -> tuple[bool, str, str, dict[str, Any]]:
+    e6 = proofs.get("e6Evidence")
+    if not isinstance(e6, dict):
+        return (
+            False,
+            "WP11B_E6_EVIDENCE_MISSING",
+            "proofs.e6Evidence object required (sealed 30min soak)",
+            {},
+        )
+    if e6.get("pass") is not True:
+        return False, "WP11B_E6_EVIDENCE_MISSING", "e6Evidence.pass must be true", {}
+    sha = e6.get("sha256")
+    if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{64}", sha.lower() or ""):
+        return (
+            False,
+            "WP11B_E6_EVIDENCE_MISSING",
+            "e6Evidence.sha256 must be 64-char hex of sealed raw manifest",
+            {},
+        )
+    if e6.get("parentTaskId") != "WP-11A":
+        return (
+            False,
+            "WP11B_E6_PARENT_MISSING",
+            "e6Evidence.parentTaskId must be WP-11A",
+            {},
+        )
+    parent_sha = e6.get("parentManifestSha256")
+    if not isinstance(parent_sha, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", parent_sha.lower() or ""
+    ):
+        return (
+            False,
+            "WP11B_E6_PARENT_MISSING",
+            "e6Evidence.parentManifestSha256 must be 64-char hex",
+            {},
+        )
+    try:
+        sample_count = int(e6.get("sampleCount"))
+    except (TypeError, ValueError):
+        return (
+            False,
+            "WP11B_E6_SAMPLE_COUNT_FAILED",
+            "e6Evidence.sampleCount must be int",
+            {},
+        )
+    if sample_count != WP11B_E6_SAMPLE_COUNT:
+        return (
+            False,
+            "WP11B_E6_SAMPLE_COUNT_FAILED",
+            f"e6Evidence.sampleCount must be {WP11B_E6_SAMPLE_COUNT}",
+            {},
+        )
+    try:
+        window_ms = int(e6.get("hostObservedWindowMs"))
+    except (TypeError, ValueError):
+        return (
+            False,
+            "WP11B_E6_WINDOW_FAILED",
+            "e6Evidence.hostObservedWindowMs must be int",
+            {},
+        )
+    if window_ms < WP11B_E6_DURATION_MS:
+        return (
+            False,
+            "WP11B_E6_WINDOW_FAILED",
+            f"e6Evidence.hostObservedWindowMs must be >= {WP11B_E6_DURATION_MS}",
+            {},
+        )
+    try:
+        pss_growth = float(e6.get("pssGrowthMiB"))
+    except (TypeError, ValueError):
+        return (
+            False,
+            "WP11B_E6_PSS_FAILED",
+            "e6Evidence.pssGrowthMiB must be number",
+            {},
+        )
+    if pss_growth < 0 or pss_growth > WP11B_E6_PSS_GROWTH_MIB:
+        return (
+            False,
+            "WP11B_E6_PSS_FAILED",
+            f"e6Evidence.pssGrowthMiB must be 0..{WP11B_E6_PSS_GROWTH_MIB}",
+            {},
+        )
+    if e6.get("interactionsPass") is not True:
+        return (
+            False,
+            "WP11B_E6_INTERACTIONS_FAILED",
+            "e6Evidence.interactionsPass must be true",
+            {},
+        )
+    if e6.get("fatalAnr") is True:
+        return False, "WP11B_E6_FATAL_ANR", "e6Evidence.fatalAnr must be false", {}
+    if e6.get("serial") != "LD249H019625":
+        return (
+            False,
+            "WP11B_E6_DEVICE_CONTEXT_FAILED",
+            f"e6Evidence.serial must be LD249H019625, got {e6.get('serial')!r}",
+            {},
+        )
+    if int(e6.get("targetUser") or 0) != 12:
+        return (
+            False,
+            "WP11B_E6_DEVICE_CONTEXT_FAILED",
+            "e6Evidence.targetUser must be 12",
+            {},
+        )
+    if e6.get("evidenceLevel") not in (None, "E6"):
+        return (
+            False,
+            "WP11B_E6_LEVEL_INVALID",
+            "e6Evidence.evidenceLevel must be E6",
+            {},
+        )
+    return (
+        True,
+        "",
+        "",
+        {
+            "e6Evidence": {
+                "pass": True,
+                "sha256": sha.lower(),
+                "parentTaskId": "WP-11A",
+                "parentManifestSha256": parent_sha.lower(),
+                "sampleCount": WP11B_E6_SAMPLE_COUNT,
+                "hostObservedWindowMs": window_ms,
+                "pssGrowthMiB": pss_growth,
+                "interactionsPass": True,
+                "fatalAnr": False,
+                "serial": "LD249H019625",
+                "targetUser": 12,
+                "evidenceLevel": "E6",
+            }
+        },
+    )
+
+
+def _verify_wp11b_suite_and_blob_proofs(
+    proofs: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    capacity_keys = tuple(k for k in WP11B_SUITE_KEYS if k != "e6Evidence")
+    ok, reason, message = _require_suite_pass_digests(
+        proofs,
+        capacity_keys,
+        missing_reason="WP11B_SUITE_RECEIPT_INVALID",
+    )
+    if not ok:
+        return False, reason, message, {}
+
+    ok_e6, reason, message, e6_record = _verify_wp11b_e6_evidence(proofs)
+    if not ok_e6:
+        return False, reason, message, {}
+
+    catalog_path = Path(args.catalog_path) if args.catalog_path else DEFAULT_CATALOG_BLOB_PATH
+    if not catalog_path.is_file():
+        return (
+            False,
+            "WP11B_VERIFY_DONE_PROOF_MISSING",
+            f"catalog missing: {catalog_path}",
+            {},
+        )
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    matches = [
+        t
+        for t in (catalog.get("tasks") or [])
+        if isinstance(t, dict) and t.get("taskId") == "WP-11B"
+    ]
+    if len(matches) != 1:
+        return (
+            False,
+            "WP11B_CATALOG_ENTRY_MISSING",
+            "live catalog must contain unique WP-11B",
+            {},
+        )
+    task = matches[0]
+    if int(task.get("weight") or 0) != 3 or task.get("evidenceLevel") != "E6":
+        return (
+            False,
+            "WP11B_CATALOG_PROOF_INVALID",
+            "WP-11B catalog weight/evidenceLevel must be 3/E6",
+            {},
+        )
+
+    ok, reason, message, live_catalog_sha, live_schema_sha = _verify_catalog_schema_digests(
+        proofs,
+        args,
+        invalid_reason="WP11B_CATALOG_PROOF_INVALID",
+    )
+    if not ok:
+        return False, reason, message, {}
+
+    return (
+        True,
+        "",
+        "",
+        {
+            "catalogSha256": live_catalog_sha,
+            "schemaSha256": live_schema_sha,
+            "androidUnitTest": proofs["androidUnitTest"],
+            "wp11bCapacityTest": proofs["wp11bCapacityTest"],
+            "pluginUnitTest": proofs["pluginUnitTest"],
+            "fullNodeTest": proofs["fullNodeTest"],
+            **e6_record,
+            "evidenceLevel": "E6",
+        },
+    )
+
+
+def verify_wp11b_merged_implementation_pr(
+    *,
+    pr_number: int,
+    live_base_sha: str,
+    repo: str | None,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _verify_merged_implementation_pr(
+        pr_number=pr_number,
+        live_base_sha=live_base_sha,
+        repo=repo,
+        invalid_reason="WP11B_PR_PROOF_INVALID",
+        containment_reason="WP11B_BASE_CONTAINMENT_FAILED",
+        surface_checker=_wp11b_require_implementation_surfaces_on_head,
+    )
+
+
+def evaluate_wp11b_verify_done(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    """Return (ok, reason, message, proof_record) for WP-11B CLOSE-VERIFY.
+
+    Requires sealed E6 30-minute soak (7 samples), parent WP-11A, suite digests,
+    and implementation PR identity.
+    """
+    task, reason, message = _catalog_wp11b_task(args)
+    if task is None:
+        return False, reason, message, {}
+
+    ok_prereq, reason, message, prereq_record = _verify_wp11b_prerequisite_done_receipts()
+    if not ok_prereq:
+        return False, reason, message, {}
+
+    proofs, reason, message = _load_wp11b_identity_proofs(receipt, args)
+    if proofs is None:
+        return False, reason, message, {}
+
+    pr_number, reason, message = _extract_implementation_pr_number(
+        proofs,
+        missing_reason="WP11B_VERIFY_DONE_PROOF_MISSING",
+    )
+    if pr_number is None:
+        return False, reason, message, {}
+
+    ok_suites, reason, message, suite_record = _verify_wp11b_suite_and_blob_proofs(
+        proofs, args
+    )
+    if not ok_suites:
+        return False, reason, message, {}
+
+    live_base, reason, message = _resolve_live_base_optional_claim(
+        proofs,
+        missing_reason="WP11B_VERIFY_DONE_PROOF_MISSING",
+        containment_reason="WP11B_BASE_CONTAINMENT_FAILED",
+    )
+    if live_base is None:
+        return False, reason, message, {}
+
+    repo = getattr(args, "repo", None) or APPROVED_GITHUB_REPO
+    impl_proof, reason, message = verify_wp11b_merged_implementation_pr(
+        pr_number=pr_number,
+        live_base_sha=live_base,
+        repo=repo,
+    )
+    if impl_proof is None:
+        return False, reason, message, {}
+
+    record = _assemble_verify_done_record(
+        task=task,
+        impl_proof=impl_proof,
+        live_base=live_base,
+        prereq_record=prereq_record,
+        suite_record=suite_record,
+        weight=3,
+        default_path="android-car/scripts/",
+    )
+    record["evidenceLevel"] = "E6"
+    record["parentTaskId"] = "WP-11A"
+    return True, "", "", record
+
+
 def cmd_verify_done(args: argparse.Namespace) -> int:
     """Fail-closed DONE only when catalog + proofs + live base containment hold."""
     task_id = require_task(args.task)
@@ -9040,6 +9459,9 @@ def cmd_verify_done(args: argparse.Namespace) -> int:
             weight = 6
         elif task_id == "WP-11A":
             ok_gate, reason, message, proof_record = evaluate_wp11a_verify_done(current, args)
+            weight = 3
+        elif task_id == "WP-11B":
+            ok_gate, reason, message, proof_record = evaluate_wp11b_verify_done(current, args)
             weight = 3
         else:
             # Never mis-tag later WP tasks as WP03_*.
