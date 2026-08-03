@@ -25,19 +25,50 @@ const BRIDGE_CLASS = 'CarWallpaperPluginBridge';
 const JS_INTERFACE = contract.jsInterfaceName;
 const HOOK_MARKER = 'CarWallpaperPluginBridge';
 
+/**
+ * Attach WallpaperPlugin after KeepApp.
+ *
+ * IMPORTANT: use high locals (v11/v12) — v2/v3 are live later in onCreate
+ * (booleans / ViewGroup.addView). Clobbering them causes VerifyError.
+ * Caller must ensure method .locals >= 13 so v11/v12 are not parameters.
+ */
 function buildAttachSnippet(jsInterfaceName = JS_INTERFACE) {
   return `
-    new-instance v2, Lcom/mineradio/app/car/CarWallpaperPluginBridge;
+    new-instance v11, Lcom/mineradio/app/car/CarWallpaperPluginBridge;
 
-    invoke-direct {v2}, Lcom/mineradio/app/car/CarWallpaperPluginBridge;-><init>()V
+    invoke-direct {v11}, Lcom/mineradio/app/car/CarWallpaperPluginBridge;-><init>()V
 
-    const-string v3, "${jsInterfaceName}"
+    const-string v12, "${jsInterfaceName}"
 
-    invoke-virtual {v0, v2, v3}, Landroid/webkit/WebView;->addJavascriptInterface(Ljava/lang/Object;Ljava/lang/String;)V
+    invoke-virtual {v0, v11, v12}, Landroid/webkit/WebView;->addJavascriptInterface(Ljava/lang/Object;Ljava/lang/String;)V
 `;
 }
 
 const ATTACH_SNIPPET = buildAttachSnippet();
+
+/** Ensure .locals N is at least minLocals for the method containing KeepApp inject. */
+function ensureMethodLocals(src, minLocals) {
+  const keepAppLoose =
+    /(const-string v\d+, "KeepApp"\s*\n\s*invoke-virtual \{v\d+, p\d+, v\d+\}, Landroid\/webkit\/WebView;->addJavascriptInterface\(Ljava\/lang\/Object;Ljava\/lang\/String;\)V\n)/;
+  const m = keepAppLoose.exec(src);
+  if (!m) return src;
+  const injectAt = m.index;
+  // Walk backward to nearest .method / .locals
+  const before = src.slice(0, injectAt);
+  const methodIdx = before.lastIndexOf('\n.method ');
+  if (methodIdx < 0) return src;
+  const methodSlice = src.slice(methodIdx);
+  const localsMatch = methodSlice.match(/\.locals (\d+)/);
+  if (!localsMatch) return src;
+  const cur = parseInt(localsMatch[1], 10);
+  if (cur >= minLocals) return src;
+  const absLocalsIdx = methodIdx + methodSlice.indexOf(localsMatch[0]);
+  return (
+    src.slice(0, absLocalsIdx) +
+    `.locals ${minLocals}` +
+    src.slice(absLocalsIdx + localsMatch[0].length)
+  );
+}
 
 /** Fixed local asset URL allowlist (Task 4 TrustedWallpaperBridgePolicy). */
 const TRUSTED_LOCAL_ASSET_PREFIXES = Object.freeze([
@@ -223,12 +254,21 @@ function patchLandscapeWebActivity(decodedDir) {
   }
 
   let src = fs.readFileSync(file, 'utf8');
+  // Already patched with safe high registers.
   if (
     src.includes('const-string') &&
     src.includes(`"${JS_INTERFACE}"`) &&
-    src.includes(`${HOOK_MARKER}`)
+    src.includes(`${HOOK_MARKER}`) &&
+    src.includes('new-instance v11, Lcom/mineradio/app/car/CarWallpaperPluginBridge')
   ) {
     return { file, changed: false };
+  }
+
+  // Strip legacy v2/v3 inject (VerifyError: clobbers later ViewGroup/boolean uses).
+  const legacySnippet =
+    /\n\s*new-instance v2, Lcom\/mineradio\/app\/car\/CarWallpaperPluginBridge;\s*\n\s*invoke-direct \{v2\}, Lcom\/mineradio\/app\/car\/CarWallpaperPluginBridge;-><init>\(\)V\s*\n\s*const-string v3, "WallpaperPlugin"\s*\n\s*invoke-virtual \{v0, v2, v3\}, Landroid\/webkit\/WebView;->addJavascriptInterface\(Ljava\/lang\/Object;Ljava\/lang\/String;\)V\s*\n/;
+  if (legacySnippet.test(src)) {
+    src = src.replace(legacySnippet, '\n');
   }
 
   const keepAppExact =
@@ -236,11 +276,17 @@ function patchLandscapeWebActivity(decodedDir) {
   const keepAppLoose =
     /(const-string v\d+, "KeepApp"\s*\n\s*invoke-virtual \{v\d+, p\d+, v\d+\}, Landroid\/webkit\/WebView;->addJavascriptInterface\(Ljava\/lang\/Object;Ljava\/lang\/String;\)V\n)/;
 
-  if (src.includes(keepAppExact)) {
+  // Need v11/v12 free → .locals >= 13 for onCreate(this, Bundle).
+  src = ensureMethodLocals(src, 13);
+
+  if (src.includes(keepAppExact) && !src.includes(`new-instance v11, Lcom/mineradio/app/car/CarWallpaperPluginBridge`)) {
     src = src.replace(keepAppExact, `${keepAppExact}${ATTACH_SNIPPET}`);
-  } else if (keepAppLoose.test(src)) {
+  } else if (
+    keepAppLoose.test(src) &&
+    !src.includes(`new-instance v11, Lcom/mineradio/app/car/CarWallpaperPluginBridge`)
+  ) {
     src = src.replace(keepAppLoose, `$1${ATTACH_SNIPPET}`);
-  } else {
+  } else if (!src.includes(`new-instance v11, Lcom/mineradio/app/car/CarWallpaperPluginBridge`)) {
     throw new Error(
       'KeepApp addJavascriptInterface injection point not found in LandscapeWebActivity (fail-closed)',
     );
