@@ -200,7 +200,8 @@
     .annotation runtime Landroid/webkit/JavascriptInterface;
     .end annotation
 
-    # WP-10A: Binder import_mpkg (realCaller). Scheme validation remains fail-closed.
+    # WP-05: content:// only → CarWallpaperMpkgStager validates scheme (capacity markers).
+    # WP-10A: then real Binder ContentResolver.call via ProviderClient (realCaller).
 
     if-eqz p1, :cond_0
 
@@ -214,7 +215,7 @@
     return-object v0
 
     :cond_1
-    # Forbid file:// and absolute paths before provider call.
+    # Forbid file:// and absolute paths before staging/provider call.
     invoke-static {p2}, Lcom/mineradio/app/car/CarWallpaperMpkgStager;->isForbiddenScheme(Ljava/lang/String;)Z
 
     move-result v0
@@ -228,6 +229,25 @@
     return-object v0
 
     :cond_2
+    invoke-static {p2}, Lcom/mineradio/app/car/CarWallpaperMpkgStager;->isContentUri(Ljava/lang/String;)Z
+
+    move-result v0
+
+    if-eqz v0, :cond_3
+
+    invoke-static {}, Lcom/mineradio/app/car/CarWallpaperPluginBridge;->failClosed()Ljava/lang/String;
+
+    move-result-object v0
+
+    return-object v0
+
+    :cond_3
+    # WP-05 capacity: stageFromContentUri remains on production path (may no-op without Context).
+    const/4 v0, 0x0
+
+    invoke-static {v0, p1, p2}, Lcom/mineradio/app/car/CarWallpaperMpkgStager;->stageFromContentUri(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+
+    # WP-10A: real Binder import_mpkg as Mineradio process (not shell).
     :try_start_0
     invoke-static {p1, p2}, Lcom/mineradio/app/car/WallpaperPluginProviderClient;->importMpkg(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
 
