@@ -7814,6 +7814,376 @@ def evaluate_wp10a_verify_done(
     return True, "", "", record
 
 
+# ---------------------------------------------------------------------------
+# WP-10B verify-done: E4 Scene/Video dual-frame + parent WP-10A chain.
+# ---------------------------------------------------------------------------
+WP10B_CALLER_FORGERY_KEYS = WP10A_CALLER_FORGERY_KEYS
+WP10B_SUITE_KEYS = (
+    "androidUnitTest",
+    "wp10bCapacityTest",
+    "pluginUnitTest",
+    "fullNodeTest",
+    "e4Evidence",
+)
+WP10B_REQUIRED_PREREQS = WP10A_REQUIRED_PREREQS + ("WP-10A",)
+WP10B_IMPLEMENTATION_SURFACES = (
+    "android-car/scripts/wallpaper-plugin-tasks.json",
+    "android-car/scripts/wallpaper-task.py",
+    "android-car/scripts/verify-wallpaper-plugin.js",
+    "android-car/tests/wallpaper-wp10b-red.test.js",
+)
+_WP10B_PREREQ_RECEIPTS = {
+    **_WP10A_PREREQ_RECEIPTS,
+    "WP-10A": _VERIFICATION_ROOT / "transactions" / "wp-10a.json",
+}
+
+
+def _load_wp10b_identity_proofs(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _load_single_pr_identity_proofs(
+        receipt,
+        args,
+        missing_reason="WP10B_VERIFY_DONE_PROOF_MISSING",
+        forgery_reason="WP10B_VERIFY_DONE_CALLER_FORGERY",
+        forgery_keys=WP10B_CALLER_FORGERY_KEYS,
+        empty_label="WP-10B",
+    )
+
+
+def _catalog_wp10b_task(
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _catalog_unique_task(
+        args,
+        task_id="WP-10B",
+        expected_weight=8,
+        expected_evidence="E4",
+        required_prereqs=WP10B_REQUIRED_PREREQS,
+        entry_missing_reason="WP10B_CATALOG_ENTRY_MISSING",
+        catalog_invalid_reason="WP10B_CATALOG_PROOF_INVALID",
+        required_done_missing_reason="WP10B_REQUIRED_DONE_MISSING",
+        required_done_message=(
+            "WP-10B.requiredEffectiveDone must include WP-INFRA, WP-00…WP-10A"
+        ),
+    )
+
+
+def _verify_wp10b_prerequisite_done_receipts() -> tuple[bool, str, str, dict[str, Any]]:
+    return _verify_prereq_done_receipts(
+        _WP10B_PREREQ_RECEIPTS,
+        missing_reason="WP10B_REQUIRED_DONE_MISSING",
+        state_done_tasks=frozenset(
+            {
+                "WP-01",
+                "WP-02",
+                "WP-03",
+                "WP-04",
+                "WP-05",
+                "WP-06",
+                "WP-07",
+                "WP-08",
+                "WP-09",
+                "WP-10A",
+            }
+        ),
+    )
+
+
+def _wp10b_require_implementation_surfaces_on_head(
+    head_sha: str,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    missing: list[str] = []
+    for rel in WP10B_IMPLEMENTATION_SURFACES:
+        if not _git_path_exists_at_commit(head_sha, rel):
+            missing.append(rel)
+    if missing:
+        return (
+            False,
+            "WP10B_PR_PROOF_INVALID",
+            "implementation head missing WP-10B surfaces: " + ", ".join(missing),
+            {},
+        )
+    cat_rc, cat_text = _git_show_at_commit(
+        head_sha, "android-car/scripts/wallpaper-plugin-tasks.json"
+    )
+    if cat_rc != 0 or (
+        '"taskId": "WP-10B"' not in cat_text and '"taskId":"WP-10B"' not in cat_text
+    ):
+        return (
+            False,
+            "WP10B_PR_PROOF_INVALID",
+            "implementation head catalog missing WP-10B task entry",
+            {},
+        )
+    ver_rc, ver_text = _git_show_at_commit(
+        head_sha, "android-car/scripts/verify-wallpaper-plugin.js"
+    )
+    if ver_rc != 0 or "verifyE4Evidence" not in ver_text:
+        return (
+            False,
+            "WP10B_PR_PROOF_INVALID",
+            "verify-wallpaper-plugin.js missing verifyE4Evidence",
+            {},
+        )
+    return (
+        True,
+        "",
+        "",
+        {"implementationSurfaces": list(WP10B_IMPLEMENTATION_SURFACES)},
+    )
+
+
+def _verify_wp10b_e4_evidence(
+    proofs: Mapping[str, Any],
+) -> tuple[bool, str, str, dict[str, Any]]:
+    e4 = proofs.get("e4Evidence")
+    if not isinstance(e4, dict):
+        return (
+            False,
+            "WP10B_E4_EVIDENCE_MISSING",
+            "proofs.e4Evidence object required (sealed continuous E4)",
+            {},
+        )
+    if e4.get("pass") is not True:
+        return False, "WP10B_E4_EVIDENCE_MISSING", "e4Evidence.pass must be true", {}
+    sha = e4.get("sha256")
+    if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{64}", sha.lower() or ""):
+        return (
+            False,
+            "WP10B_E4_EVIDENCE_MISSING",
+            "e4Evidence.sha256 must be 64-char hex of sealed raw manifest",
+            {},
+        )
+    if e4.get("shellCallerUsedForE4") is True or e4.get("caller") == "shell":
+        return (
+            False,
+            "WP10B_E4_SHELL_CALLER_REJECTED",
+            "shell cannot seal continuous E4",
+            {},
+        )
+    if e4.get("scenePass") is not True:
+        return False, "WP10B_E4_SCENE_FAILED", "e4Evidence.scenePass must be true", {}
+    if e4.get("videoPass") is not True:
+        return False, "WP10B_E4_VIDEO_FAILED", "e4Evidence.videoPass must be true", {}
+    if e4.get("dualFrameDistinct") is not True:
+        return (
+            False,
+            "WP10B_E4_FRAMES_IDENTICAL",
+            "e4Evidence.dualFrameDistinct must be true",
+            {},
+        )
+    if e4.get("notBlackScreen") is not True:
+        return False, "WP10B_E4_BLACK_SCREEN", "e4Evidence.notBlackScreen must be true", {}
+    if e4.get("notSolidColor") is not True:
+        return False, "WP10B_E4_SOLID_COLOR", "e4Evidence.notSolidColor must be true", {}
+    if e4.get("parentTaskId") != "WP-10A":
+        return (
+            False,
+            "WP10B_E4_PARENT_MISSING",
+            "e4Evidence.parentTaskId must be WP-10A",
+            {},
+        )
+    parent_sha = e4.get("parentManifestSha256")
+    if not isinstance(parent_sha, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", parent_sha.lower() or ""
+    ):
+        return (
+            False,
+            "WP10B_E4_PARENT_MISSING",
+            "e4Evidence.parentManifestSha256 must be 64-char hex",
+            {},
+        )
+    if e4.get("serial") != "LD249H019625":
+        return (
+            False,
+            "WP10B_E4_DEVICE_CONTEXT_FAILED",
+            f"e4Evidence.serial must be LD249H019625, got {e4.get('serial')!r}",
+            {},
+        )
+    if int(e4.get("targetUser") or 0) != 12:
+        return (
+            False,
+            "WP10B_E4_DEVICE_CONTEXT_FAILED",
+            "e4Evidence.targetUser must be 12",
+            {},
+        )
+    return (
+        True,
+        "",
+        "",
+        {
+            "e4Evidence": {
+                "pass": True,
+                "sha256": sha.lower(),
+                "scenePass": True,
+                "videoPass": True,
+                "dualFrameDistinct": True,
+                "notBlackScreen": True,
+                "notSolidColor": True,
+                "parentTaskId": "WP-10A",
+                "parentManifestSha256": parent_sha.lower(),
+                "serial": "LD249H019625",
+                "targetUser": 12,
+                "evidenceLevel": "E4",
+            }
+        },
+    )
+
+
+def _verify_wp10b_suite_and_blob_proofs(
+    proofs: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    capacity_keys = tuple(k for k in WP10B_SUITE_KEYS if k != "e4Evidence")
+    ok, reason, message = _require_suite_pass_digests(
+        proofs,
+        capacity_keys,
+        missing_reason="WP10B_SUITE_RECEIPT_INVALID",
+    )
+    if not ok:
+        return False, reason, message, {}
+
+    ok_e4, reason, message, e4_record = _verify_wp10b_e4_evidence(proofs)
+    if not ok_e4:
+        return False, reason, message, {}
+
+    catalog_path = Path(args.catalog_path) if args.catalog_path else DEFAULT_CATALOG_BLOB_PATH
+    if not catalog_path.is_file():
+        return (
+            False,
+            "WP10B_VERIFY_DONE_PROOF_MISSING",
+            f"catalog missing: {catalog_path}",
+            {},
+        )
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    matches = [
+        t
+        for t in (catalog.get("tasks") or [])
+        if isinstance(t, dict) and t.get("taskId") == "WP-10B"
+    ]
+    if len(matches) != 1:
+        return (
+            False,
+            "WP10B_CATALOG_ENTRY_MISSING",
+            "live catalog must contain unique WP-10B",
+            {},
+        )
+    task = matches[0]
+    if int(task.get("weight") or 0) != 8 or task.get("evidenceLevel") != "E4":
+        return (
+            False,
+            "WP10B_CATALOG_PROOF_INVALID",
+            "WP-10B catalog weight/evidenceLevel must be 8/E4",
+            {},
+        )
+
+    ok, reason, message, live_catalog_sha, live_schema_sha = _verify_catalog_schema_digests(
+        proofs,
+        args,
+        invalid_reason="WP10B_CATALOG_PROOF_INVALID",
+    )
+    if not ok:
+        return False, reason, message, {}
+
+    return (
+        True,
+        "",
+        "",
+        {
+            "catalogSha256": live_catalog_sha,
+            "schemaSha256": live_schema_sha,
+            "androidUnitTest": proofs["androidUnitTest"],
+            "wp10bCapacityTest": proofs["wp10bCapacityTest"],
+            "pluginUnitTest": proofs["pluginUnitTest"],
+            "fullNodeTest": proofs["fullNodeTest"],
+            **e4_record,
+            "evidenceLevel": "E4",
+        },
+    )
+
+
+def verify_wp10b_merged_implementation_pr(
+    *,
+    pr_number: int,
+    live_base_sha: str,
+    repo: str | None,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _verify_merged_implementation_pr(
+        pr_number=pr_number,
+        live_base_sha=live_base_sha,
+        repo=repo,
+        invalid_reason="WP10B_PR_PROOF_INVALID",
+        containment_reason="WP10B_BASE_CONTAINMENT_FAILED",
+        surface_checker=_wp10b_require_implementation_surfaces_on_head,
+    )
+
+
+def evaluate_wp10b_verify_done(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    """Return (ok, reason, message, proof_record) for WP-10B CLOSE-VERIFY.
+
+    Requires continuous E4 (Scene+Video dual-frame), parent WP-10A chain,
+    suite digests, and dual-repo PR identity.
+    """
+    task, reason, message = _catalog_wp10b_task(args)
+    if task is None:
+        return False, reason, message, {}
+
+    ok_prereq, reason, message, prereq_record = _verify_wp10b_prerequisite_done_receipts()
+    if not ok_prereq:
+        return False, reason, message, {}
+
+    proofs, reason, message = _load_wp10b_identity_proofs(receipt, args)
+    if proofs is None:
+        return False, reason, message, {}
+
+    pr_number, reason, message = _extract_implementation_pr_number(
+        proofs,
+        missing_reason="WP10B_VERIFY_DONE_PROOF_MISSING",
+    )
+    if pr_number is None:
+        return False, reason, message, {}
+
+    ok_suites, reason, message, suite_record = _verify_wp10b_suite_and_blob_proofs(
+        proofs, args
+    )
+    if not ok_suites:
+        return False, reason, message, {}
+
+    live_base, reason, message = _resolve_live_base_optional_claim(
+        proofs,
+        missing_reason="WP10B_VERIFY_DONE_PROOF_MISSING",
+        containment_reason="WP10B_BASE_CONTAINMENT_FAILED",
+    )
+    if live_base is None:
+        return False, reason, message, {}
+
+    repo = getattr(args, "repo", None) or APPROVED_GITHUB_REPO
+    impl_proof, reason, message = verify_wp10b_merged_implementation_pr(
+        pr_number=pr_number,
+        live_base_sha=live_base,
+        repo=repo,
+    )
+    if impl_proof is None:
+        return False, reason, message, {}
+
+    record = _assemble_verify_done_record(
+        task=task,
+        impl_proof=impl_proof,
+        live_base=live_base,
+        prereq_record=prereq_record,
+        suite_record=suite_record,
+        weight=8,
+        default_path="android-car/scripts/",
+    )
+    record["evidenceLevel"] = "E4"
+    record["parentTaskId"] = "WP-10A"
+    return True, "", "", record
+
 
 def cmd_verify_done(args: argparse.Namespace) -> int:
     """Fail-closed DONE only when catalog + proofs + live base containment hold."""
@@ -7858,6 +8228,9 @@ def cmd_verify_done(args: argparse.Namespace) -> int:
         elif task_id == "WP-10A":
             ok_gate, reason, message, proof_record = evaluate_wp10a_verify_done(current, args)
             weight = 6
+        elif task_id == "WP-10B":
+            ok_gate, reason, message, proof_record = evaluate_wp10b_verify_done(current, args)
+            weight = 8
         else:
             # Never mis-tag later WP tasks as WP03_*.
             if task_id.startswith("WP-"):
@@ -7875,7 +8248,9 @@ def cmd_verify_done(args: argparse.Namespace) -> int:
             fail(
                 reason
                 or (
-                    "WP10A_VERIFY_DONE_PROOF_MISSING"
+                    "WP10B_VERIFY_DONE_PROOF_MISSING"
+                    if task_id == "WP-10B"
+                    else "WP10A_VERIFY_DONE_PROOF_MISSING"
                     if task_id == "WP-10A"
                     else "WP09_VERIFY_DONE_PROOF_MISSING"
                     if task_id == "WP-09"

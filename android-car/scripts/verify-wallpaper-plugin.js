@@ -604,6 +604,264 @@ function assertE3Fixtures() {
   return { ok: results.every((x) => x.ok), results, E3_FIXTURE_NAMES };
 }
 
+/** WP-10B / E4: Scene + Video dual-frame render evidence (Task 10B). */
+const E4_FIXTURE_NAMES = Object.freeze([
+  'blackScreen',
+  'solidColorOnly',
+  'activityLogOnly',
+  'missingWindowSurface',
+  'missingFramePair',
+  'dynamicFramesIdentical',
+  'stateOnlyStaged',
+  'forgedPreviewReady',
+  'sceneOnlyMissingVideo',
+  'videoOnlyMissingScene',
+  'correctE4',
+]);
+
+/**
+ * Build structured E4 evidence report fixture.
+ * @param {string} name
+ * @param {object} [overrides]
+ */
+function buildE4Fixture(name, overrides = {}) {
+  const frameGood = {
+    sha256: 'a'.repeat(64),
+    width: 1920,
+    height: 1080,
+    notBlack: true,
+    notSolidColor: true,
+  };
+  const frame2 = {
+    sha256: 'b'.repeat(64),
+    width: 1920,
+    height: 1080,
+    notBlack: true,
+    notSolidColor: true,
+  };
+  const sample = (type) => ({
+    type,
+    basename: `${type}-sample.mpkg`,
+    bytes: 1024,
+    sha256: (type === 'scene' ? 'c' : 'd').repeat(64),
+    operationId: `op-${type}-1`,
+    callId: `call-${type}-1`,
+    actionEpoch: 1,
+    operationState: 'ENGINE_LAUNCHED',
+    frames: [frameGood, frame2],
+    framesDistinct: true,
+    hasWindow: true,
+    hasSurface: true,
+    humanRecognizable: true,
+  });
+  const good = {
+    targetUser: 12,
+    parentTaskId: 'WP-10A',
+    parentManifestSha256: 'e'.repeat(64),
+    requiredEffectiveDone: true,
+    shellCallerUsedForE4: false,
+    caller: 'mineradio-ui',
+    scene: sample('scene'),
+    video: sample('video'),
+    ...overrides,
+  };
+  switch (name) {
+    case 'correctE4':
+      return good;
+    case 'blackScreen':
+      return {
+        ...good,
+        scene: {
+          ...good.scene,
+          frames: [
+            { ...frameGood, notBlack: false, sha256: '1'.repeat(64) },
+            { ...frame2, notBlack: false, sha256: '2'.repeat(64) },
+          ],
+          humanRecognizable: false,
+        },
+      };
+    case 'solidColorOnly':
+      return {
+        ...good,
+        video: {
+          ...good.video,
+          frames: [
+            { ...frameGood, notSolidColor: false, sha256: '3'.repeat(64) },
+            { ...frame2, notSolidColor: false, sha256: '4'.repeat(64) },
+          ],
+          humanRecognizable: false,
+        },
+      };
+    case 'activityLogOnly':
+      return {
+        ...good,
+        scene: {
+          ...good.scene,
+          frames: [],
+          framesDistinct: false,
+          hasWindow: false,
+          hasSurface: false,
+          humanRecognizable: false,
+          logOnly: true,
+        },
+      };
+    case 'missingWindowSurface':
+      return {
+        ...good,
+        scene: { ...good.scene, hasWindow: false, hasSurface: false },
+      };
+    case 'missingFramePair':
+      return {
+        ...good,
+        video: { ...good.video, frames: [frameGood], framesDistinct: false },
+      };
+    case 'dynamicFramesIdentical':
+      return {
+        ...good,
+        scene: {
+          ...good.scene,
+          frames: [frameGood, { ...frameGood }],
+          framesDistinct: false,
+        },
+      };
+    case 'stateOnlyStaged':
+      return {
+        ...good,
+        scene: { ...good.scene, operationState: 'STAGED' },
+        video: { ...good.video, operationState: 'STAGED' },
+      };
+    case 'forgedPreviewReady':
+      return {
+        ...good,
+        scene: {
+          ...good.scene,
+          operationState: 'PREVIEW_READY',
+          previewReadyForged: true,
+        },
+      };
+    case 'sceneOnlyMissingVideo':
+      return { ...good, video: null };
+    case 'videoOnlyMissingScene':
+      return { ...good, scene: null };
+    default:
+      throw new Error(`unknown E4 fixture: ${name}`);
+  }
+}
+
+/**
+ * Verify E4 evidence (Task 10B). Pure — no adb.
+ * Black/solid/log-only/missing frames/STAGED-only/forged PREVIEW_READY fail-closed.
+ * @param {object} report
+ */
+function verifyE4Evidence(report) {
+  const errors = [];
+  if (!report || typeof report !== 'object') {
+    return { ok: false, code: 'E4_REPORT_MISSING', errors: ['report missing'] };
+  }
+  if (Number(report.targetUser) !== 12) errors.push('missingUser12');
+  if (report.parentTaskId !== 'WP-10A') errors.push('parentTaskMissing');
+  if (
+    !report.parentManifestSha256 ||
+    !/^[0-9a-f]{64}$/i.test(String(report.parentManifestSha256))
+  ) {
+    errors.push('parentManifestMissing');
+  }
+  if (report.requiredEffectiveDone !== true) errors.push('parentNotEffectiveDone');
+  if (report.shellCallerUsedForE4 === true || report.caller === 'shell') {
+    errors.push('shellCallerOnly');
+  }
+
+  function checkSample(label, sample) {
+    if (!sample || typeof sample !== 'object') {
+      errors.push(`${label}Missing`);
+      return;
+    }
+    if (sample.previewReadyForged === true) errors.push('forgedPreviewReady');
+    if (sample.operationState === 'STAGED') errors.push('stateOnlyStaged');
+    if (sample.operationState === 'PREVIEW_READY' && sample.previewReadyForged) {
+      /* already counted */
+    }
+    // ENGINE_LAUNCHED or later external-proven state OK; STAGED alone is not E4.
+    if (
+      sample.operationState &&
+      !['ENGINE_LAUNCHED', 'PREVIEW_READY', 'APPLY_ACTION_PENDING', 'APPLIED'].includes(
+        sample.operationState,
+      ) &&
+      sample.operationState === 'STAGED'
+    ) {
+      /* stateOnlyStaged already */
+    }
+    if (sample.logOnly === true) errors.push('activityLogOnly');
+    if (sample.hasWindow !== true || sample.hasSurface !== true) {
+      errors.push('missingWindowSurface');
+    }
+    const frames = sample.frames || [];
+    if (frames.length < 2) errors.push('missingFramePair');
+    if (frames.length >= 2) {
+      const a = frames[0] || {};
+      const b = frames[1] || {};
+      if (a.notBlack === false || b.notBlack === false) errors.push('blackScreen');
+      if (a.notSolidColor === false || b.notSolidColor === false) {
+        errors.push('solidColorOnly');
+      }
+      if (
+        sample.framesDistinct === false ||
+        (a.sha256 && b.sha256 && a.sha256 === b.sha256)
+      ) {
+        errors.push('dynamicFramesIdentical');
+      }
+    }
+    if (sample.humanRecognizable !== true) {
+      if (!errors.includes('blackScreen') && !errors.includes('solidColorOnly')) {
+        errors.push('notHumanRecognizable');
+      }
+    }
+  }
+
+  if (!report.scene) {
+    errors.push('sceneMissing');
+    errors.push('videoOnlyMissingScene');
+  } else {
+    checkSample('scene', report.scene);
+  }
+  if (!report.video) {
+    errors.push('videoMissing');
+    errors.push('sceneOnlyMissingVideo');
+  } else {
+    checkSample('video', report.video);
+  }
+
+  const uniq = [...new Set(errors)];
+  const code = uniq[0] || 'OK';
+  return {
+    ok: uniq.length === 0,
+    code,
+    errors: uniq,
+    evidenceLevel: uniq.length === 0 ? 'E4' : 'E4-OBSERVED',
+  };
+}
+
+const verifyE4 = verifyE4Evidence;
+
+function assertE4Fixtures() {
+  const results = [];
+  for (const name of E4_FIXTURE_NAMES) {
+    if (name === 'correctE4') continue;
+    const r = verifyE4Evidence(buildE4Fixture(name));
+    const ok = r.ok === false;
+    results.push({ name, ok, code: r.code });
+    if (!ok) {
+      return { ok: false, message: `fixture ${name} should fail`, results };
+    }
+  }
+  const good = verifyE4Evidence(buildE4Fixture('correctE4'));
+  if (!good.ok) {
+    return { ok: false, message: `correctE4 should pass: ${good.errors}`, results };
+  }
+  results.push({ name: 'correctE4', ok: true, code: good.code });
+  return { ok: results.every((x) => x.ok), results, E4_FIXTURE_NAMES };
+}
+
 function main(argv) {
   const args = argv.slice(2);
   if (args[0] === '--fixtures') {
@@ -613,6 +871,11 @@ function main(argv) {
   }
   if (args[0] === '--e3-fixtures') {
     const r = assertE3Fixtures();
+    process.stdout.write(`${JSON.stringify(r)}\n`);
+    process.exit(r.ok ? 0 : 1);
+  }
+  if (args[0] === '--e4-fixtures') {
+    const r = assertE4Fixtures();
     process.stdout.write(`${JSON.stringify(r)}\n`);
     process.exit(r.ok ? 0 : 1);
   }
@@ -628,14 +891,21 @@ function main(argv) {
     process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);
     process.exit(r.ok ? 0 : 1);
   }
+  if (args[0] === '--e4-report-json') {
+    const report = JSON.parse(fs.readFileSync(args[1], 'utf8'));
+    const r = verifyE4Evidence(report);
+    process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);
+    process.exit(r.ok ? 0 : 1);
+  }
   // Default: document query-only shell contract
   process.stderr.write(
-    'verify-wallpaper-plugin.js: use --fixtures | --e3-fixtures | --report-json <file>\n' +
+    'verify-wallpaper-plugin.js: use --fixtures | --e3-fixtures | --e4-fixtures | --report-json <file>\n' +
       'Shell wrapper is query-only (no uninstall/pm clear).\n' +
       'Tools: aapt apksigner zipalign; packages com.mineradio.app / ' +
       'com.motif.wallpaperengine / io.wallpaperengine.weclient; process :we_runtime; ' +
       'BrowseActivity WEWallpaperService arm64-v8a certificate sha256 split.\n' +
-      'E3: user 12 + Mineradio real caller + PID isolation (not shell content call).\n',
+      'E3: user 12 + Mineradio real caller + PID isolation (not shell content call).\n' +
+      'E4: Scene+Video dual-frame non-black/non-solid continuous render.\n',
   );
   process.exit(2);
 }
@@ -650,7 +920,9 @@ module.exports = {
   BUILD_PROP_CALLER_CERT,
   FIXTURE_NAMES,
   E3_FIXTURE_NAMES,
+  E4_FIXTURE_NAMES,
   WP10A_E3_FAIL_FIXTURES: E3_FIXTURE_NAMES.filter((n) => n !== 'correctE3'),
+  WP10B_E4_FAIL_FIXTURES: E4_FIXTURE_NAMES.filter((n) => n !== 'correctE4'),
   verifyStaticReport,
   buildFixture,
   assertVerifyFixtures,
@@ -660,6 +932,10 @@ module.exports = {
   verifyE3Evidence,
   verifyE3,
   assertE3Fixtures,
+  buildE4Fixture,
+  verifyE4Evidence,
+  verifyE4,
+  assertE4Fixtures,
   runToolsOnApk,
   sha256File,
   sha256Hex,
