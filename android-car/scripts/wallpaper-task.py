@@ -8185,6 +8185,399 @@ def evaluate_wp10b_verify_done(
     return True, "", "", record
 
 
+# ---------------------------------------------------------------------------
+# WP-10C verify-done: E5 current-user system wallpaper binding.
+# ---------------------------------------------------------------------------
+WP10C_CALLER_FORGERY_KEYS = WP10B_CALLER_FORGERY_KEYS
+WP10C_SUITE_KEYS = (
+    "androidUnitTest",
+    "wp10cCapacityTest",
+    "pluginUnitTest",
+    "fullNodeTest",
+    "e5Evidence",
+)
+WP10C_REQUIRED_PREREQS = WP10B_REQUIRED_PREREQS + ("WP-10B",)
+WP10C_IMPLEMENTATION_SURFACES = (
+    "android-car/scripts/wallpaper-plugin-tasks.json",
+    "android-car/scripts/wallpaper-task.py",
+    "android-car/scripts/verify-wallpaper-plugin.js",
+    "android-car/tests/wallpaper-wp10c-red.test.js",
+)
+_WP10C_PREREQ_RECEIPTS = {
+    **_WP10B_PREREQ_RECEIPTS,
+    "WP-10B": _VERIFICATION_ROOT / "transactions" / "wp-10b.json",
+}
+
+
+def _load_wp10c_identity_proofs(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _load_single_pr_identity_proofs(
+        receipt,
+        args,
+        missing_reason="WP10C_VERIFY_DONE_PROOF_MISSING",
+        forgery_reason="WP10C_VERIFY_DONE_CALLER_FORGERY",
+        forgery_keys=WP10C_CALLER_FORGERY_KEYS,
+        empty_label="WP-10C",
+    )
+
+
+def _catalog_wp10c_task(
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _catalog_unique_task(
+        args,
+        task_id="WP-10C",
+        expected_weight=6,
+        expected_evidence="E5",
+        required_prereqs=WP10C_REQUIRED_PREREQS,
+        entry_missing_reason="WP10C_CATALOG_ENTRY_MISSING",
+        catalog_invalid_reason="WP10C_CATALOG_PROOF_INVALID",
+        required_done_missing_reason="WP10C_REQUIRED_DONE_MISSING",
+        required_done_message=(
+            "WP-10C.requiredEffectiveDone must include WP-INFRA, WP-00…WP-10B"
+        ),
+    )
+
+
+def _verify_wp10c_prerequisite_done_receipts() -> tuple[bool, str, str, dict[str, Any]]:
+    return _verify_prereq_done_receipts(
+        _WP10C_PREREQ_RECEIPTS,
+        missing_reason="WP10C_REQUIRED_DONE_MISSING",
+        state_done_tasks=frozenset(
+            {
+                "WP-01",
+                "WP-02",
+                "WP-03",
+                "WP-04",
+                "WP-05",
+                "WP-06",
+                "WP-07",
+                "WP-08",
+                "WP-09",
+                "WP-10A",
+                "WP-10B",
+            }
+        ),
+    )
+
+
+def _wp10c_require_implementation_surfaces_on_head(
+    head_sha: str,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    missing: list[str] = []
+    for rel in WP10C_IMPLEMENTATION_SURFACES:
+        if not _git_path_exists_at_commit(head_sha, rel):
+            missing.append(rel)
+    if missing:
+        return (
+            False,
+            "WP10C_PR_PROOF_INVALID",
+            "implementation head missing WP-10C surfaces: " + ", ".join(missing),
+            {},
+        )
+    cat_rc, cat_text = _git_show_at_commit(
+        head_sha, "android-car/scripts/wallpaper-plugin-tasks.json"
+    )
+    if cat_rc != 0 or (
+        '"taskId": "WP-10C"' not in cat_text and '"taskId":"WP-10C"' not in cat_text
+    ):
+        return (
+            False,
+            "WP10C_PR_PROOF_INVALID",
+            "implementation head catalog missing WP-10C task entry",
+            {},
+        )
+    ver_rc, ver_text = _git_show_at_commit(
+        head_sha, "android-car/scripts/verify-wallpaper-plugin.js"
+    )
+    if ver_rc != 0 or "verifyE5Evidence" not in ver_text:
+        return (
+            False,
+            "WP10C_PR_PROOF_INVALID",
+            "verify-wallpaper-plugin.js missing verifyE5Evidence",
+            {},
+        )
+    return (
+        True,
+        "",
+        "",
+        {"implementationSurfaces": list(WP10C_IMPLEMENTATION_SURFACES)},
+    )
+
+
+def _verify_wp10c_e5_evidence(
+    proofs: Mapping[str, Any],
+) -> tuple[bool, str, str, dict[str, Any]]:
+    e5 = proofs.get("e5Evidence")
+    if not isinstance(e5, dict):
+        return (
+            False,
+            "WP10C_E5_EVIDENCE_MISSING",
+            "proofs.e5Evidence object required (sealed continuous E5)",
+            {},
+        )
+    if e5.get("pass") is not True:
+        return False, "WP10C_E5_EVIDENCE_MISSING", "e5Evidence.pass must be true", {}
+    sha = e5.get("sha256")
+    if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{64}", sha.lower() or ""):
+        return (
+            False,
+            "WP10C_E5_EVIDENCE_MISSING",
+            "e5Evidence.sha256 must be 64-char hex of sealed raw manifest",
+            {},
+        )
+    if e5.get("shellCallerUsedForE5") is True or e5.get("caller") == "shell":
+        return (
+            False,
+            "WP10C_E5_SHELL_CALLER_REJECTED",
+            "shell cannot seal continuous E5",
+            {},
+        )
+    if e5.get("bindingState") != "ACTIVE_TARGET":
+        return (
+            False,
+            "WP10C_E5_BINDING_NOT_ACTIVE",
+            "e5Evidence.bindingState must be ACTIVE_TARGET",
+            {},
+        )
+    if e5.get("sourceGetWallpaperInfo") is not True:
+        return (
+            False,
+            "WP10C_E5_DUMPSYS_DRIVEN",
+            "e5Evidence.sourceGetWallpaperInfo must be true",
+            {},
+        )
+    if e5.get("dumpsysDrivenInternal") is True:
+        return (
+            False,
+            "WP10C_E5_DUMPSYS_DRIVEN",
+            "internal binding must not be dumpsys-driven",
+            {},
+        )
+    wc = str(e5.get("wallpaperComponent") or "")
+    if "WEWallpaperService" not in wc:
+        return (
+            False,
+            "WP10C_E5_WRONG_COMPONENT",
+            "e5Evidence.wallpaperComponent must be official WEWallpaperService",
+            {},
+        )
+    if e5.get("engineActive") is not True or e5.get("connectionActive") is not True:
+        return (
+            False,
+            "WP10C_E5_ENGINE_INACTIVE",
+            "e5Evidence.engineActive and connectionActive must be true",
+            {},
+        )
+    if e5.get("parentTaskId") != "WP-10B":
+        return (
+            False,
+            "WP10C_E5_PARENT_MISSING",
+            "e5Evidence.parentTaskId must be WP-10B",
+            {},
+        )
+    parent_sha = e5.get("parentManifestSha256")
+    if not isinstance(parent_sha, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", parent_sha.lower() or ""
+    ):
+        return (
+            False,
+            "WP10C_E5_PARENT_MISSING",
+            "e5Evidence.parentManifestSha256 must be 64-char hex",
+            {},
+        )
+    if e5.get("serial") != "LD249H019625":
+        return (
+            False,
+            "WP10C_E5_DEVICE_CONTEXT_FAILED",
+            f"e5Evidence.serial must be LD249H019625, got {e5.get('serial')!r}",
+            {},
+        )
+    if int(e5.get("targetUser") or 0) != 12:
+        return (
+            False,
+            "WP10C_E5_DEVICE_CONTEXT_FAILED",
+            "e5Evidence.targetUser must be 12",
+            {},
+        )
+    return (
+        True,
+        "",
+        "",
+        {
+            "e5Evidence": {
+                "pass": True,
+                "sha256": sha.lower(),
+                "bindingState": "ACTIVE_TARGET",
+                "wallpaperComponent": wc,
+                "engineActive": True,
+                "connectionActive": True,
+                "sourceGetWallpaperInfo": True,
+                "parentTaskId": "WP-10B",
+                "parentManifestSha256": parent_sha.lower(),
+                "serial": "LD249H019625",
+                "targetUser": 12,
+                "evidenceLevel": "E5",
+            }
+        },
+    )
+
+
+def _verify_wp10c_suite_and_blob_proofs(
+    proofs: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    capacity_keys = tuple(k for k in WP10C_SUITE_KEYS if k != "e5Evidence")
+    ok, reason, message = _require_suite_pass_digests(
+        proofs,
+        capacity_keys,
+        missing_reason="WP10C_SUITE_RECEIPT_INVALID",
+    )
+    if not ok:
+        return False, reason, message, {}
+
+    ok_e5, reason, message, e5_record = _verify_wp10c_e5_evidence(proofs)
+    if not ok_e5:
+        return False, reason, message, {}
+
+    catalog_path = Path(args.catalog_path) if args.catalog_path else DEFAULT_CATALOG_BLOB_PATH
+    if not catalog_path.is_file():
+        return (
+            False,
+            "WP10C_VERIFY_DONE_PROOF_MISSING",
+            f"catalog missing: {catalog_path}",
+            {},
+        )
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    matches = [
+        t
+        for t in (catalog.get("tasks") or [])
+        if isinstance(t, dict) and t.get("taskId") == "WP-10C"
+    ]
+    if len(matches) != 1:
+        return (
+            False,
+            "WP10C_CATALOG_ENTRY_MISSING",
+            "live catalog must contain unique WP-10C",
+            {},
+        )
+    task = matches[0]
+    if int(task.get("weight") or 0) != 6 or task.get("evidenceLevel") != "E5":
+        return (
+            False,
+            "WP10C_CATALOG_PROOF_INVALID",
+            "WP-10C catalog weight/evidenceLevel must be 6/E5",
+            {},
+        )
+
+    ok, reason, message, live_catalog_sha, live_schema_sha = _verify_catalog_schema_digests(
+        proofs,
+        args,
+        invalid_reason="WP10C_CATALOG_PROOF_INVALID",
+    )
+    if not ok:
+        return False, reason, message, {}
+
+    return (
+        True,
+        "",
+        "",
+        {
+            "catalogSha256": live_catalog_sha,
+            "schemaSha256": live_schema_sha,
+            "androidUnitTest": proofs["androidUnitTest"],
+            "wp10cCapacityTest": proofs["wp10cCapacityTest"],
+            "pluginUnitTest": proofs["pluginUnitTest"],
+            "fullNodeTest": proofs["fullNodeTest"],
+            **e5_record,
+            "evidenceLevel": "E5",
+        },
+    )
+
+
+def verify_wp10c_merged_implementation_pr(
+    *,
+    pr_number: int,
+    live_base_sha: str,
+    repo: str | None,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _verify_merged_implementation_pr(
+        pr_number=pr_number,
+        live_base_sha=live_base_sha,
+        repo=repo,
+        invalid_reason="WP10C_PR_PROOF_INVALID",
+        containment_reason="WP10C_BASE_CONTAINMENT_FAILED",
+        surface_checker=_wp10c_require_implementation_surfaces_on_head,
+    )
+
+
+def evaluate_wp10c_verify_done(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    """Return (ok, reason, message, proof_record) for WP-10C CLOSE-VERIFY.
+
+    Requires continuous E5 (current-user WE wallpaper binding), parent WP-10B,
+    suite digests, and implementation PR identity.
+    """
+    task, reason, message = _catalog_wp10c_task(args)
+    if task is None:
+        return False, reason, message, {}
+
+    ok_prereq, reason, message, prereq_record = _verify_wp10c_prerequisite_done_receipts()
+    if not ok_prereq:
+        return False, reason, message, {}
+
+    proofs, reason, message = _load_wp10c_identity_proofs(receipt, args)
+    if proofs is None:
+        return False, reason, message, {}
+
+    pr_number, reason, message = _extract_implementation_pr_number(
+        proofs,
+        missing_reason="WP10C_VERIFY_DONE_PROOF_MISSING",
+    )
+    if pr_number is None:
+        return False, reason, message, {}
+
+    ok_suites, reason, message, suite_record = _verify_wp10c_suite_and_blob_proofs(
+        proofs, args
+    )
+    if not ok_suites:
+        return False, reason, message, {}
+
+    live_base, reason, message = _resolve_live_base_optional_claim(
+        proofs,
+        missing_reason="WP10C_VERIFY_DONE_PROOF_MISSING",
+        containment_reason="WP10C_BASE_CONTAINMENT_FAILED",
+    )
+    if live_base is None:
+        return False, reason, message, {}
+
+    repo = getattr(args, "repo", None) or APPROVED_GITHUB_REPO
+    impl_proof, reason, message = verify_wp10c_merged_implementation_pr(
+        pr_number=pr_number,
+        live_base_sha=live_base,
+        repo=repo,
+    )
+    if impl_proof is None:
+        return False, reason, message, {}
+
+    record = _assemble_verify_done_record(
+        task=task,
+        impl_proof=impl_proof,
+        live_base=live_base,
+        prereq_record=prereq_record,
+        suite_record=suite_record,
+        weight=6,
+        default_path="android-car/scripts/",
+    )
+    record["evidenceLevel"] = "E5"
+    record["parentTaskId"] = "WP-10B"
+    return True, "", "", record
+
+
 def cmd_verify_done(args: argparse.Namespace) -> int:
     """Fail-closed DONE only when catalog + proofs + live base containment hold."""
     task_id = require_task(args.task)
@@ -8231,6 +8624,9 @@ def cmd_verify_done(args: argparse.Namespace) -> int:
         elif task_id == "WP-10B":
             ok_gate, reason, message, proof_record = evaluate_wp10b_verify_done(current, args)
             weight = 8
+        elif task_id == "WP-10C":
+            ok_gate, reason, message, proof_record = evaluate_wp10c_verify_done(current, args)
+            weight = 6
         else:
             # Never mis-tag later WP tasks as WP03_*.
             if task_id.startswith("WP-"):
@@ -8248,7 +8644,9 @@ def cmd_verify_done(args: argparse.Namespace) -> int:
             fail(
                 reason
                 or (
-                    "WP10B_VERIFY_DONE_PROOF_MISSING"
+                    "WP10C_VERIFY_DONE_PROOF_MISSING"
+                    if task_id == "WP-10C"
+                    else "WP10B_VERIFY_DONE_PROOF_MISSING"
                     if task_id == "WP-10B"
                     else "WP10A_VERIFY_DONE_PROOF_MISSING"
                     if task_id == "WP-10A"

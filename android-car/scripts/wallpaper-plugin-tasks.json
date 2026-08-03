@@ -1186,6 +1186,115 @@
         "parent evidence chain WP-10A→WP-10B",
         "Scene/Video continuous render evidence"
       ]
+    },
+    {
+      "taskId": "WP-10C",
+      "dependsOn": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07",
+        "WP-08",
+        "WP-09",
+        "WP-10A",
+        "WP-10B"
+      ],
+      "requiredEffectiveDone": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07",
+        "WP-08",
+        "WP-09",
+        "WP-10A",
+        "WP-10B"
+      ],
+      "phaseCommands": {
+        "RED": {
+          "commandId": "WP-10C-RED",
+          "argv": [
+            "true"
+          ]
+        },
+        "GREEN": {
+          "commandId": "WP-10C-GREEN",
+          "argv": [
+            "true"
+          ]
+        },
+        "REFACTOR": {
+          "commandId": "WP-10C-REFACTOR",
+          "argv": [
+            "true"
+          ]
+        },
+        "VERIFY": {
+          "commandId": "WP-10C-VERIFY",
+          "argv": [
+            "true"
+          ]
+        }
+      },
+      "expectedExit": {
+        "RED": 1,
+        "GREEN": 0,
+        "REFACTOR": 0,
+        "VERIFY": 0
+      },
+      "failureSignaturePolicy": {
+        "RED": {
+          "required": true,
+          "match": "stderr"
+        }
+      },
+      "scopeCheck": {
+        "repo": "mineradio",
+        "exactFiles": [
+          "android-car/scripts/verify-wallpaper-plugin.js",
+          "android-car/scripts/wallpaper-task.py",
+          "android-car/tests/wallpaper-wp10c-red.test.js"
+        ],
+        "product": "Wallpaper Engine",
+        "path": "android-car/scripts/",
+        "packages": [
+          "com.mineradio.app",
+          "com.motif.wallpaperengine",
+          "io.wallpaperengine.weclient"
+        ],
+        "device": {
+          "serial": "LD249H019625",
+          "user": 12,
+          "androidRelease": "12",
+          "apiLevel": 31,
+          "abi": "arm64-v8a"
+        }
+      },
+      "evidenceLevel": "E5",
+      "weight": 6,
+      "product": "Wallpaper Engine",
+      "path": "android-car/scripts/",
+      "requiredEffectiveGate": false,
+      "deviceEvidence": true,
+      "inputs": [
+        "WP-10B E4 Scene/Video sealed",
+        "current user 12 system wallpaper binding",
+        "public getWallpaperInfo + dumpsys wallpaper external evidence"
+      ],
+      "outputs": [
+        "verifyE5Evidence + E5 fail fixtures",
+        "parent chain WP-10B→WP-10C",
+        "ACTIVE_TARGET + WEWallpaperService engine active"
+      ]
     }
   ]
 }

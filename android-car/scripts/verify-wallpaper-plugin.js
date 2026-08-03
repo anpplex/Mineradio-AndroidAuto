@@ -862,6 +862,159 @@ function assertE4Fixtures() {
   return { ok: results.every((x) => x.ok), results, E4_FIXTURE_NAMES };
 }
 
+
+/** WP-10C / E5: current-user system wallpaper binding (Task 10C). */
+const E5_FIXTURE_NAMES = Object.freeze([
+  'wrongUser',
+  'candidateOnly',
+  'historyPackageOnly',
+  'activityStillForeground',
+  'engineInactive',
+  'previewOnly',
+  'shellCallerOnly',
+  'missingActiveTarget',
+  'dumpsysDrivenInternal',
+  'wrongComponent',
+  'correctE5',
+]);
+
+function buildE5Fixture(name, overrides = {}) {
+  const good = {
+    targetUser: 12,
+    currentUser: 12,
+    parentTaskId: 'WP-10B',
+    parentManifestSha256: 'f'.repeat(64),
+    requiredEffectiveDone: true,
+    caller: 'mineradio-ui',
+    shellCallerUsedForE5: false,
+    bindingState: 'ACTIVE_TARGET',
+    activePackage: 'io.wallpaperengine.weclient',
+    activeComponent: 'io.wallpaperengine.weclient/io.wallpaperengine.weclient.WEWallpaperService',
+    sourceGetWallpaperInfo: true,
+    dumpsysDrivenInternal: false,
+    wallpaperComponent: 'io.wallpaperengine.weclient/.WEWallpaperService',
+    connectionActive: true,
+    engineActive: true,
+    homeForeground: true,
+    activityStillForeground: false,
+    candidateOnly: false,
+    historyPackageOnly: false,
+    previewOnly: false,
+    boundScreenNotBlack: true,
+    callId: 'e5-status-1',
+    operationId: 'op-e5-1',
+    actionEpoch: 1,
+    code: 0,
+    ...overrides,
+  };
+  switch (name) {
+    case 'correctE5':
+      return good;
+    case 'wrongUser':
+      return { ...good, targetUser: 0, currentUser: 0 };
+    case 'candidateOnly':
+      return { ...good, candidateOnly: true, wallpaperComponent: '', engineActive: false };
+    case 'historyPackageOnly':
+      return { ...good, historyPackageOnly: true, wallpaperComponent: '', connectionActive: false };
+    case 'activityStillForeground':
+      return { ...good, activityStillForeground: true, homeForeground: false };
+    case 'engineInactive':
+      return { ...good, engineActive: false, connectionActive: false };
+    case 'previewOnly':
+      return { ...good, previewOnly: true, homeForeground: false };
+    case 'shellCallerOnly':
+      return { ...good, caller: 'shell', shellCallerUsedForE5: true };
+    case 'missingActiveTarget':
+      return { ...good, bindingState: 'UNBOUND', activePackage: '', activeComponent: '' };
+    case 'dumpsysDrivenInternal':
+      return { ...good, dumpsysDrivenInternal: true, sourceGetWallpaperInfo: false };
+    case 'wrongComponent':
+      return {
+        ...good,
+        wallpaperComponent: 'com.android.systemui/.ImageWallpaper',
+        activeComponent: 'com.android.systemui/.ImageWallpaper',
+        activePackage: 'com.android.systemui',
+        bindingState: 'ACTIVE_OTHER',
+      };
+    default:
+      throw new Error(`unknown E5 fixture: ${name}`);
+  }
+}
+
+function verifyE5Evidence(report) {
+  const errors = [];
+  if (!report || typeof report !== 'object') {
+    return { ok: false, code: 'E5_REPORT_MISSING', errors: ['report missing'] };
+  }
+  if (Number(report.targetUser) !== 12 || Number(report.currentUser) !== 12) {
+    errors.push('wrongUser');
+  }
+  if (report.parentTaskId !== 'WP-10B') errors.push('parentTaskMissing');
+  if (
+    !report.parentManifestSha256 ||
+    !/^[0-9a-f]{64}$/i.test(String(report.parentManifestSha256))
+  ) {
+    errors.push('parentManifestMissing');
+  }
+  if (report.requiredEffectiveDone !== true) errors.push('parentNotEffectiveDone');
+  if (report.shellCallerUsedForE5 === true || report.caller === 'shell') {
+    errors.push('shellCallerOnly');
+  }
+  if (report.candidateOnly === true) errors.push('candidateOnly');
+  if (report.historyPackageOnly === true) errors.push('historyPackageOnly');
+  if (report.activityStillForeground === true) errors.push('activityStillForeground');
+  if (report.previewOnly === true) errors.push('previewOnly');
+  if (report.engineActive !== true || report.connectionActive !== true) {
+    errors.push('engineInactive');
+  }
+  if (report.bindingState !== 'ACTIVE_TARGET') errors.push('missingActiveTarget');
+  if (report.dumpsysDrivenInternal === true || report.sourceGetWallpaperInfo !== true) {
+    errors.push('dumpsysDrivenInternal');
+  }
+  const wc = String(report.wallpaperComponent || '');
+  const ac = String(report.activeComponent || '');
+  if (!wc.includes('WEWallpaperService') && !ac.includes('WEWallpaperService')) {
+    errors.push('wrongComponent');
+  }
+  if (report.activePackage !== 'io.wallpaperengine.weclient') {
+    if (!errors.includes('wrongComponent')) errors.push('wrongComponent');
+  }
+  if (report.code !== 0 && report.code !== undefined) errors.push('statusNotOk');
+  if (report.boundScreenNotBlack !== true) errors.push('boundScreenBlack');
+  if (report.homeForeground !== true && report.activityStillForeground !== true) {
+    // already covered
+  }
+  const uniq = [...new Set(errors)];
+  return {
+    ok: uniq.length === 0,
+    code: uniq[0] || 'OK',
+    errors: uniq,
+    evidenceLevel: uniq.length === 0 ? 'E5' : 'E5-OBSERVED',
+  };
+}
+
+const verifyE5 = verifyE5Evidence;
+
+function assertE5Fixtures() {
+  const results = [];
+  for (const name of E5_FIXTURE_NAMES) {
+    if (name === 'correctE5') continue;
+    const r = verifyE5Evidence(buildE5Fixture(name));
+    const ok = r.ok === false;
+    results.push({ name, ok, code: r.code });
+    if (!ok) {
+      return { ok: false, message: `fixture ${name} should fail`, results };
+    }
+  }
+  const good = verifyE5Evidence(buildE5Fixture('correctE5'));
+  if (!good.ok) {
+    return { ok: false, message: `correctE5 should pass: ${good.errors}`, results };
+  }
+  results.push({ name: 'correctE5', ok: true, code: good.code });
+  return { ok: results.every((x) => x.ok), results, E5_FIXTURE_NAMES };
+}
+
+
 function main(argv) {
   const args = argv.slice(2);
   if (args[0] === '--fixtures') {
@@ -877,6 +1030,17 @@ function main(argv) {
   if (args[0] === '--e4-fixtures') {
     const r = assertE4Fixtures();
     process.stdout.write(`${JSON.stringify(r)}\n`);
+    process.exit(r.ok ? 0 : 1);
+  }
+  if (args[0] === '--e5-fixtures') {
+    const r = assertE5Fixtures();
+    process.stdout.write(`${JSON.stringify(r)}\n`);
+    process.exit(r.ok ? 0 : 1);
+  }
+  if (args[0] === '--e5-report-json') {
+    const report = JSON.parse(fs.readFileSync(args[1], 'utf8'));
+    const r = verifyE5Evidence(report);
+    process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);
     process.exit(r.ok ? 0 : 1);
   }
   if (args[0] === '--report-json') {
@@ -936,6 +1100,12 @@ module.exports = {
   verifyE4Evidence,
   verifyE4,
   assertE4Fixtures,
+  E5_FIXTURE_NAMES,
+  WP10C_E5_FAIL_FIXTURES: E5_FIXTURE_NAMES.filter((n) => n !== 'correctE5'),
+  buildE5Fixture,
+  verifyE5Evidence,
+  verifyE5,
+  assertE5Fixtures,
   runToolsOnApk,
   sha256File,
   sha256Hex,
