@@ -118,7 +118,20 @@
     .annotation runtime Landroid/webkit/JavascriptInterface;
     .end annotation
 
-    const-string v0, "{\"code\":0,\"message\":\"pong\",\"protocolVersion\":1}"
+    # WP-10A: real Binder ContentResolver.call as Mineradio process (not shell).
+    :try_start_0
+    invoke-static {}, Lcom/mineradio/app/car/WallpaperPluginProviderClient;->ping()Ljava/lang/String;
+
+    move-result-object v0
+    :try_end_0
+    .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
+
+    return-object v0
+
+    :catch_0
+    invoke-static {}, Lcom/mineradio/app/car/CarWallpaperPluginBridge;->failClosed()Ljava/lang/String;
+
+    move-result-object v0
 
     return-object v0
 .end method
@@ -131,7 +144,9 @@
     # status never implicitly renews action tokens (Task 4).
     # operationId optional — blank queries global snapshot.
     :try_start_0
-    const-string v0, "{\"code\":0,\"operationState\":\"IDLE\",\"bindingState\":\"UNKNOWN\",\"statusDoesNotImplicitRenew\":true}"
+    invoke-static {p1}, Lcom/mineradio/app/car/WallpaperPluginProviderClient;->status(Ljava/lang/String;)Ljava/lang/String;
+
+    move-result-object v0
     :try_end_0
     .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
 
@@ -150,7 +165,7 @@
     .annotation runtime Landroid/webkit/JavascriptInterface;
     .end annotation
 
-    # Maps to Provider renew_action; does not re-send import/apply/next/previous.
+    # Maps to Provider renew_action via Binder (realCaller).
     if-eqz p1, :cond_0
 
     if-nez p2, :cond_1
@@ -164,8 +179,9 @@
 
     :cond_1
     :try_start_0
-    # Provider call with method renew_action; code=20 registers new one-shot token.
-    const-string v0, "{\"code\":20,\"message\":\"USER_ACTION_REQUIRED\",\"providerMethod\":\"renew_action\"}"
+    invoke-static {p1, p2}, Lcom/mineradio/app/car/WallpaperPluginProviderClient;->renewAction(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+
+    move-result-object v0
     :try_end_0
     .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
 
@@ -184,8 +200,7 @@
     .annotation runtime Landroid/webkit/JavascriptInterface;
     .end annotation
 
-    # WP-05: content:// only → CarWallpaperMpkgStager (cache/wallpaper_plugin_stage).
-    # Rejects file://, absolute paths, path traversal. Never leaks filesystem paths.
+    # WP-10A: Binder import_mpkg (realCaller). Scheme validation remains fail-closed.
 
     if-eqz p1, :cond_0
 
@@ -199,7 +214,7 @@
     return-object v0
 
     :cond_1
-    # Forbid file:// and absolute paths before staging.
+    # Forbid file:// and absolute paths before provider call.
     invoke-static {p2}, Lcom/mineradio/app/car/CarWallpaperMpkgStager;->isForbiddenScheme(Ljava/lang/String;)Z
 
     move-result v0
@@ -213,23 +228,17 @@
     return-object v0
 
     :cond_2
-    invoke-static {p2}, Lcom/mineradio/app/car/CarWallpaperMpkgStager;->isContentUri(Ljava/lang/String;)Z
+    :try_start_0
+    invoke-static {p1, p2}, Lcom/mineradio/app/car/WallpaperPluginProviderClient;->importMpkg(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
 
-    move-result v0
+    move-result-object v1
+    :try_end_0
+    .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
 
-    if-eqz v0, :cond_3
+    return-object v1
 
+    :catch_0
     invoke-static {}, Lcom/mineradio/app/car/CarWallpaperPluginBridge;->failClosed()Ljava/lang/String;
-
-    move-result-object v0
-
-    return-object v0
-
-    :cond_3
-    # Context may be null in unit probes — stager still validates scheme/opId.
-    const/4 v0, 0x0
-
-    invoke-static {v0, p1, p2}, Lcom/mineradio/app/car/CarWallpaperMpkgStager;->stageFromContentUri(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
 
     move-result-object v1
 

@@ -108,6 +108,10 @@ const PATHS_XML_BASENAME = 'wallpaper_plugin_paths.xml';
 const STAGER_SMALI_BASENAME = 'CarWallpaperMpkgStager.smali';
 const BRIDGE_SMALI_BASENAME = 'CarWallpaperPluginBridge.smali';
 const INSTALLER_SMALI_BASENAME = 'CarWallpaperPluginInstaller.smali';
+/** WP-10A: real Binder ContentResolver client + adb probe Activity. */
+const PROVIDER_CLIENT_SMALI_BASENAME = 'WallpaperPluginProviderClient.smali';
+const PROBE_ACTIVITY_SMALI_BASENAME = 'WallpaperPluginBridgeProbeActivity.smali';
+const PROBE_ACTIVITY_CLASS = 'com.mineradio.app.car.WallpaperPluginBridgeProbeActivity';
 
 function resolveSmaliSourceRoot() {
   return path.join(__dirname, 'smali', 'com', 'mineradio', 'app', 'car');
@@ -153,7 +157,61 @@ function copyBridgeSmali(decodedDir) {
     );
   }
   const copied = copyCarSmaliFile(decodedDir, BRIDGE_SMALI_BASENAME);
-  return { dest: copied.dest, changed: true, contractMirror: mirror };
+  // WP-10A realCaller: ProviderClient must ride with the bridge inject.
+  const clientSrc = path.join(resolveSmaliSourceRoot(), PROVIDER_CLIENT_SMALI_BASENAME);
+  if (!fs.existsSync(clientSrc)) {
+    throw new Error(
+      `${PROVIDER_CLIENT_SMALI_BASENAME} missing — run scripts/tools/compile-provider-client.sh`,
+    );
+  }
+  const clientText = fs.readFileSync(clientSrc, 'utf8');
+  if (
+    !clientText.includes('ContentResolver') ||
+    !clientText.includes('realCaller') ||
+    !clientText.includes(contract.authority || 'com.motif.wallpaperengine.control')
+  ) {
+    throw new Error('WallpaperPluginProviderClient.smali missing Binder/realCaller markers');
+  }
+  const client = copyCarSmaliFile(decodedDir, PROVIDER_CLIENT_SMALI_BASENAME);
+  const probeSrc = path.join(resolveSmaliSourceRoot(), PROBE_ACTIVITY_SMALI_BASENAME);
+  let probe = null;
+  if (fs.existsSync(probeSrc)) {
+    probe = copyCarSmaliFile(decodedDir, PROBE_ACTIVITY_SMALI_BASENAME);
+  }
+  return {
+    dest: copied.dest,
+    changed: true,
+    contractMirror: mirror,
+    providerClient: client,
+    probeActivity: probe,
+  };
+}
+
+/**
+ * Register exported probe Activity for adb realCaller evidence (no WebView).
+ * Idempotent. Does not add car HMI launcher categories.
+ */
+function injectProbeActivityManifest(decodedDir) {
+  const manifestPath = path.join(decodedDir, 'AndroidManifest.xml');
+  // Smali-only fixture trees (unit tests) may omit the manifest — skip, do not fail.
+  if (!fs.existsSync(manifestPath)) {
+    return { changed: false, activity: PROBE_ACTIVITY_CLASS, skipped: true };
+  }
+  let xml = fs.readFileSync(manifestPath, 'utf8');
+  if (xml.includes(PROBE_ACTIVITY_CLASS)) {
+    return { changed: false, activity: PROBE_ACTIVITY_CLASS };
+  }
+  const activityXml =
+    `        <activity android:name="${PROBE_ACTIVITY_CLASS}"` +
+    ` android:exported="true" android:excludeFromRecents="true"` +
+    ` android:theme="@android:style/Theme.NoDisplay"/>\n`;
+  const appClose = xml.lastIndexOf('</application>');
+  if (appClose < 0) {
+    throw new Error('AndroidManifest missing </application> (fail-closed)');
+  }
+  xml = xml.slice(0, appClose) + activityXml + xml.slice(appClose);
+  atomicWriteFile(manifestPath, xml);
+  return { changed: true, activity: PROBE_ACTIVITY_CLASS };
 }
 
 /**
@@ -328,9 +386,13 @@ function patchWallpaperPluginBridge(decodedDir) {
   // WP-06: CarWallpaperPluginInstaller.smali (PackageInstaller + package visibility)
   const installer = copyInstallerSmali(root);
   const activity = patchLandscapeWebActivity(root);
+  const probeManifest = injectProbeActivityManifest(root);
   return {
     smaliDir: path.dirname(smali.dest),
     bridgeSmali: smali,
+    providerClientSmali: smali.providerClient,
+    probeActivitySmali: smali.probeActivity,
+    probeManifest,
     stagerSmali: stager,
     installerSmali: installer,
     wallpaperPluginPathsXml: pathsXml,
