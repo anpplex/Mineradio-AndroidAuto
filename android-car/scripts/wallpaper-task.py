@@ -8578,6 +8578,417 @@ def evaluate_wp10c_verify_done(
     return True, "", "", record
 
 
+# ---------------------------------------------------------------------------
+# WP-11A verify-done: fault matrix + auto_recoverable recovery <=10s (stay E5).
+# ---------------------------------------------------------------------------
+WP11A_CALLER_FORGERY_KEYS = WP10C_CALLER_FORGERY_KEYS
+WP11A_SUITE_KEYS = (
+    "androidUnitTest",
+    "wp11aCapacityTest",
+    "pluginUnitTest",
+    "fullNodeTest",
+    "recoveryEvidence",
+)
+WP11A_REQUIRED_PREREQS = WP10C_REQUIRED_PREREQS + ("WP-10C",)
+WP11A_IMPLEMENTATION_SURFACES = (
+    "android-car/scripts/wallpaper-plugin-tasks.json",
+    "android-car/scripts/wallpaper-task.py",
+    "android-car/scripts/verify-wallpaper-plugin.js",
+    "android-car/tests/wallpaper-wp11a-red.test.js",
+)
+_WP11A_PREREQ_RECEIPTS = {
+    **_WP10C_PREREQ_RECEIPTS,
+    "WP-10C": _VERIFICATION_ROOT / "transactions" / "wp-10c.json",
+}
+WP11A_RECOVERY_MAX_MS = 10000
+
+
+def _load_wp11a_identity_proofs(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _load_single_pr_identity_proofs(
+        receipt,
+        args,
+        missing_reason="WP11A_VERIFY_DONE_PROOF_MISSING",
+        forgery_reason="WP11A_VERIFY_DONE_CALLER_FORGERY",
+        forgery_keys=WP11A_CALLER_FORGERY_KEYS,
+        empty_label="WP-11A",
+    )
+
+
+def _catalog_wp11a_task(
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _catalog_unique_task(
+        args,
+        task_id="WP-11A",
+        expected_weight=3,
+        expected_evidence="E5",
+        required_prereqs=WP11A_REQUIRED_PREREQS,
+        entry_missing_reason="WP11A_CATALOG_ENTRY_MISSING",
+        catalog_invalid_reason="WP11A_CATALOG_PROOF_INVALID",
+        required_done_missing_reason="WP11A_REQUIRED_DONE_MISSING",
+        required_done_message=(
+            "WP-11A.requiredEffectiveDone must include WP-INFRA, WP-00…WP-10C"
+        ),
+    )
+
+
+def _verify_wp11a_prerequisite_done_receipts() -> tuple[bool, str, str, dict[str, Any]]:
+    return _verify_prereq_done_receipts(
+        _WP11A_PREREQ_RECEIPTS,
+        missing_reason="WP11A_REQUIRED_DONE_MISSING",
+        state_done_tasks=frozenset(
+            {
+                "WP-01",
+                "WP-02",
+                "WP-03",
+                "WP-04",
+                "WP-05",
+                "WP-06",
+                "WP-07",
+                "WP-08",
+                "WP-09",
+                "WP-10A",
+                "WP-10B",
+                "WP-10C",
+            }
+        ),
+    )
+
+
+def _wp11a_require_implementation_surfaces_on_head(
+    head_sha: str,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    missing: list[str] = []
+    for rel in WP11A_IMPLEMENTATION_SURFACES:
+        if not _git_path_exists_at_commit(head_sha, rel):
+            missing.append(rel)
+    if missing:
+        return (
+            False,
+            "WP11A_PR_PROOF_INVALID",
+            "implementation head missing WP-11A surfaces: " + ", ".join(missing),
+            {},
+        )
+    cat_rc, cat_text = _git_show_at_commit(
+        head_sha, "android-car/scripts/wallpaper-plugin-tasks.json"
+    )
+    if cat_rc != 0 or (
+        '"taskId": "WP-11A"' not in cat_text and '"taskId":"WP-11A"' not in cat_text
+    ):
+        return (
+            False,
+            "WP11A_PR_PROOF_INVALID",
+            "implementation head catalog missing WP-11A task entry",
+            {},
+        )
+    ver_rc, ver_text = _git_show_at_commit(
+        head_sha, "android-car/scripts/verify-wallpaper-plugin.js"
+    )
+    if ver_rc != 0 or "verifyRecoveryEvidence" not in ver_text:
+        return (
+            False,
+            "WP11A_PR_PROOF_INVALID",
+            "verify-wallpaper-plugin.js missing verifyRecoveryEvidence",
+            {},
+        )
+    if "RECOVERY_MAX_MS" not in ver_text and "10000" not in ver_text:
+        return (
+            False,
+            "WP11A_PR_PROOF_INVALID",
+            "verify-wallpaper-plugin.js missing recovery SLA surface",
+            {},
+        )
+    return (
+        True,
+        "",
+        "",
+        {"implementationSurfaces": list(WP11A_IMPLEMENTATION_SURFACES)},
+    )
+
+
+def _verify_wp11a_recovery_evidence(
+    proofs: Mapping[str, Any],
+) -> tuple[bool, str, str, dict[str, Any]]:
+    rec = proofs.get("recoveryEvidence")
+    if not isinstance(rec, dict):
+        return (
+            False,
+            "WP11A_RECOVERY_EVIDENCE_MISSING",
+            "proofs.recoveryEvidence object required (sealed fault matrix)",
+            {},
+        )
+    if rec.get("pass") is not True:
+        return (
+            False,
+            "WP11A_RECOVERY_EVIDENCE_MISSING",
+            "recoveryEvidence.pass must be true",
+            {},
+        )
+    sha = rec.get("sha256")
+    if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{64}", sha.lower() or ""):
+        return (
+            False,
+            "WP11A_RECOVERY_EVIDENCE_MISSING",
+            "recoveryEvidence.sha256 must be 64-char hex of sealed raw manifest",
+            {},
+        )
+    if rec.get("parentTaskId") != "WP-10C":
+        return (
+            False,
+            "WP11A_RECOVERY_PARENT_MISSING",
+            "recoveryEvidence.parentTaskId must be WP-10C",
+            {},
+        )
+    parent_sha = rec.get("parentManifestSha256")
+    if not isinstance(parent_sha, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", parent_sha.lower() or ""
+    ):
+        return (
+            False,
+            "WP11A_RECOVERY_PARENT_MISSING",
+            "recoveryEvidence.parentManifestSha256 must be 64-char hex",
+            {},
+        )
+    if rec.get("packagePresencePass") is not True:
+        return (
+            False,
+            "WP11A_PACKAGE_PRESENCE_FAILED",
+            "recoveryEvidence.packagePresencePass must be true",
+            {},
+        )
+    if rec.get("expectedErrorPass") is not True:
+        return (
+            False,
+            "WP11A_EXPECTED_ERROR_FAILED",
+            "recoveryEvidence.expectedErrorPass must be true",
+            {},
+        )
+    if rec.get("autoRecoverablePass") is not True:
+        return (
+            False,
+            "WP11A_AUTO_RECOVERABLE_FAILED",
+            "recoveryEvidence.autoRecoverablePass must be true",
+            {},
+        )
+    max_ms = rec.get("maxRecoveryMs")
+    try:
+        max_ms_i = int(max_ms)
+    except (TypeError, ValueError):
+        return (
+            False,
+            "WP11A_RECOVERY_SLA_FAILED",
+            "recoveryEvidence.maxRecoveryMs must be int",
+            {},
+        )
+    if max_ms_i < 0 or max_ms_i > WP11A_RECOVERY_MAX_MS:
+        return (
+            False,
+            "WP11A_RECOVERY_SLA_FAILED",
+            f"recoveryEvidence.maxRecoveryMs must be 0..{WP11A_RECOVERY_MAX_MS}, got {max_ms_i}",
+            {},
+        )
+    if rec.get("elevatedEvidenceLevel") is True or (
+        rec.get("evidenceLevel") not in (None, "E5")
+    ):
+        return (
+            False,
+            "WP11A_EVIDENCE_ELEVATED",
+            "WP-11A must remain E5 (no E6/E7 elevation)",
+            {},
+        )
+    if rec.get("serial") != "LD249H019625":
+        return (
+            False,
+            "WP11A_DEVICE_CONTEXT_FAILED",
+            f"recoveryEvidence.serial must be LD249H019625, got {rec.get('serial')!r}",
+            {},
+        )
+    if int(rec.get("targetUser") or 0) != 12:
+        return (
+            False,
+            "WP11A_DEVICE_CONTEXT_FAILED",
+            "recoveryEvidence.targetUser must be 12",
+            {},
+        )
+    return (
+        True,
+        "",
+        "",
+        {
+            "recoveryEvidence": {
+                "pass": True,
+                "sha256": sha.lower(),
+                "parentTaskId": "WP-10C",
+                "parentManifestSha256": parent_sha.lower(),
+                "packagePresencePass": True,
+                "expectedErrorPass": True,
+                "autoRecoverablePass": True,
+                "maxRecoveryMs": max_ms_i,
+                "serial": "LD249H019625",
+                "targetUser": 12,
+                "evidenceLevel": "E5",
+            }
+        },
+    )
+
+
+def _verify_wp11a_suite_and_blob_proofs(
+    proofs: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    capacity_keys = tuple(k for k in WP11A_SUITE_KEYS if k != "recoveryEvidence")
+    ok, reason, message = _require_suite_pass_digests(
+        proofs,
+        capacity_keys,
+        missing_reason="WP11A_SUITE_RECEIPT_INVALID",
+    )
+    if not ok:
+        return False, reason, message, {}
+
+    ok_rec, reason, message, rec_record = _verify_wp11a_recovery_evidence(proofs)
+    if not ok_rec:
+        return False, reason, message, {}
+
+    catalog_path = Path(args.catalog_path) if args.catalog_path else DEFAULT_CATALOG_BLOB_PATH
+    if not catalog_path.is_file():
+        return (
+            False,
+            "WP11A_VERIFY_DONE_PROOF_MISSING",
+            f"catalog missing: {catalog_path}",
+            {},
+        )
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    matches = [
+        t
+        for t in (catalog.get("tasks") or [])
+        if isinstance(t, dict) and t.get("taskId") == "WP-11A"
+    ]
+    if len(matches) != 1:
+        return (
+            False,
+            "WP11A_CATALOG_ENTRY_MISSING",
+            "live catalog must contain unique WP-11A",
+            {},
+        )
+    task = matches[0]
+    if int(task.get("weight") or 0) != 3 or task.get("evidenceLevel") != "E5":
+        return (
+            False,
+            "WP11A_CATALOG_PROOF_INVALID",
+            "WP-11A catalog weight/evidenceLevel must be 3/E5",
+            {},
+        )
+
+    ok, reason, message, live_catalog_sha, live_schema_sha = _verify_catalog_schema_digests(
+        proofs,
+        args,
+        invalid_reason="WP11A_CATALOG_PROOF_INVALID",
+    )
+    if not ok:
+        return False, reason, message, {}
+
+    return (
+        True,
+        "",
+        "",
+        {
+            "catalogSha256": live_catalog_sha,
+            "schemaSha256": live_schema_sha,
+            "androidUnitTest": proofs["androidUnitTest"],
+            "wp11aCapacityTest": proofs["wp11aCapacityTest"],
+            "pluginUnitTest": proofs["pluginUnitTest"],
+            "fullNodeTest": proofs["fullNodeTest"],
+            **rec_record,
+            "evidenceLevel": "E5",
+        },
+    )
+
+
+def verify_wp11a_merged_implementation_pr(
+    *,
+    pr_number: int,
+    live_base_sha: str,
+    repo: str | None,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _verify_merged_implementation_pr(
+        pr_number=pr_number,
+        live_base_sha=live_base_sha,
+        repo=repo,
+        invalid_reason="WP11A_PR_PROOF_INVALID",
+        containment_reason="WP11A_BASE_CONTAINMENT_FAILED",
+        surface_checker=_wp11a_require_implementation_surfaces_on_head,
+    )
+
+
+def evaluate_wp11a_verify_done(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    """Return (ok, reason, message, proof_record) for WP-11A CLOSE-VERIFY.
+
+    Requires sealed recovery fault matrix (package_presence + expected_error +
+    auto_recoverable <=10s), parent WP-10C, suite digests, and implementation PR.
+    Does not elevate continuous evidence beyond E5.
+    """
+    task, reason, message = _catalog_wp11a_task(args)
+    if task is None:
+        return False, reason, message, {}
+
+    ok_prereq, reason, message, prereq_record = _verify_wp11a_prerequisite_done_receipts()
+    if not ok_prereq:
+        return False, reason, message, {}
+
+    proofs, reason, message = _load_wp11a_identity_proofs(receipt, args)
+    if proofs is None:
+        return False, reason, message, {}
+
+    pr_number, reason, message = _extract_implementation_pr_number(
+        proofs,
+        missing_reason="WP11A_VERIFY_DONE_PROOF_MISSING",
+    )
+    if pr_number is None:
+        return False, reason, message, {}
+
+    ok_suites, reason, message, suite_record = _verify_wp11a_suite_and_blob_proofs(
+        proofs, args
+    )
+    if not ok_suites:
+        return False, reason, message, {}
+
+    live_base, reason, message = _resolve_live_base_optional_claim(
+        proofs,
+        missing_reason="WP11A_VERIFY_DONE_PROOF_MISSING",
+        containment_reason="WP11A_BASE_CONTAINMENT_FAILED",
+    )
+    if live_base is None:
+        return False, reason, message, {}
+
+    repo = getattr(args, "repo", None) or APPROVED_GITHUB_REPO
+    impl_proof, reason, message = verify_wp11a_merged_implementation_pr(
+        pr_number=pr_number,
+        live_base_sha=live_base,
+        repo=repo,
+    )
+    if impl_proof is None:
+        return False, reason, message, {}
+
+    record = _assemble_verify_done_record(
+        task=task,
+        impl_proof=impl_proof,
+        live_base=live_base,
+        prereq_record=prereq_record,
+        suite_record=suite_record,
+        weight=3,
+        default_path="android-car/scripts/",
+    )
+    record["evidenceLevel"] = "E5"
+    record["parentTaskId"] = "WP-10C"
+    return True, "", "", record
+
+
 def cmd_verify_done(args: argparse.Namespace) -> int:
     """Fail-closed DONE only when catalog + proofs + live base containment hold."""
     task_id = require_task(args.task)
@@ -8627,6 +9038,9 @@ def cmd_verify_done(args: argparse.Namespace) -> int:
         elif task_id == "WP-10C":
             ok_gate, reason, message, proof_record = evaluate_wp10c_verify_done(current, args)
             weight = 6
+        elif task_id == "WP-11A":
+            ok_gate, reason, message, proof_record = evaluate_wp11a_verify_done(current, args)
+            weight = 3
         else:
             # Never mis-tag later WP tasks as WP03_*.
             if task_id.startswith("WP-"):
