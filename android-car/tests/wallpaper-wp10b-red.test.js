@@ -89,11 +89,16 @@ test('WP-10B RED-01.6 full production capacity aggregate', () => {
   assert.equal(r.ok, true, JSON.stringify(r));
 });
 
-test('WP-10B RED-01.7 receipt not DONE; progress stays 76 until E4 sealed', () => {
+test('WP-10B RED-01.7 progress table pins remain authoritative after DONE', () => {
+  // Post-DONE hygiene: receipt may be DONE@84; pins document RED-era expectations only.
   if (pathExists(wp10bTxnReceipt)) {
     const r = readJson(wp10bTxnReceipt);
-    assert.notEqual(r.EffectiveDone, true);
-    assert.notEqual(r.state, 'DONE');
+    if (r.EffectiveDone === true) {
+      assert.equal(r.state, 'DONE');
+      assert.ok(r.verifyDone);
+    } else {
+      assert.notEqual(r.state, 'DONE');
+    }
   }
   assert.equal(EXPECTED_CURRENT_CORE_PROGRESS, 76);
   assert.equal(EXPECTED_PROGRESS_WHEN_DONE, 84);
