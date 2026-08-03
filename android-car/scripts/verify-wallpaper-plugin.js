@@ -1487,6 +1487,371 @@ function assertRecoveryFixtures() {
   };
 }
 
+// ---------------------------------------------------------------------------
+// WP-11B / E6: 30-minute soak, 7 samples @ 5 min, PSS/CPU/crash/interaction gates
+// ---------------------------------------------------------------------------
+const E6_DURATION_MS = 1800000;
+const E6_INTERVAL_MS = 300000;
+const E6_SAMPLE_COUNT = 7;
+const E6_EARLY_MS = 2000;
+const E6_LATE_MS = 15000;
+const E6_SAMPLE_MAX_MS = 60000;
+const E6_PSS_GROWTH_MIB = 64;
+const E6_PSS_CONSEC_GROWTH_MIB = 8;
+const E6_CPU_CONSEC_PCT = 80;
+const E6_CPU_STABLE_TOTAL_PCT = 150;
+const E6_REQUIRED_ACTIONS = Object.freeze([
+  'play',
+  'pause_resume',
+  'next',
+  'return_main',
+]);
+
+const E6_FIXTURE_NAMES = Object.freeze([
+  'wrongSampleCount',
+  'windowTooShort',
+  'sampleTimingSkew',
+  'sampleDurationTooLong',
+  'wrongUserOrLocked',
+  'pssGrowthTooHigh',
+  'pssConsecutiveGrowth',
+  'cpuSpikeConsecutive',
+  'cpuStableTotalHigh',
+  'fatalAnr',
+  'runtimePidDrift',
+  'missingInteractions',
+  'hashChainBroken',
+  'missingParent',
+  'correctE6',
+]);
+
+function _e6TargetElapsed(index) {
+  return index * E6_INTERVAL_MS;
+}
+
+function _e6GoodSample(index, overrides = {}) {
+  const basePss = 180 + index * 1; // gentle growth well under gates
+  const runtimePid = 20000;
+  const mineradioPid = 10000;
+  return {
+    sampleIndex: index,
+    hostRunElapsedMs: _e6TargetElapsed(index),
+    sampleDurationMs: 1200,
+    currentUser: 12,
+    unlocked: true,
+    bootId: 'boot-e6-1',
+    deviceUptimeMs: 1_000_000 + _e6TargetElapsed(index),
+    mineradioPid,
+    pluginPid: 15000,
+    runtimePid,
+    wePid: 25000,
+    pssMiB: {
+      mineradio: 40,
+      plugin: 30,
+      we: 80 + index * 0.5,
+      total: basePss,
+    },
+    cpuPct: {
+      mineradio: 5,
+      plugin: 3,
+      runtime: 10,
+      we: 8,
+      total: 26,
+    },
+    bindingState: 'ACTIVE_TARGET',
+    packagesImmutable: true,
+    sampleNonce: `nonce-${index}`,
+    prevSampleSha256: index === 0 ? null : 'a'.repeat(64),
+    sampleSha256: 'b'.repeat(64),
+    ...overrides,
+  };
+}
+
+function _e6GoodInteractions() {
+  return E6_REQUIRED_ACTIONS.map((action) => ({
+    action,
+    result: 'ok',
+    elapsedMs: 1000,
+  }));
+}
+
+function _e6BaseMeta(overrides = {}) {
+  return {
+    parentTaskId: 'WP-11A',
+    parentManifestSha256: 'c'.repeat(64),
+    requiredEffectiveDone: true,
+    serial: 'LD249H019625',
+    targetUser: 12,
+    currentUser: 12,
+    evidenceLevel: 'E6',
+    source: 'fixture',
+    hostObservedWindowMs: E6_DURATION_MS,
+    fatalAnr: false,
+    hashChainOk: true,
+    packagesImmutable: true,
+    ...overrides,
+  };
+}
+
+function buildE6Fixture(name, overrides = {}) {
+  const samples = Array.from({ length: E6_SAMPLE_COUNT }, (_, i) => _e6GoodSample(i));
+  const interactions = _e6GoodInteractions();
+  const meta = _e6BaseMeta();
+  switch (name) {
+    case 'correctE6':
+      return { ...meta, samples, interactions, ...overrides };
+    case 'wrongSampleCount':
+      return { ...meta, samples: samples.slice(0, 5), interactions, ...overrides };
+    case 'windowTooShort':
+      return {
+        ...meta,
+        hostObservedWindowMs: 1_700_000,
+        samples,
+        interactions,
+        ...overrides,
+      };
+    case 'sampleTimingSkew': {
+      const bad = samples.map((s, i) =>
+        i === 3 ? { ...s, hostRunElapsedMs: _e6TargetElapsed(i) + 20_000 } : s,
+      );
+      return { ...meta, samples: bad, interactions, ...overrides };
+    }
+    case 'sampleDurationTooLong': {
+      const bad = samples.map((s, i) =>
+        i === 2 ? { ...s, sampleDurationMs: 70_000 } : s,
+      );
+      return { ...meta, samples: bad, interactions, ...overrides };
+    }
+    case 'wrongUserOrLocked': {
+      const bad = samples.map((s, i) =>
+        i === 1 ? { ...s, currentUser: 0, unlocked: false } : s,
+      );
+      return { ...meta, samples: bad, interactions, ...overrides };
+    }
+    case 'pssGrowthTooHigh': {
+      const bad = samples.map((s, i) =>
+        i === 6
+          ? {
+              ...s,
+              pssMiB: { ...s.pssMiB, total: samples[0].pssMiB.total + 80 },
+            }
+          : s,
+      );
+      return { ...meta, samples: bad, interactions, ...overrides };
+    }
+    case 'pssConsecutiveGrowth': {
+      const bad = samples.map((s, i) => {
+        if (i >= 2 && i <= 4) {
+          const total = samples[0].pssMiB.total + (i - 1) * 10;
+          return { ...s, pssMiB: { ...s.pssMiB, total } };
+        }
+        return s;
+      });
+      return { ...meta, samples: bad, interactions, ...overrides };
+    }
+    case 'cpuSpikeConsecutive': {
+      const bad = samples.map((s, i) => {
+        if (i >= 1 && i <= 3) {
+          return {
+            ...s,
+            cpuPct: { ...s.cpuPct, runtime: 85, total: 100 },
+          };
+        }
+        return s;
+      });
+      return { ...meta, samples: bad, interactions, ...overrides };
+    }
+    case 'cpuStableTotalHigh': {
+      // after sample index 2, total CPU always high
+      const bad = samples.map((s, i) =>
+        i >= 2 ? { ...s, cpuPct: { ...s.cpuPct, total: 160 } } : s,
+      );
+      return { ...meta, samples: bad, interactions, ...overrides };
+    }
+    case 'fatalAnr':
+      return { ...meta, samples, interactions, fatalAnr: true, ...overrides };
+    case 'runtimePidDrift': {
+      const bad = samples.map((s, i) =>
+        i === 4
+          ? { ...s, runtimePid: s.mineradioPid, pluginPid: s.mineradioPid }
+          : s,
+      );
+      return { ...meta, samples: bad, interactions, ...overrides };
+    }
+    case 'missingInteractions':
+      return {
+        ...meta,
+        samples,
+        interactions: [{ action: 'play', result: 'ok' }],
+        ...overrides,
+      };
+    case 'hashChainBroken':
+      return { ...meta, samples, interactions, hashChainOk: false, ...overrides };
+    case 'missingParent':
+      return {
+        ...meta,
+        parentTaskId: 'WP-10C',
+        parentManifestSha256: '',
+        requiredEffectiveDone: false,
+        samples,
+        interactions,
+        ...overrides,
+      };
+    default:
+      throw new Error(`unknown E6 fixture: ${name}`);
+  }
+}
+
+function verifyE6Evidence(report) {
+  const errors = [];
+  if (!report || typeof report !== 'object') {
+    return { ok: false, code: 'E6_REPORT_MISSING', errors: ['report missing'] };
+  }
+  if (report.parentTaskId !== 'WP-11A') errors.push('missingParent');
+  if (
+    !report.parentManifestSha256 ||
+    !/^[0-9a-f]{64}$/i.test(String(report.parentManifestSha256))
+  ) {
+    errors.push('missingParentManifest');
+  }
+  if (report.requiredEffectiveDone !== true) errors.push('parentNotEffectiveDone');
+  if (Number(report.targetUser) !== 12 || Number(report.currentUser) !== 12) {
+    errors.push('wrongUser');
+  }
+  if (report.serial !== 'LD249H019625') errors.push('wrongSerial');
+  if (report.evidenceLevel && report.evidenceLevel !== 'E6') {
+    errors.push('evidenceLevelNotE6');
+  }
+  if (report.fatalAnr === true) errors.push('fatalAnr');
+  if (report.hashChainOk !== true) errors.push('hashChainBroken');
+
+  const samples = report.samples;
+  if (!Array.isArray(samples) || samples.length !== E6_SAMPLE_COUNT) {
+    errors.push('wrongSampleCount');
+  }
+  const windowMs = Number(report.hostObservedWindowMs);
+  if (!Number.isFinite(windowMs) || windowMs < E6_DURATION_MS) {
+    errors.push('windowTooShort');
+  }
+
+  if (Array.isArray(samples) && samples.length === E6_SAMPLE_COUNT) {
+    const indices = samples.map((s) => s && s.sampleIndex);
+    for (let i = 0; i < E6_SAMPLE_COUNT; i += 1) {
+      if (indices[i] !== i) {
+        errors.push('sampleIndexNotSequential');
+        break;
+      }
+    }
+    let firstPss = null;
+    let prevPss = null;
+    let growthStreak = 0;
+    const cpuStreak = { mineradio: 0, plugin: 0, runtime: 0, we: 0 };
+    let stableCpuHigh = false;
+    for (let i = 0; i < samples.length; i += 1) {
+      const s = samples[i] || {};
+      const target = _e6TargetElapsed(i);
+      const host = Number(s.hostRunElapsedMs);
+      if (!Number.isFinite(host)) {
+        errors.push('sampleTimingSkew');
+      } else if (host < target - E6_EARLY_MS || host > target + E6_LATE_MS) {
+        errors.push('sampleTimingSkew');
+      }
+      const dur = Number(s.sampleDurationMs);
+      if (!Number.isFinite(dur) || dur > E6_SAMPLE_MAX_MS) {
+        errors.push('sampleDurationTooLong');
+      }
+      if (Number(s.currentUser) !== 12 || s.unlocked !== true) {
+        errors.push('wrongUserOrLocked');
+      }
+      const pssTotal = Number(s.pssMiB && s.pssMiB.total);
+      if (firstPss === null) firstPss = pssTotal;
+      if (prevPss !== null && Number.isFinite(pssTotal) && Number.isFinite(prevPss)) {
+        if (pssTotal - prevPss >= E6_PSS_CONSEC_GROWTH_MIB) growthStreak += 1;
+        else growthStreak = 0;
+        if (growthStreak >= 3) errors.push('pssConsecutiveGrowth');
+      }
+      prevPss = pssTotal;
+
+      const runtimePid = Number(s.runtimePid);
+      const mineradioPid = Number(s.mineradioPid);
+      if (!runtimePid || !mineradioPid || runtimePid === mineradioPid) {
+        errors.push('runtimePidDrift');
+      }
+
+      const cpu = s.cpuPct || {};
+      for (const key of ['mineradio', 'plugin', 'runtime', 'we']) {
+        const v = Number(cpu[key]);
+        if (Number.isFinite(v) && v > E6_CPU_CONSEC_PCT) cpuStreak[key] += 1;
+        else cpuStreak[key] = 0;
+        if (cpuStreak[key] >= 3) errors.push('cpuSpikeConsecutive');
+      }
+      // stable region: sampleIndex >= 2
+      if (i >= 2) {
+        const totalCpu = Number(cpu.total);
+        if (Number.isFinite(totalCpu) && totalCpu >= E6_CPU_STABLE_TOTAL_PCT) {
+          stableCpuHigh = true;
+        }
+      }
+    }
+    if (
+      Number.isFinite(firstPss) &&
+      Number.isFinite(prevPss) &&
+      prevPss - firstPss > E6_PSS_GROWTH_MIB
+    ) {
+      errors.push('pssGrowthTooHigh');
+    }
+    if (stableCpuHigh) errors.push('cpuStableTotalHigh');
+  }
+
+  const interactions = report.interactions;
+  if (!Array.isArray(interactions)) {
+    errors.push('missingInteractions');
+  } else {
+    const byAction = new Map();
+    for (const it of interactions) {
+      if (it && it.action) byAction.set(it.action, it);
+    }
+    for (const action of E6_REQUIRED_ACTIONS) {
+      const it = byAction.get(action);
+      if (!it || it.result !== 'ok') {
+        errors.push('missingInteractions');
+        break;
+      }
+    }
+  }
+
+  const uniq = [...new Set(errors)];
+  return {
+    ok: uniq.length === 0,
+    code: uniq[0] || 'OK',
+    errors: uniq,
+    evidenceLevel: uniq.length === 0 ? 'E6' : 'E6-OBSERVED',
+    sampleCount: Array.isArray(samples) ? samples.length : 0,
+    hostObservedWindowMs: Number(report.hostObservedWindowMs) || 0,
+  };
+}
+
+const verifyE6 = verifyE6Evidence;
+
+function assertE6Fixtures() {
+  const results = [];
+  for (const name of E6_FIXTURE_NAMES) {
+    if (name === 'correctE6') continue;
+    const r = verifyE6Evidence(buildE6Fixture(name));
+    const ok = r.ok === false;
+    results.push({ name, ok, code: r.code });
+    if (!ok) {
+      return { ok: false, message: `fixture ${name} should fail`, results };
+    }
+  }
+  const good = verifyE6Evidence(buildE6Fixture('correctE6'));
+  if (!good.ok) {
+    return { ok: false, message: `correctE6 should pass: ${good.errors}`, results };
+  }
+  results.push({ name: 'correctE6', ok: true, code: good.code });
+  return { ok: results.every((x) => x.ok), results, E6_FIXTURE_NAMES };
+}
+
 function main(argv) {
   const args = argv.slice(2);
   if (args[0] === '--fixtures') {
@@ -1514,6 +1879,11 @@ function main(argv) {
     process.stdout.write(`${JSON.stringify(r)}\n`);
     process.exit(r.ok ? 0 : 1);
   }
+  if (args[0] === '--e6-fixtures') {
+    const r = assertE6Fixtures();
+    process.stdout.write(`${JSON.stringify(r)}\n`);
+    process.exit(r.ok ? 0 : 1);
+  }
   if (args[0] === '--e5-report-json') {
     const report = JSON.parse(fs.readFileSync(args[1], 'utf8'));
     const r = verifyE5Evidence(report);
@@ -1523,6 +1893,12 @@ function main(argv) {
   if (args[0] === '--recovery-report-json') {
     const report = JSON.parse(fs.readFileSync(args[1], 'utf8'));
     const r = verifyRecoveryEvidence(report);
+    process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);
+    process.exit(r.ok ? 0 : 1);
+  }
+  if (args[0] === '--e6-report-json') {
+    const report = JSON.parse(fs.readFileSync(args[1], 'utf8'));
+    const r = verifyE6Evidence(report);
     process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);
     process.exit(r.ok ? 0 : 1);
   }
@@ -1546,7 +1922,7 @@ function main(argv) {
   }
   // Default: document query-only shell contract
   process.stderr.write(
-    'verify-wallpaper-plugin.js: use --fixtures | --e3-fixtures | --e4-fixtures | --e5-fixtures | --recovery-fixtures | --report-json <file>\n' +
+    'verify-wallpaper-plugin.js: use --fixtures | --e3..e6-fixtures | --recovery-fixtures | --report-json <file>\n' +
       'Shell wrapper is query-only (no uninstall/pm clear).\n' +
       'Tools: aapt apksigner zipalign; packages com.mineradio.app / ' +
       'com.motif.wallpaperengine / io.wallpaperengine.weclient; process :we_runtime; ' +
@@ -1554,7 +1930,8 @@ function main(argv) {
       'E3: user 12 + Mineradio real caller + PID isolation (not shell content call).\n' +
       'E4: Scene+Video dual-frame non-black/non-solid continuous render.\n' +
       'E5: current-user WEWallpaperService ACTIVE_TARGET binding.\n' +
-      'WP-11A recovery: package_presence + expected_error + auto_recoverable <=10s (stay E5).\n',
+      'WP-11A recovery: package_presence + expected_error + auto_recoverable <=10s (stay E5).\n' +
+      'WP-11B E6: 30min 7-sample soak PSS/CPU/crash/interaction gates.\n',
   );
   process.exit(2);
 }
@@ -1600,6 +1977,16 @@ module.exports = {
   verifyRecoveryEvidence,
   verifyRecovery,
   assertRecoveryFixtures,
+  E6_DURATION_MS,
+  E6_INTERVAL_MS,
+  E6_SAMPLE_COUNT,
+  E6_PSS_GROWTH_MIB,
+  E6_FIXTURE_NAMES,
+  WP11B_E6_FAIL_FIXTURES: E6_FIXTURE_NAMES.filter((n) => n !== 'correctE6'),
+  buildE6Fixture,
+  verifyE6Evidence,
+  verifyE6,
+  assertE6Fixtures,
   runToolsOnApk,
   sha256File,
   sha256Hex,
