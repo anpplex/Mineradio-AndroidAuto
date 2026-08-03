@@ -1014,6 +1014,478 @@ function assertE5Fixtures() {
   return { ok: results.every((x) => x.ok), results, E5_FIXTURE_NAMES };
 }
 
+// ---------------------------------------------------------------------------
+// WP-11A recovery fault matrix (keeps evidence level E5; does not elevate).
+// faultClass:
+//   package_presence  — missing package detection only (no IDLE/new PID)
+//   expected_error    — fixed business error codes (not auto-recovery)
+//   auto_recoverable  — process kill/restart with recovery SLA <= 10s
+// ---------------------------------------------------------------------------
+const RECOVERY_MAX_MS = 10000;
+const RECOVERY_FIXTURE_NAMES = Object.freeze([
+  'missingParent',
+  'wrongUser',
+  'packagePresenceDemandsIdle',
+  'expectedErrorWrongCode',
+  'recoveryTooSlow',
+  'recoverySamePid',
+  'recoveryMissingRequest',
+  'wrongCallerCertificate',
+  'unrelatedProcessAsFailure',
+  'autoRecoverableMissingBinding',
+  'correctRecoveryMatrix',
+]);
+
+function _baseRecoveryMeta(overrides = {}) {
+  return {
+    parentTaskId: 'WP-10C',
+    parentManifestSha256: 'a'.repeat(64),
+    requiredEffectiveDone: true,
+    serial: 'LD249H019625',
+    targetUser: 12,
+    currentUser: 12,
+    evidenceLevel: 'E5',
+    elevatedEvidenceLevel: false,
+    source: 'fixture',
+    ...overrides,
+  };
+}
+
+function _casePackagePresence(ok = true) {
+  return {
+    id: 'plugin_not_installed',
+    faultClass: 'package_presence',
+    inject: 'pm_disable_user_plugin',
+    expectedCode: 'PLUGIN_NOT_INSTALLED',
+    actualCode: ok ? 'PLUGIN_NOT_INSTALLED' : 'OK',
+    providerUnreachable: ok,
+    runtimePid: null,
+    // package_presence must NOT require IDLE / new PID
+    operationState: null,
+    bindingState: null,
+    pass: ok,
+  };
+}
+
+function _caseEngineMissing(ok = true) {
+  return {
+    id: 'engine_not_installed',
+    faultClass: 'package_presence',
+    inject: 'pm_disable_user_engine',
+    expectedCode: 'ENGINE_NOT_INSTALLED',
+    actualCode: ok ? 'ENGINE_NOT_INSTALLED' : 'PLUGIN_NOT_INSTALLED',
+    providerUnreachable: false,
+    engineMissing: true,
+    runtimePid: null,
+    operationState: null,
+    bindingState: null,
+    pass: ok,
+  };
+}
+
+function _caseExpectedError(ok = true) {
+  return {
+    id: 'uri_permission_revoked',
+    faultClass: 'expected_error',
+    inject: 'revoke_uri_permission',
+    expectedCode: 'URI_PERMISSION_REVOKED',
+    actualCode: ok ? 'URI_PERMISSION_REVOKED' : 'UNKNOWN',
+    crashOrAnr: false,
+    falseStatusReport: false,
+    pass: ok,
+  };
+}
+
+function _caseAutoRecoverable(ok = true, kind = 'ok') {
+  const base = {
+    id: 'kill_plugin_runtime',
+    faultClass: 'auto_recoverable',
+    inject: 'kill_plugin_runtime',
+    oldPid: 2345,
+    newPid: 3456,
+    mineradioPid: 1111,
+    code: 0,
+    operationState: 'IDLE',
+    bindingState: 'ACTIVE_TARGET',
+    requestStartedElapsedMs: 100000,
+    responseElapsedMs: 102500,
+    recoveryElapsedMs: 2500,
+    killSecondsNotInSla: true,
+    callId: 'rec-call-1',
+    operationId: 'rec-op-1',
+    actionEpoch: 1,
+    callerPackage: 'com.mineradio.app',
+    callerCertificateMatch: true,
+    recoveryRequested: true,
+    crashOrAnr: false,
+    pass: true,
+  };
+  if (kind === 'tooSlow') {
+    return {
+      ...base,
+      recoveryElapsedMs: 15000,
+      responseElapsedMs: 115000,
+      pass: false,
+    };
+  }
+  if (kind === 'samePid') {
+    return { ...base, newPid: 2345, pass: false };
+  }
+  if (kind === 'missingRequest') {
+    return { ...base, recoveryRequested: false, pass: false };
+  }
+  if (kind === 'wrongCaller') {
+    return {
+      ...base,
+      callerPackage: 'com.android.shell',
+      callerCertificateMatch: false,
+      pass: false,
+    };
+  }
+  if (kind === 'missingBinding') {
+    return {
+      ...base,
+      bindingState: 'UNBOUND',
+      operationState: 'BUSY',
+      pass: false,
+    };
+  }
+  if (!ok) {
+    return { ...base, pass: false };
+  }
+  return base;
+}
+
+function _caseUnrelatedCrash() {
+  return {
+    id: 'unrelated_process_crash',
+    faultClass: 'expected_error',
+    inject: 'kill_unrelated_process',
+    expectedCode: 'NO_OP',
+    actualCode: 'NO_OP',
+    crashOrAnr: false,
+    falsePositiveRecovery: false,
+    pass: true,
+  };
+}
+
+function buildRecoveryFixture(name, overrides = {}) {
+  const meta = _baseRecoveryMeta();
+  let cases;
+  switch (name) {
+    case 'correctRecoveryMatrix':
+      cases = [
+        _casePackagePresence(true),
+        _caseEngineMissing(true),
+        _caseExpectedError(true),
+        {
+          id: 'corrupt_mpkg',
+          faultClass: 'expected_error',
+          inject: 'corrupt_mpkg',
+          expectedCode: 'CORRUPT_MPKG',
+          actualCode: 'CORRUPT_MPKG',
+          crashOrAnr: false,
+          pass: true,
+        },
+        {
+          id: 'protocol_version_unsupported',
+          faultClass: 'expected_error',
+          inject: 'protocol_v2',
+          expectedCode: 'PROTOCOL_VERSION_UNSUPPORTED',
+          actualCode: 'PROTOCOL_VERSION_UNSUPPORTED',
+          crashOrAnr: false,
+          pass: true,
+        },
+        {
+          id: 'duplicate_operation_epoch',
+          faultClass: 'expected_error',
+          inject: 'duplicate_operationId_actionEpoch',
+          expectedCode: 'DUPLICATE_OPERATION',
+          actualCode: 'DUPLICATE_OPERATION',
+          crashOrAnr: false,
+          pass: true,
+        },
+        {
+          id: 'wallpaper_permission_denied',
+          faultClass: 'expected_error',
+          inject: 'deny_set_wallpaper',
+          expectedCode: 'WALLPAPER_PERMISSION_DENIED',
+          actualCode: 'WALLPAPER_PERMISSION_DENIED',
+          crashOrAnr: false,
+          pass: true,
+        },
+        _caseAutoRecoverable(true, 'ok'),
+        {
+          ..._caseAutoRecoverable(true, 'ok'),
+          id: 'force_stop_mineradio',
+          inject: 'am_force_stop_mineradio',
+          oldPid: 4001,
+          newPid: 4002,
+          mineradioPid: 1111,
+          callId: 'rec-call-2',
+          operationId: 'rec-op-2',
+        },
+        _caseUnrelatedCrash(),
+      ];
+      break;
+    case 'missingParent':
+      return {
+        ...meta,
+        parentTaskId: 'WP-10B',
+        parentManifestSha256: '',
+        requiredEffectiveDone: false,
+        cases: [_caseAutoRecoverable(true, 'ok')],
+        ...overrides,
+      };
+    case 'wrongUser':
+      return {
+        ...meta,
+        targetUser: 0,
+        currentUser: 0,
+        cases: [_caseAutoRecoverable(true, 'ok')],
+        ...overrides,
+      };
+    case 'packagePresenceDemandsIdle':
+      cases = [
+        {
+          ..._casePackagePresence(true),
+          // Illegal: package_presence must not demand recovery IDLE/newPid
+          operationState: 'IDLE',
+          newPid: 9999,
+          recoveryElapsedMs: 100,
+          pass: true,
+        },
+      ];
+      break;
+    case 'expectedErrorWrongCode':
+      cases = [_caseExpectedError(false)];
+      break;
+    case 'recoveryTooSlow':
+      cases = [
+        _casePackagePresence(true),
+        _caseExpectedError(true),
+        _caseAutoRecoverable(true, 'tooSlow'),
+      ];
+      break;
+    case 'recoverySamePid':
+      cases = [
+        _casePackagePresence(true),
+        _caseExpectedError(true),
+        _caseAutoRecoverable(true, 'samePid'),
+      ];
+      break;
+    case 'recoveryMissingRequest':
+      cases = [
+        _casePackagePresence(true),
+        _caseExpectedError(true),
+        _caseAutoRecoverable(true, 'missingRequest'),
+      ];
+      break;
+    case 'wrongCallerCertificate':
+      cases = [
+        _casePackagePresence(true),
+        _caseExpectedError(true),
+        _caseAutoRecoverable(true, 'wrongCaller'),
+      ];
+      break;
+    case 'unrelatedProcessAsFailure':
+      cases = [
+        {
+          ..._caseUnrelatedCrash(),
+          // Illegal: unrelated crash treated as auto_recoverable failure
+          faultClass: 'auto_recoverable',
+          pass: false,
+          falsePositiveRecovery: true,
+          oldPid: 1,
+          newPid: null,
+          recoveryElapsedMs: 0,
+        },
+      ];
+      break;
+    case 'autoRecoverableMissingBinding':
+      cases = [
+        _casePackagePresence(true),
+        _caseExpectedError(true),
+        _caseAutoRecoverable(true, 'missingBinding'),
+      ];
+      break;
+    default:
+      throw new Error(`unknown recovery fixture: ${name}`);
+  }
+  return { ...meta, cases, ...overrides };
+}
+
+function _validateRecoveryCase(c) {
+  const errors = [];
+  if (!c || typeof c !== 'object') {
+    return ['caseMissing'];
+  }
+  const fc = c.faultClass;
+  if (!['package_presence', 'expected_error', 'auto_recoverable'].includes(fc)) {
+    errors.push('unknownFaultClass');
+    return errors;
+  }
+  if (fc === 'package_presence') {
+    if (c.expectedCode !== c.actualCode) errors.push('packagePresenceCodeMismatch');
+    // Must not require IDLE / new PID recovery semantics
+    if (c.operationState === 'IDLE' && c.newPid) {
+      errors.push('packagePresenceDemandsIdle');
+    }
+    if (c.pass !== true && c.expectedCode === c.actualCode) {
+      errors.push('packagePresenceShouldPass');
+    }
+    if (c.pass === true && c.expectedCode !== c.actualCode) {
+      errors.push('packagePresenceFalsePass');
+    }
+  } else if (fc === 'expected_error') {
+    if (c.expectedCode !== c.actualCode) errors.push('expectedErrorCodeMismatch');
+    if (c.crashOrAnr === true) errors.push('expectedErrorCrash');
+    if (c.falseStatusReport === true) errors.push('expectedErrorFalseStatus');
+    if (c.falsePositiveRecovery === true) errors.push('unrelatedProcessAsFailure');
+    if (c.pass !== true && c.expectedCode === c.actualCode && !c.crashOrAnr) {
+      // case author marked fail but codes match — still a fixture fail path
+    }
+    if (c.pass === true && c.expectedCode !== c.actualCode) {
+      errors.push('expectedErrorFalsePass');
+    }
+  } else if (fc === 'auto_recoverable') {
+    if (c.recoveryRequested !== true) errors.push('recoveryMissingRequest');
+    if (c.callerCertificateMatch !== true) errors.push('wrongCallerCertificate');
+    if (c.callerPackage !== 'com.mineradio.app') errors.push('wrongCallerPackage');
+    if (c.code !== 0) errors.push('autoRecoverableCodeNotZero');
+    if (c.operationState !== 'IDLE') errors.push('autoRecoverableNotIdle');
+    if (c.bindingState !== 'ACTIVE_TARGET') errors.push('autoRecoverableMissingBinding');
+    const oldPid = Number(c.oldPid);
+    const newPid = Number(c.newPid);
+    const mineradioPid = Number(c.mineradioPid);
+    if (!oldPid || !newPid) errors.push('autoRecoverablePidMissing');
+    if (oldPid && newPid && oldPid === newPid) errors.push('recoverySamePid');
+    if (newPid && mineradioPid && newPid === mineradioPid) {
+      errors.push('recoveryPidCollidesMineradio');
+    }
+    const recMs = Number(c.recoveryElapsedMs);
+    if (!Number.isFinite(recMs) || recMs < 0) errors.push('recoveryElapsedMissing');
+    if (recMs > RECOVERY_MAX_MS) errors.push('recoveryTooSlow');
+    // killSeconds must not be the SLA clock
+    if (c.killSecondsNotInSla !== true) errors.push('killSecondsCountedInSla');
+    if (c.crashOrAnr === true) errors.push('autoRecoverableCrash');
+    if (c.falsePositiveRecovery === true) errors.push('unrelatedProcessAsFailure');
+  }
+  // Case-level pass bit must agree with validation for matrix overall
+  const caseOk = errors.length === 0;
+  if (c.pass === true && !caseOk) {
+    // already have errors
+  } else if (c.pass !== true && caseOk && fc !== 'package_presence') {
+    // For fail fixtures that intentionally set pass:false with bad fields,
+    // errors are expected; if fields are actually good, mark inconsistency.
+    if (fc === 'expected_error' && c.expectedCode !== c.actualCode) {
+      // already pushed expectedErrorCodeMismatch when mismatch; ok
+    }
+  }
+  return errors;
+}
+
+function verifyRecoveryEvidence(report) {
+  const errors = [];
+  if (!report || typeof report !== 'object') {
+    return { ok: false, code: 'RECOVERY_REPORT_MISSING', errors: ['report missing'] };
+  }
+  if (report.parentTaskId !== 'WP-10C') errors.push('missingParent');
+  if (
+    !report.parentManifestSha256 ||
+    !/^[0-9a-f]{64}$/i.test(String(report.parentManifestSha256))
+  ) {
+    errors.push('missingParentManifest');
+  }
+  if (report.requiredEffectiveDone !== true) errors.push('parentNotEffectiveDone');
+  if (Number(report.targetUser) !== 12 || Number(report.currentUser) !== 12) {
+    errors.push('wrongUser');
+  }
+  if (report.serial !== 'LD249H019625') errors.push('wrongSerial');
+  // WP-11A must not claim E6/E7 elevation
+  if (report.elevatedEvidenceLevel === true) errors.push('evidenceElevated');
+  if (report.evidenceLevel && report.evidenceLevel !== 'E5') {
+    errors.push('evidenceLevelNotE5');
+  }
+  const cases = report.cases;
+  if (!Array.isArray(cases) || cases.length === 0) {
+    errors.push('casesMissing');
+    return {
+      ok: false,
+      code: errors[0] || 'RECOVERY_FAIL',
+      errors: [...new Set(errors)],
+      evidenceLevel: 'E5',
+    };
+  }
+  const classes = new Set();
+  let maxRecoveryMs = 0;
+  let autoPassCount = 0;
+  for (const c of cases) {
+    if (c && c.faultClass) classes.add(c.faultClass);
+    const caseErrors = _validateRecoveryCase(c);
+    for (const e of caseErrors) errors.push(e);
+    // If case claims pass but validation failed, or vice-versa for matrix integrity
+    if (c && c.pass === true && caseErrors.length > 0) {
+      // already recorded
+    }
+    if (c && c.pass !== true) {
+      // A failed case in a matrix fails the whole report when evaluating correctness
+      errors.push(`caseFailed:${c.id || c.faultClass || 'unknown'}`);
+    }
+    if (c && c.faultClass === 'auto_recoverable') {
+      const recMs = Number(c.recoveryElapsedMs);
+      if (Number.isFinite(recMs) && recMs > maxRecoveryMs) maxRecoveryMs = recMs;
+      if (caseErrors.length === 0 && c.pass === true) autoPassCount += 1;
+    }
+  }
+  if (!classes.has('package_presence')) errors.push('missingPackagePresenceClass');
+  if (!classes.has('expected_error')) errors.push('missingExpectedErrorClass');
+  if (!classes.has('auto_recoverable')) errors.push('missingAutoRecoverableClass');
+
+  const uniq = [...new Set(errors)];
+  return {
+    ok: uniq.length === 0,
+    code: uniq[0] || 'OK',
+    errors: uniq,
+    evidenceLevel: 'E5',
+    maxRecoveryMs,
+    autoRecoverablePassCount: autoPassCount,
+    faultClasses: [...classes].sort(),
+  };
+}
+
+const verifyRecovery = verifyRecoveryEvidence;
+
+function assertRecoveryFixtures() {
+  const results = [];
+  for (const name of RECOVERY_FIXTURE_NAMES) {
+    if (name === 'correctRecoveryMatrix') continue;
+    const r = verifyRecoveryEvidence(buildRecoveryFixture(name));
+    const ok = r.ok === false;
+    results.push({ name, ok, code: r.code });
+    if (!ok) {
+      return { ok: false, message: `fixture ${name} should fail`, results };
+    }
+  }
+  const good = verifyRecoveryEvidence(buildRecoveryFixture('correctRecoveryMatrix'));
+  if (!good.ok) {
+    return {
+      ok: false,
+      message: `correctRecoveryMatrix should pass: ${good.errors}`,
+      results,
+    };
+  }
+  if (good.maxRecoveryMs > RECOVERY_MAX_MS) {
+    return { ok: false, message: 'correct matrix maxRecoveryMs > 10000', results };
+  }
+  results.push({ name: 'correctRecoveryMatrix', ok: true, code: good.code });
+  return {
+    ok: results.every((x) => x.ok),
+    results,
+    RECOVERY_FIXTURE_NAMES,
+    RECOVERY_MAX_MS,
+  };
+}
 
 function main(argv) {
   const args = argv.slice(2);
@@ -1037,9 +1509,20 @@ function main(argv) {
     process.stdout.write(`${JSON.stringify(r)}\n`);
     process.exit(r.ok ? 0 : 1);
   }
+  if (args[0] === '--recovery-fixtures') {
+    const r = assertRecoveryFixtures();
+    process.stdout.write(`${JSON.stringify(r)}\n`);
+    process.exit(r.ok ? 0 : 1);
+  }
   if (args[0] === '--e5-report-json') {
     const report = JSON.parse(fs.readFileSync(args[1], 'utf8'));
     const r = verifyE5Evidence(report);
+    process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);
+    process.exit(r.ok ? 0 : 1);
+  }
+  if (args[0] === '--recovery-report-json') {
+    const report = JSON.parse(fs.readFileSync(args[1], 'utf8'));
+    const r = verifyRecoveryEvidence(report);
     process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);
     process.exit(r.ok ? 0 : 1);
   }
@@ -1063,13 +1546,15 @@ function main(argv) {
   }
   // Default: document query-only shell contract
   process.stderr.write(
-    'verify-wallpaper-plugin.js: use --fixtures | --e3-fixtures | --e4-fixtures | --report-json <file>\n' +
+    'verify-wallpaper-plugin.js: use --fixtures | --e3-fixtures | --e4-fixtures | --e5-fixtures | --recovery-fixtures | --report-json <file>\n' +
       'Shell wrapper is query-only (no uninstall/pm clear).\n' +
       'Tools: aapt apksigner zipalign; packages com.mineradio.app / ' +
       'com.motif.wallpaperengine / io.wallpaperengine.weclient; process :we_runtime; ' +
       'BrowseActivity WEWallpaperService arm64-v8a certificate sha256 split.\n' +
       'E3: user 12 + Mineradio real caller + PID isolation (not shell content call).\n' +
-      'E4: Scene+Video dual-frame non-black/non-solid continuous render.\n',
+      'E4: Scene+Video dual-frame non-black/non-solid continuous render.\n' +
+      'E5: current-user WEWallpaperService ACTIVE_TARGET binding.\n' +
+      'WP-11A recovery: package_presence + expected_error + auto_recoverable <=10s (stay E5).\n',
   );
   process.exit(2);
 }
@@ -1106,6 +1591,15 @@ module.exports = {
   verifyE5Evidence,
   verifyE5,
   assertE5Fixtures,
+  RECOVERY_MAX_MS,
+  RECOVERY_FIXTURE_NAMES,
+  WP11A_RECOVERY_FAIL_FIXTURES: RECOVERY_FIXTURE_NAMES.filter(
+    (n) => n !== 'correctRecoveryMatrix',
+  ),
+  buildRecoveryFixture,
+  verifyRecoveryEvidence,
+  verifyRecovery,
+  assertRecoveryFixtures,
   runToolsOnApk,
   sha256File,
   sha256Hex,
