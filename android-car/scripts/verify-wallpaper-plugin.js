@@ -1852,6 +1852,509 @@ function assertE6Fixtures() {
   return { ok: results.every((x) => x.ok), results, E6_FIXTURE_NAMES };
 }
 
+// ---------------------------------------------------------------------------
+// WP-11C / E7: reboot + ACC + 2h soak (13 samples @ 10 min)
+// ---------------------------------------------------------------------------
+const E7_DURATION_MS = 7_200_000;
+const E7_INTERVAL_MS = 600_000;
+const E7_SAMPLE_COUNT = 13;
+const E7_EARLY_MS = 2000;
+const E7_LATE_MS = 30000;
+const E7_SAMPLE_MAX_MS = 90000;
+const E7_PSS_GROWTH_MIB = 96;
+const E7_REQUIRED_ACTIONS = Object.freeze([
+  'play',
+  'pause_resume',
+  'next',
+  'return_main',
+]);
+
+const E7_FIXTURE_NAMES = Object.freeze([
+  'keycodePowerOnlyReboot',
+  'missingBootIdChange',
+  'crossBootDeviceElapsedContinuous',
+  'missingAccEvent',
+  'accKeycodePower',
+  'accMissingAttestation',
+  'missingUnlockTime',
+  'wrongSampleCount',
+  'windowTooShort',
+  'sampleTimingSkew',
+  'sampleDurationTooLong',
+  'wrongUserOrLocked',
+  'pssGrowthTooHigh',
+  'fatalAnr',
+  'runtimePidDrift',
+  'missingInteractions',
+  'stormRestart',
+  'missingParent',
+  'correctE7',
+]);
+
+function _e7TargetElapsed(index) {
+  return index * E7_INTERVAL_MS;
+}
+
+function _e7GoodSample(index, overrides = {}) {
+  const bootSegment = index < 3 ? 0 : 1;
+  const bootIds = ['boot-pre-reboot', 'boot-post-reboot'];
+  const runtimePid = bootSegment === 0 ? 20000 : 30000;
+  const mineradioPid = bootSegment === 0 ? 10000 : 11000;
+  // deviceElapsed only monotonic within a boot; may reset after reboot
+  const withinBootIndex = bootSegment === 0 ? index : index - 3;
+  return {
+    sampleIndex: index,
+    hostRunElapsedMs: _e7TargetElapsed(index),
+    sampleDurationMs: 2000,
+    currentUser: 12,
+    unlocked: true,
+    bootId: bootIds[bootSegment],
+    deviceElapsedMs: 1_000_000 + withinBootIndex * 50_000,
+    mineradioPid,
+    pluginPid: runtimePid - 100,
+    runtimePid,
+    wePid: runtimePid + 1000,
+    pssMiB: {
+      mineradio: 40,
+      plugin: 30,
+      we: 90 + index * 0.3,
+      total: 160 + index * 0.5,
+    },
+    cpuPct: {
+      mineradio: 4,
+      plugin: 2,
+      runtime: 8,
+      we: 6,
+      total: 20,
+    },
+    bindingState: 'ACTIVE_TARGET',
+    packagesImmutable: true,
+    sampleNonce: `e7-nonce-${index}`,
+    prevSampleSha256: index === 0 ? null : 'a'.repeat(64),
+    sampleSha256: 'b'.repeat(64),
+    ...overrides,
+  };
+}
+
+function _e7GoodVehicleEvents() {
+  return [
+    {
+      eventType: 'reboot',
+      eventId: 'evt-reboot-1',
+      source: 'adb_reboot',
+      keycodePower: false,
+      bootIdBefore: 'boot-pre-reboot',
+      bootIdAfter: 'boot-post-reboot',
+      hostRunElapsedMsBegin: 1_200_000,
+      hostRunElapsedMsEnd: 1_350_000,
+      user12UnlockedAtHostMs: 1_340_000,
+      serial: 'LD249H019625',
+      recoveryOk: true,
+    },
+    {
+      eventType: 'acc',
+      eventId: 'evt-acc-1',
+      source: 'operator_attested_physical_acc',
+      operatorAttested: true,
+      keycodePower: false,
+      reviewed: true,
+      reviewConclusion: 'PASS',
+      evidenceSha256: 'd'.repeat(64),
+      hostRunElapsedMsBegin: 2_400_000,
+      hostRunElapsedMsEnd: 2_550_000,
+      serial: 'LD249H019625',
+    },
+  ];
+}
+
+function _e7GoodInteractions() {
+  return E7_REQUIRED_ACTIONS.map((action) => ({
+    action,
+    result: 'ok',
+    elapsedMs: 1000,
+  })).concat([{ action: 'runtime_recovery', result: 'ok', elapsedMs: 2500 }]);
+}
+
+function _e7BaseMeta(overrides = {}) {
+  return {
+    parentTaskId: 'WP-11B',
+    parentManifestSha256: 'c'.repeat(64),
+    requiredEffectiveDone: true,
+    serial: 'LD249H019625',
+    targetUser: 12,
+    currentUser: 12,
+    evidenceLevel: 'E7',
+    source: 'fixture',
+    hostObservedWindowMs: E7_DURATION_MS,
+    fatalAnr: false,
+    hashChainOk: true,
+    packagesImmutable: true,
+    stormRestart: false,
+    ...overrides,
+  };
+}
+
+function buildE7Fixture(name, overrides = {}) {
+  const samples = Array.from({ length: E7_SAMPLE_COUNT }, (_, i) => _e7GoodSample(i));
+  const interactions = _e7GoodInteractions();
+  const vehicleEvents = _e7GoodVehicleEvents();
+  const meta = _e7BaseMeta();
+  switch (name) {
+    case 'correctE7':
+      return { ...meta, samples, interactions, vehicleEvents, ...overrides };
+    case 'keycodePowerOnlyReboot':
+      return {
+        ...meta,
+        samples,
+        interactions,
+        vehicleEvents: [
+          {
+            ...vehicleEvents[0],
+            source: 'keycode_power',
+            keycodePower: true,
+            bootIdBefore: 'boot-pre-reboot',
+            bootIdAfter: 'boot-pre-reboot',
+          },
+          vehicleEvents[1],
+        ],
+        ...overrides,
+      };
+    case 'missingBootIdChange':
+      return {
+        ...meta,
+        samples,
+        interactions,
+        vehicleEvents: [
+          {
+            ...vehicleEvents[0],
+            bootIdBefore: 'same-boot',
+            bootIdAfter: 'same-boot',
+          },
+          vehicleEvents[1],
+        ],
+        ...overrides,
+      };
+    case 'crossBootDeviceElapsedContinuous': {
+      const bad = samples.map((s, i) =>
+        i === 3
+          ? {
+              ...s,
+              bootId: 'boot-post-reboot',
+              // illegal: continues deviceElapsed from pre-reboot as if continuous
+              deviceElapsedMs: samples[2].deviceElapsedMs + 600_000,
+            }
+          : s,
+      );
+      return {
+        ...meta,
+        samples: bad,
+        interactions,
+        vehicleEvents,
+        crossBootDeviceElapsedContinuous: true,
+        ...overrides,
+      };
+    }
+    case 'missingAccEvent':
+      return {
+        ...meta,
+        samples,
+        interactions,
+        vehicleEvents: [vehicleEvents[0]],
+        ...overrides,
+      };
+    case 'accKeycodePower':
+      return {
+        ...meta,
+        samples,
+        interactions,
+        vehicleEvents: [
+          vehicleEvents[0],
+          {
+            ...vehicleEvents[1],
+            source: 'keycode_power',
+            keycodePower: true,
+            operatorAttested: false,
+          },
+        ],
+        ...overrides,
+      };
+    case 'accMissingAttestation':
+      return {
+        ...meta,
+        samples,
+        interactions,
+        vehicleEvents: [
+          vehicleEvents[0],
+          {
+            ...vehicleEvents[1],
+            operatorAttested: false,
+            reviewed: false,
+            evidenceSha256: '',
+          },
+        ],
+        ...overrides,
+      };
+    case 'missingUnlockTime':
+      return {
+        ...meta,
+        samples,
+        interactions,
+        vehicleEvents: [
+          { ...vehicleEvents[0], user12UnlockedAtHostMs: null },
+          vehicleEvents[1],
+        ],
+        ...overrides,
+      };
+    case 'wrongSampleCount':
+      return { ...meta, samples: samples.slice(0, 10), interactions, vehicleEvents, ...overrides };
+    case 'windowTooShort':
+      return {
+        ...meta,
+        hostObservedWindowMs: 7_000_000,
+        samples,
+        interactions,
+        vehicleEvents,
+        ...overrides,
+      };
+    case 'sampleTimingSkew': {
+      const bad = samples.map((s, i) =>
+        i === 5 ? { ...s, hostRunElapsedMs: _e7TargetElapsed(i) + 40_000 } : s,
+      );
+      return { ...meta, samples: bad, interactions, vehicleEvents, ...overrides };
+    }
+    case 'sampleDurationTooLong': {
+      const bad = samples.map((s, i) =>
+        i === 2 ? { ...s, sampleDurationMs: 100_000 } : s,
+      );
+      return { ...meta, samples: bad, interactions, vehicleEvents, ...overrides };
+    }
+    case 'wrongUserOrLocked': {
+      const bad = samples.map((s, i) =>
+        i === 4 ? { ...s, currentUser: 0, unlocked: false } : s,
+      );
+      return { ...meta, samples: bad, interactions, vehicleEvents, ...overrides };
+    }
+    case 'pssGrowthTooHigh': {
+      const bad = samples.map((s, i) =>
+        i === 12
+          ? { ...s, pssMiB: { ...s.pssMiB, total: samples[0].pssMiB.total + 120 } }
+          : s,
+      );
+      return { ...meta, samples: bad, interactions, vehicleEvents, ...overrides };
+    }
+    case 'fatalAnr':
+      return { ...meta, samples, interactions, vehicleEvents, fatalAnr: true, ...overrides };
+    case 'runtimePidDrift': {
+      const bad = samples.map((s, i) =>
+        i === 6 ? { ...s, runtimePid: s.mineradioPid } : s,
+      );
+      return { ...meta, samples: bad, interactions, vehicleEvents, ...overrides };
+    }
+    case 'missingInteractions':
+      return {
+        ...meta,
+        samples,
+        interactions: [{ action: 'play', result: 'ok' }],
+        vehicleEvents,
+        ...overrides,
+      };
+    case 'stormRestart':
+      return {
+        ...meta,
+        samples,
+        interactions,
+        vehicleEvents,
+        stormRestart: true,
+        ...overrides,
+      };
+    case 'missingParent':
+      return {
+        ...meta,
+        parentTaskId: 'WP-11A',
+        parentManifestSha256: '',
+        requiredEffectiveDone: false,
+        samples,
+        interactions,
+        vehicleEvents,
+        ...overrides,
+      };
+    default:
+      throw new Error(`unknown E7 fixture: ${name}`);
+  }
+}
+
+function verifyE7Evidence(report) {
+  const errors = [];
+  if (!report || typeof report !== 'object') {
+    return { ok: false, code: 'E7_REPORT_MISSING', errors: ['report missing'] };
+  }
+  if (report.parentTaskId !== 'WP-11B') errors.push('missingParent');
+  if (
+    !report.parentManifestSha256 ||
+    !/^[0-9a-f]{64}$/i.test(String(report.parentManifestSha256))
+  ) {
+    errors.push('missingParentManifest');
+  }
+  if (report.requiredEffectiveDone !== true) errors.push('parentNotEffectiveDone');
+  if (Number(report.targetUser) !== 12 || Number(report.currentUser) !== 12) {
+    errors.push('wrongUser');
+  }
+  if (report.serial !== 'LD249H019625') errors.push('wrongSerial');
+  if (report.evidenceLevel && report.evidenceLevel !== 'E7') {
+    errors.push('evidenceLevelNotE7');
+  }
+  if (report.fatalAnr === true) errors.push('fatalAnr');
+  if (report.hashChainOk !== true) errors.push('hashChainBroken');
+  if (report.stormRestart === true) errors.push('stormRestart');
+  if (report.crossBootDeviceElapsedContinuous === true) {
+    errors.push('crossBootDeviceElapsedContinuous');
+  }
+
+  const samples = report.samples;
+  if (!Array.isArray(samples) || samples.length !== E7_SAMPLE_COUNT) {
+    errors.push('wrongSampleCount');
+  }
+  const windowMs = Number(report.hostObservedWindowMs);
+  if (!Number.isFinite(windowMs) || windowMs < E7_DURATION_MS) {
+    errors.push('windowTooShort');
+  }
+
+  if (Array.isArray(samples) && samples.length === E7_SAMPLE_COUNT) {
+    for (let i = 0; i < E7_SAMPLE_COUNT; i += 1) {
+      if (!samples[i] || samples[i].sampleIndex !== i) {
+        errors.push('sampleIndexNotSequential');
+        break;
+      }
+    }
+    let firstPss = null;
+    let lastPss = null;
+    let prevBoot = null;
+    let prevDeviceElapsed = null;
+    for (let i = 0; i < samples.length; i += 1) {
+      const s = samples[i] || {};
+      const target = _e7TargetElapsed(i);
+      const host = Number(s.hostRunElapsedMs);
+      if (!Number.isFinite(host) || host < target - E7_EARLY_MS || host > target + E7_LATE_MS) {
+        errors.push('sampleTimingSkew');
+      }
+      const dur = Number(s.sampleDurationMs);
+      if (!Number.isFinite(dur) || dur > E7_SAMPLE_MAX_MS) {
+        errors.push('sampleDurationTooLong');
+      }
+      if (Number(s.currentUser) !== 12 || s.unlocked !== true) {
+        errors.push('wrongUserOrLocked');
+      }
+      const pssTotal = Number(s.pssMiB && s.pssMiB.total);
+      if (firstPss === null) firstPss = pssTotal;
+      lastPss = pssTotal;
+      const runtimePid = Number(s.runtimePid);
+      const mineradioPid = Number(s.mineradioPid);
+      if (!runtimePid || !mineradioPid || runtimePid === mineradioPid) {
+        errors.push('runtimePidDrift');
+      }
+      // deviceElapsed only continuous within same bootId
+      if (prevBoot !== null && s.bootId === prevBoot) {
+        const de = Number(s.deviceElapsedMs);
+        if (Number.isFinite(de) && Number.isFinite(prevDeviceElapsed) && de < prevDeviceElapsed) {
+          errors.push('deviceElapsedRegressedSameBoot');
+        }
+      }
+      prevBoot = s.bootId;
+      prevDeviceElapsed = Number(s.deviceElapsedMs);
+    }
+    if (
+      Number.isFinite(firstPss) &&
+      Number.isFinite(lastPss) &&
+      lastPss - firstPss > E7_PSS_GROWTH_MIB
+    ) {
+      errors.push('pssGrowthTooHigh');
+    }
+  }
+
+  const interactions = report.interactions;
+  if (!Array.isArray(interactions)) {
+    errors.push('missingInteractions');
+  } else {
+    const byAction = new Map();
+    for (const it of interactions) {
+      if (it && it.action) byAction.set(it.action, it);
+    }
+    for (const action of E7_REQUIRED_ACTIONS) {
+      const it = byAction.get(action);
+      if (!it || it.result !== 'ok') {
+        errors.push('missingInteractions');
+        break;
+      }
+    }
+    const rec = byAction.get('runtime_recovery');
+    if (!rec || rec.result !== 'ok') errors.push('missingRuntimeRecovery');
+  }
+
+  const events = report.vehicleEvents;
+  if (!Array.isArray(events)) {
+    errors.push('missingVehicleEvents');
+  } else {
+    const reboot = events.find((e) => e && e.eventType === 'reboot');
+    const acc = events.find((e) => e && e.eventType === 'acc');
+    if (!reboot) errors.push('missingBootIdChange');
+    else {
+      if (reboot.keycodePower === true || reboot.source === 'keycode_power') {
+        errors.push('keycodePowerOnlyReboot');
+      }
+      if (!reboot.bootIdBefore || !reboot.bootIdAfter || reboot.bootIdBefore === reboot.bootIdAfter) {
+        errors.push('missingBootIdChange');
+      }
+      if (reboot.user12UnlockedAtHostMs == null) errors.push('missingUnlockTime');
+    }
+    if (!acc) errors.push('missingAccEvent');
+    else {
+      if (acc.keycodePower === true || acc.source === 'keycode_power') {
+        errors.push('accKeycodePower');
+      }
+      if (
+        acc.source === 'operator_attested_physical_acc' &&
+        (acc.operatorAttested !== true ||
+          acc.reviewed !== true ||
+          !acc.evidenceSha256 ||
+          !/^[0-9a-f]{64}$/i.test(String(acc.evidenceSha256)))
+      ) {
+        errors.push('accMissingAttestation');
+      }
+    }
+  }
+
+  const uniq = [...new Set(errors)];
+  return {
+    ok: uniq.length === 0,
+    code: uniq[0] || 'OK',
+    errors: uniq,
+    evidenceLevel: uniq.length === 0 ? 'E7' : 'E7-OBSERVED',
+    sampleCount: Array.isArray(samples) ? samples.length : 0,
+    hostObservedWindowMs: Number(report.hostObservedWindowMs) || 0,
+  };
+}
+
+const verifyE7 = verifyE7Evidence;
+
+function assertE7Fixtures() {
+  const results = [];
+  for (const name of E7_FIXTURE_NAMES) {
+    if (name === 'correctE7') continue;
+    const r = verifyE7Evidence(buildE7Fixture(name));
+    const ok = r.ok === false;
+    results.push({ name, ok, code: r.code });
+    if (!ok) {
+      return { ok: false, message: `fixture ${name} should fail`, results };
+    }
+  }
+  const good = verifyE7Evidence(buildE7Fixture('correctE7'));
+  if (!good.ok) {
+    return { ok: false, message: `correctE7 should pass: ${good.errors}`, results };
+  }
+  results.push({ name: 'correctE7', ok: true, code: good.code });
+  return { ok: results.every((x) => x.ok), results, E7_FIXTURE_NAMES };
+}
+
 function main(argv) {
   const args = argv.slice(2);
   if (args[0] === '--fixtures') {
@@ -1884,6 +2387,11 @@ function main(argv) {
     process.stdout.write(`${JSON.stringify(r)}\n`);
     process.exit(r.ok ? 0 : 1);
   }
+  if (args[0] === '--e7-fixtures') {
+    const r = assertE7Fixtures();
+    process.stdout.write(`${JSON.stringify(r)}\n`);
+    process.exit(r.ok ? 0 : 1);
+  }
   if (args[0] === '--e5-report-json') {
     const report = JSON.parse(fs.readFileSync(args[1], 'utf8'));
     const r = verifyE5Evidence(report);
@@ -1899,6 +2407,12 @@ function main(argv) {
   if (args[0] === '--e6-report-json') {
     const report = JSON.parse(fs.readFileSync(args[1], 'utf8'));
     const r = verifyE6Evidence(report);
+    process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);
+    process.exit(r.ok ? 0 : 1);
+  }
+  if (args[0] === '--e7-report-json') {
+    const report = JSON.parse(fs.readFileSync(args[1], 'utf8'));
+    const r = verifyE7Evidence(report);
     process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);
     process.exit(r.ok ? 0 : 1);
   }
@@ -1920,18 +2434,9 @@ function main(argv) {
     process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);
     process.exit(r.ok ? 0 : 1);
   }
-  // Default: document query-only shell contract
   process.stderr.write(
-    'verify-wallpaper-plugin.js: use --fixtures | --e3..e6-fixtures | --recovery-fixtures | --report-json <file>\n' +
-      'Shell wrapper is query-only (no uninstall/pm clear).\n' +
-      'Tools: aapt apksigner zipalign; packages com.mineradio.app / ' +
-      'com.motif.wallpaperengine / io.wallpaperengine.weclient; process :we_runtime; ' +
-      'BrowseActivity WEWallpaperService arm64-v8a certificate sha256 split.\n' +
-      'E3: user 12 + Mineradio real caller + PID isolation (not shell content call).\n' +
-      'E4: Scene+Video dual-frame non-black/non-solid continuous render.\n' +
-      'E5: current-user WEWallpaperService ACTIVE_TARGET binding.\n' +
-      'WP-11A recovery: package_presence + expected_error + auto_recoverable <=10s (stay E5).\n' +
-      'WP-11B E6: 30min 7-sample soak PSS/CPU/crash/interaction gates.\n',
+    'verify-wallpaper-plugin.js: use --fixtures | --e3..e7-fixtures | --recovery-fixtures | --*-report-json\n' +
+      'E7: reboot bootId change + ACC attestation + 2h 13-sample soak.\n',
   );
   process.exit(2);
 }
@@ -1987,6 +2492,16 @@ module.exports = {
   verifyE6Evidence,
   verifyE6,
   assertE6Fixtures,
+  E7_DURATION_MS,
+  E7_INTERVAL_MS,
+  E7_SAMPLE_COUNT,
+  E7_PSS_GROWTH_MIB,
+  E7_FIXTURE_NAMES,
+  WP11C_E7_FAIL_FIXTURES: E7_FIXTURE_NAMES.filter((n) => n !== 'correctE7'),
+  buildE7Fixture,
+  verifyE7Evidence,
+  verifyE7,
+  assertE7Fixtures,
   runToolsOnApk,
   sha256File,
   sha256Hex,

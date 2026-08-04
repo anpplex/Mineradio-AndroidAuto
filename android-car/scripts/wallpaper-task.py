@@ -9409,6 +9409,432 @@ def evaluate_wp11b_verify_done(
     return True, "", "", record
 
 
+# ---------------------------------------------------------------------------
+# WP-11C verify-done: E7 reboot/ACC + 2h soak (13 samples) + parent WP-11B.
+# ---------------------------------------------------------------------------
+WP11C_CALLER_FORGERY_KEYS = WP11B_CALLER_FORGERY_KEYS
+WP11C_SUITE_KEYS = (
+    "androidUnitTest",
+    "wp11cCapacityTest",
+    "pluginUnitTest",
+    "fullNodeTest",
+    "e7Evidence",
+)
+WP11C_REQUIRED_PREREQS = WP11B_REQUIRED_PREREQS + ("WP-11B",)
+WP11C_IMPLEMENTATION_SURFACES = (
+    "android-car/scripts/wallpaper-plugin-tasks.json",
+    "android-car/scripts/wallpaper-task.py",
+    "android-car/scripts/verify-wallpaper-plugin.js",
+    "android-car/tests/wallpaper-wp11c-red.test.js",
+)
+_WP11C_PREREQ_RECEIPTS = {
+    **_WP11B_PREREQ_RECEIPTS,
+    "WP-11B": _VERIFICATION_ROOT / "transactions" / "wp-11b.json",
+}
+WP11C_E7_DURATION_MS = 7200000
+WP11C_E7_SAMPLE_COUNT = 13
+WP11C_E7_PSS_GROWTH_MIB = 96
+
+
+def _load_wp11c_identity_proofs(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _load_single_pr_identity_proofs(
+        receipt,
+        args,
+        missing_reason="WP11C_VERIFY_DONE_PROOF_MISSING",
+        forgery_reason="WP11C_VERIFY_DONE_CALLER_FORGERY",
+        forgery_keys=WP11C_CALLER_FORGERY_KEYS,
+        empty_label="WP-11C",
+    )
+
+
+def _catalog_wp11c_task(
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _catalog_unique_task(
+        args,
+        task_id="WP-11C",
+        expected_weight=4,
+        expected_evidence="E7",
+        required_prereqs=WP11C_REQUIRED_PREREQS,
+        entry_missing_reason="WP11C_CATALOG_ENTRY_MISSING",
+        catalog_invalid_reason="WP11C_CATALOG_PROOF_INVALID",
+        required_done_missing_reason="WP11C_REQUIRED_DONE_MISSING",
+        required_done_message=(
+            "WP-11C.requiredEffectiveDone must include WP-INFRA, WP-00…WP-11B"
+        ),
+    )
+
+
+def _verify_wp11c_prerequisite_done_receipts() -> tuple[bool, str, str, dict[str, Any]]:
+    return _verify_prereq_done_receipts(
+        _WP11C_PREREQ_RECEIPTS,
+        missing_reason="WP11C_REQUIRED_DONE_MISSING",
+        state_done_tasks=frozenset(
+            {
+                "WP-01",
+                "WP-02",
+                "WP-03",
+                "WP-04",
+                "WP-05",
+                "WP-06",
+                "WP-07",
+                "WP-08",
+                "WP-09",
+                "WP-10A",
+                "WP-10B",
+                "WP-10C",
+                "WP-11A",
+                "WP-11B",
+            }
+        ),
+    )
+
+
+def _wp11c_require_implementation_surfaces_on_head(
+    head_sha: str,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    missing: list[str] = []
+    for rel in WP11C_IMPLEMENTATION_SURFACES:
+        if not _git_path_exists_at_commit(head_sha, rel):
+            missing.append(rel)
+    if missing:
+        return (
+            False,
+            "WP11C_PR_PROOF_INVALID",
+            "implementation head missing WP-11C surfaces: " + ", ".join(missing),
+            {},
+        )
+    cat_rc, cat_text = _git_show_at_commit(
+        head_sha, "android-car/scripts/wallpaper-plugin-tasks.json"
+    )
+    if cat_rc != 0 or (
+        '"taskId": "WP-11C"' not in cat_text and '"taskId":"WP-11C"' not in cat_text
+    ):
+        return (
+            False,
+            "WP11C_PR_PROOF_INVALID",
+            "implementation head catalog missing WP-11C task entry",
+            {},
+        )
+    ver_rc, ver_text = _git_show_at_commit(
+        head_sha, "android-car/scripts/verify-wallpaper-plugin.js"
+    )
+    if ver_rc != 0 or "verifyE7Evidence" not in ver_text:
+        return (
+            False,
+            "WP11C_PR_PROOF_INVALID",
+            "verify-wallpaper-plugin.js missing verifyE7Evidence",
+            {},
+        )
+    return (
+        True,
+        "",
+        "",
+        {"implementationSurfaces": list(WP11C_IMPLEMENTATION_SURFACES)},
+    )
+
+
+def _verify_wp11c_e7_evidence(
+    proofs: Mapping[str, Any],
+) -> tuple[bool, str, str, dict[str, Any]]:
+    e7 = proofs.get("e7Evidence")
+    if not isinstance(e7, dict):
+        return (
+            False,
+            "WP11C_E7_EVIDENCE_MISSING",
+            "proofs.e7Evidence object required (sealed reboot/ACC/2h soak)",
+            {},
+        )
+    if e7.get("pass") is not True:
+        return False, "WP11C_E7_EVIDENCE_MISSING", "e7Evidence.pass must be true", {}
+    sha = e7.get("sha256")
+    if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{64}", sha.lower() or ""):
+        return (
+            False,
+            "WP11C_E7_EVIDENCE_MISSING",
+            "e7Evidence.sha256 must be 64-char hex of sealed raw manifest",
+            {},
+        )
+    if e7.get("parentTaskId") != "WP-11B":
+        return (
+            False,
+            "WP11C_E7_PARENT_MISSING",
+            "e7Evidence.parentTaskId must be WP-11B",
+            {},
+        )
+    parent_sha = e7.get("parentManifestSha256")
+    if not isinstance(parent_sha, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", parent_sha.lower() or ""
+    ):
+        return (
+            False,
+            "WP11C_E7_PARENT_MISSING",
+            "e7Evidence.parentManifestSha256 must be 64-char hex",
+            {},
+        )
+    try:
+        sample_count = int(e7.get("sampleCount"))
+    except (TypeError, ValueError):
+        return (
+            False,
+            "WP11C_E7_SAMPLE_COUNT_FAILED",
+            "e7Evidence.sampleCount must be int",
+            {},
+        )
+    if sample_count != WP11C_E7_SAMPLE_COUNT:
+        return (
+            False,
+            "WP11C_E7_SAMPLE_COUNT_FAILED",
+            f"e7Evidence.sampleCount must be {WP11C_E7_SAMPLE_COUNT}",
+            {},
+        )
+    try:
+        window_ms = int(e7.get("hostObservedWindowMs"))
+    except (TypeError, ValueError):
+        return (
+            False,
+            "WP11C_E7_WINDOW_FAILED",
+            "e7Evidence.hostObservedWindowMs must be int",
+            {},
+        )
+    if window_ms < WP11C_E7_DURATION_MS:
+        return (
+            False,
+            "WP11C_E7_WINDOW_FAILED",
+            f"e7Evidence.hostObservedWindowMs must be >= {WP11C_E7_DURATION_MS}",
+            {},
+        )
+    try:
+        pss_growth = float(e7.get("pssGrowthMiB"))
+    except (TypeError, ValueError):
+        return (
+            False,
+            "WP11C_E7_PSS_FAILED",
+            "e7Evidence.pssGrowthMiB must be number",
+            {},
+        )
+    if pss_growth > WP11C_E7_PSS_GROWTH_MIB:
+        return (
+            False,
+            "WP11C_E7_PSS_FAILED",
+            f"e7Evidence.pssGrowthMiB must be <= {WP11C_E7_PSS_GROWTH_MIB}",
+            {},
+        )
+    if e7.get("rebootPass") is not True:
+        return False, "WP11C_E7_REBOOT_FAILED", "e7Evidence.rebootPass must be true", {}
+    if e7.get("accPass") is not True:
+        return False, "WP11C_E7_ACC_FAILED", "e7Evidence.accPass must be true", {}
+    if e7.get("interactionsPass") is not True:
+        return (
+            False,
+            "WP11C_E7_INTERACTIONS_FAILED",
+            "e7Evidence.interactionsPass must be true",
+            {},
+        )
+    if e7.get("fatalAnr") is True:
+        return False, "WP11C_E7_FATAL_ANR", "e7Evidence.fatalAnr must be false", {}
+    if e7.get("serial") != "LD249H019625":
+        return (
+            False,
+            "WP11C_E7_DEVICE_CONTEXT_FAILED",
+            f"e7Evidence.serial must be LD249H019625, got {e7.get('serial')!r}",
+            {},
+        )
+    if int(e7.get("targetUser") or 0) != 12:
+        return (
+            False,
+            "WP11C_E7_DEVICE_CONTEXT_FAILED",
+            "e7Evidence.targetUser must be 12",
+            {},
+        )
+    if e7.get("evidenceLevel") not in (None, "E7"):
+        return (
+            False,
+            "WP11C_E7_LEVEL_INVALID",
+            "e7Evidence.evidenceLevel must be E7",
+            {},
+        )
+    return (
+        True,
+        "",
+        "",
+        {
+            "e7Evidence": {
+                "pass": True,
+                "sha256": sha.lower(),
+                "parentTaskId": "WP-11B",
+                "parentManifestSha256": parent_sha.lower(),
+                "sampleCount": WP11C_E7_SAMPLE_COUNT,
+                "hostObservedWindowMs": window_ms,
+                "pssGrowthMiB": pss_growth,
+                "rebootPass": True,
+                "accPass": True,
+                "interactionsPass": True,
+                "fatalAnr": False,
+                "serial": "LD249H019625",
+                "targetUser": 12,
+                "evidenceLevel": "E7",
+            }
+        },
+    )
+
+
+def _verify_wp11c_suite_and_blob_proofs(
+    proofs: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    capacity_keys = tuple(k for k in WP11C_SUITE_KEYS if k != "e7Evidence")
+    ok, reason, message = _require_suite_pass_digests(
+        proofs,
+        capacity_keys,
+        missing_reason="WP11C_SUITE_RECEIPT_INVALID",
+    )
+    if not ok:
+        return False, reason, message, {}
+
+    ok_e7, reason, message, e7_record = _verify_wp11c_e7_evidence(proofs)
+    if not ok_e7:
+        return False, reason, message, {}
+
+    catalog_path = Path(args.catalog_path) if args.catalog_path else DEFAULT_CATALOG_BLOB_PATH
+    if not catalog_path.is_file():
+        return (
+            False,
+            "WP11C_VERIFY_DONE_PROOF_MISSING",
+            f"catalog missing: {catalog_path}",
+            {},
+        )
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    matches = [
+        t
+        for t in (catalog.get("tasks") or [])
+        if isinstance(t, dict) and t.get("taskId") == "WP-11C"
+    ]
+    if len(matches) != 1:
+        return (
+            False,
+            "WP11C_CATALOG_ENTRY_MISSING",
+            "live catalog must contain unique WP-11C",
+            {},
+        )
+    task = matches[0]
+    if int(task.get("weight") or 0) != 4 or task.get("evidenceLevel") != "E7":
+        return (
+            False,
+            "WP11C_CATALOG_PROOF_INVALID",
+            "WP-11C catalog weight/evidenceLevel must be 4/E7",
+            {},
+        )
+
+    ok, reason, message, live_catalog_sha, live_schema_sha = _verify_catalog_schema_digests(
+        proofs,
+        args,
+        invalid_reason="WP11C_CATALOG_PROOF_INVALID",
+    )
+    if not ok:
+        return False, reason, message, {}
+
+    return (
+        True,
+        "",
+        "",
+        {
+            "catalogSha256": live_catalog_sha,
+            "schemaSha256": live_schema_sha,
+            "androidUnitTest": proofs["androidUnitTest"],
+            "wp11cCapacityTest": proofs["wp11cCapacityTest"],
+            "pluginUnitTest": proofs["pluginUnitTest"],
+            "fullNodeTest": proofs["fullNodeTest"],
+            **e7_record,
+            "evidenceLevel": "E7",
+        },
+    )
+
+
+def verify_wp11c_merged_implementation_pr(
+    *,
+    pr_number: int,
+    live_base_sha: str,
+    repo: str | None,
+) -> tuple[dict[str, Any] | None, str, str]:
+    return _verify_merged_implementation_pr(
+        pr_number=pr_number,
+        live_base_sha=live_base_sha,
+        repo=repo,
+        invalid_reason="WP11C_PR_PROOF_INVALID",
+        containment_reason="WP11C_BASE_CONTAINMENT_FAILED",
+        surface_checker=_wp11c_require_implementation_surfaces_on_head,
+    )
+
+
+def evaluate_wp11c_verify_done(
+    receipt: Mapping[str, Any],
+    args: argparse.Namespace,
+) -> tuple[bool, str, str, dict[str, Any]]:
+    """Return (ok, reason, message, proof_record) for WP-11C CLOSE-VERIFY.
+
+    Requires sealed E7 (reboot + ACC + 2h/13-sample soak), parent WP-11B,
+    suite digests, and implementation PR identity.
+    """
+    task, reason, message = _catalog_wp11c_task(args)
+    if task is None:
+        return False, reason, message, {}
+
+    ok_prereq, reason, message, prereq_record = _verify_wp11c_prerequisite_done_receipts()
+    if not ok_prereq:
+        return False, reason, message, {}
+
+    proofs, reason, message = _load_wp11c_identity_proofs(receipt, args)
+    if proofs is None:
+        return False, reason, message, {}
+
+    pr_number, reason, message = _extract_implementation_pr_number(
+        proofs,
+        missing_reason="WP11C_VERIFY_DONE_PROOF_MISSING",
+    )
+    if pr_number is None:
+        return False, reason, message, {}
+
+    ok_suites, reason, message, suite_record = _verify_wp11c_suite_and_blob_proofs(
+        proofs, args
+    )
+    if not ok_suites:
+        return False, reason, message, {}
+
+    live_base, reason, message = _resolve_live_base_optional_claim(
+        proofs,
+        missing_reason="WP11C_VERIFY_DONE_PROOF_MISSING",
+        containment_reason="WP11C_BASE_CONTAINMENT_FAILED",
+    )
+    if live_base is None:
+        return False, reason, message, {}
+
+    repo = getattr(args, "repo", None) or APPROVED_GITHUB_REPO
+    impl_proof, reason, message = verify_wp11c_merged_implementation_pr(
+        pr_number=pr_number,
+        live_base_sha=live_base,
+        repo=repo,
+    )
+    if impl_proof is None:
+        return False, reason, message, {}
+
+    record = _assemble_verify_done_record(
+        task=task,
+        impl_proof=impl_proof,
+        live_base=live_base,
+        prereq_record=prereq_record,
+        suite_record=suite_record,
+        weight=4,
+        default_path="android-car/scripts/",
+    )
+    record["evidenceLevel"] = "E7"
+    record["parentTaskId"] = "WP-11B"
+    return True, "", "", record
+
+
 def cmd_verify_done(args: argparse.Namespace) -> int:
     """Fail-closed DONE only when catalog + proofs + live base containment hold."""
     task_id = require_task(args.task)
@@ -9464,6 +9890,9 @@ def cmd_verify_done(args: argparse.Namespace) -> int:
         elif task_id == "WP-11B":
             ok_gate, reason, message, proof_record = evaluate_wp11b_verify_done(current, args)
             weight = 3
+        elif task_id == "WP-11C":
+            ok_gate, reason, message, proof_record = evaluate_wp11c_verify_done(current, args)
+            weight = 4
         else:
             # Never mis-tag later WP tasks as WP03_*.
             if task_id.startswith("WP-"):
