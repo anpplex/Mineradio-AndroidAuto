@@ -1519,6 +1519,121 @@
         "parent chain WP-11A→WP-11B",
         "E6 continuous long-run seal"
       ]
+    },
+    {
+      "taskId": "WP-11C",
+      "dependsOn": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07",
+        "WP-08",
+        "WP-09",
+        "WP-10A",
+        "WP-10B",
+        "WP-10C",
+        "WP-11A",
+        "WP-11B"
+      ],
+      "requiredEffectiveDone": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07",
+        "WP-08",
+        "WP-09",
+        "WP-10A",
+        "WP-10B",
+        "WP-10C",
+        "WP-11A",
+        "WP-11B"
+      ],
+      "phaseCommands": {
+        "RED": {
+          "commandId": "WP-11C-RED",
+          "argv": [
+            "true"
+          ]
+        },
+        "GREEN": {
+          "commandId": "WP-11C-GREEN",
+          "argv": [
+            "true"
+          ]
+        },
+        "REFACTOR": {
+          "commandId": "WP-11C-REFACTOR",
+          "argv": [
+            "true"
+          ]
+        },
+        "VERIFY": {
+          "commandId": "WP-11C-VERIFY",
+          "argv": [
+            "true"
+          ]
+        }
+      },
+      "expectedExit": {
+        "RED": 1,
+        "GREEN": 0,
+        "REFACTOR": 0,
+        "VERIFY": 0
+      },
+      "failureSignaturePolicy": {
+        "RED": {
+          "required": true,
+          "match": "stderr"
+        }
+      },
+      "scopeCheck": {
+        "repo": "mineradio",
+        "exactFiles": [
+          "android-car/scripts/verify-wallpaper-plugin.js",
+          "android-car/scripts/wallpaper-task.py",
+          "android-car/tests/wallpaper-wp11c-red.test.js"
+        ],
+        "product": "Wallpaper Engine",
+        "path": "android-car/scripts/",
+        "packages": [
+          "com.mineradio.app",
+          "com.motif.wallpaperengine",
+          "io.wallpaperengine.weclient"
+        ],
+        "device": {
+          "serial": "LD249H019625",
+          "user": 12,
+          "androidRelease": "12",
+          "apiLevel": 31,
+          "abi": "arm64-v8a"
+        }
+      },
+      "evidenceLevel": "E7",
+      "weight": 4,
+      "product": "Wallpaper Engine",
+      "path": "android-car/scripts/",
+      "requiredEffectiveGate": false,
+      "deviceEvidence": true,
+      "inputs": [
+        "WP-11B E6 sealed",
+        "real reboot bootId change + ACC OFF/ON",
+        "2h soak 13 samples @ 10 min"
+      ],
+      "outputs": [
+        "verifyE7Evidence + E7 fail fixtures",
+        "parent chain WP-11B→WP-11C",
+        "E7 continuous reboot/ACC/soak seal"
+      ]
     }
   ]
 }
