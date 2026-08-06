@@ -1634,6 +1634,122 @@
         "parent chain WP-11B→WP-11C",
         "E7 continuous reboot/ACC/soak seal"
       ]
+    },
+    {
+      "taskId": "WP-12A",
+      "dependsOn": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07",
+        "WP-08",
+        "WP-09",
+        "WP-10A",
+        "WP-10B",
+        "WP-10C",
+        "WP-11A",
+        "WP-11B",
+        "WP-11C"
+      ],
+      "requiredEffectiveDone": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07",
+        "WP-08",
+        "WP-09",
+        "WP-10A",
+        "WP-10B",
+        "WP-10C",
+        "WP-11A",
+        "WP-11B",
+        "WP-11C"
+      ],
+      "phaseCommands": {
+        "RED": {
+          "commandId": "WP-12A-RED",
+          "argv": [
+            "true"
+          ]
+        },
+        "GREEN": {
+          "commandId": "WP-12A-GREEN",
+          "argv": [
+            "true"
+          ]
+        },
+        "REFACTOR": {
+          "commandId": "WP-12A-REFACTOR",
+          "argv": [
+            "true"
+          ]
+        },
+        "VERIFY": {
+          "commandId": "WP-12A-VERIFY",
+          "argv": [
+            "true"
+          ]
+        }
+      },
+      "expectedExit": {
+        "RED": 1,
+        "GREEN": 0,
+        "REFACTOR": 0,
+        "VERIFY": 0
+      },
+      "failureSignaturePolicy": {
+        "RED": {
+          "required": true,
+          "match": "stderr"
+        }
+      },
+      "scopeCheck": {
+        "repo": "wallpaper-engine-plugin",
+        "exactFiles": [
+          "runtime-import/manifest-map.schema.json",
+          "scripts/import-official-runtime.sh",
+          "scripts/verify-imported-runtime.sh",
+          "scripts/tests/test-runtime-import.sh",
+          "scripts/tests/fixtures/manifest-missing-dex.json",
+          "scripts/tests/fixtures/manifest-authority-conflict.json",
+          "scripts/tests/fixtures/manifest-unknown-signature-permission.json",
+          "scripts/tests/fixtures/manifest-resource-id-conflict.json"
+        ],
+        "product": "Wallpaper Engine",
+        "path": "runtime-import/",
+        "experimental": true,
+        "worktrees": {
+          "plugin": "/Users/anpple/Codex/WallpaperEngine/.worktrees/mineradio-plugin-embedded-runtime",
+          "mineradio": "/Users/anpple/Codex/Mineradio/.worktrees/wallpaper-plugin-experimental"
+        }
+      },
+      "evidenceLevel": "E2",
+      "weight": 25,
+      "product": "Wallpaper Engine",
+      "path": "experimental",
+      "experimental": true,
+      "requiredEffectiveGate": false,
+      "deviceEvidence": false,
+      "inputs": [
+        "WP-11C EffectiveDone / continuous E6+",
+        "WP-12 bootstrap receipt BOOTSTRAP_PUSHED",
+        "official WE APK/splits inventory source (local only)"
+      ],
+      "outputs": [
+        "runtime-import/manifest-map.schema.json inventory seal",
+        "import/verify-imported-runtime scripts + manifest negative fixtures",
+        "experimental progress 25% when verify-done DONE (not core weight)"
+      ]
     }
   ]
 }
