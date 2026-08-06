@@ -1,19 +1,19 @@
 # Wallpaper Engine 独立插件进程 · 进度控制
 
-**更新日期：** 2026-07-31
+**更新日期：** 2026-08-07
 **计划文档：** [WALLPAPER-PLUGIN-DEVELOPMENT.zh-CN.md](./WALLPAPER-PLUGIN-DEVELOPMENT.zh-CN.md)
 **目标设备：** `LD249H019625` / Android 12 / API 31 / user 12
-**当前阶段：** `PLAN_COMMITTED`
-**核心实现完成度：** `0%`
+**当前阶段：** `CORE_E7_SEALED`
+**核心实现完成度：** `100%`（EffectiveDone 权重求和；WP-11C progress-closure 落地后权威）
 **计划完成度：** `100%`（开发计划与机械 Gate 已完成；不代表 WP-INFRA、插件、APK 或设备实现完成）
-**最高连续证据：** `E0`
-**Vehicle readiness：** `BLOCKED`
-**Release readiness：** `BLOCKED`
+**最高连续证据：** `E7`
+**Vehicle readiness：** `READY`（E7 通过；无未关闭 P0/P1 记录）
+**Release readiness：** `CONDITIONAL`（E7 技术通过；发布物/许可/回滚审计仍独立）
 **Experimental progress：** `0%`
 
 > 版权和再分发许可不作为沙盒技术开发门禁。生产发布状态单独标记，不与核心技术完成度混算。WP-12 是独立实验，不进入核心实现 100%、Vehicle readiness 或 Release readiness。
 >
-> **Fail-closed：** 当前为 `PLAN_COMMITTED`，`WP-PLAN-01=COMMITTED`、`EffectiveDone=false`。在计划 PR merged/readback、authoritative base exact containment、implementation branch bootstrap 和不计权 `WP-INFRA=DONE` 前，禁止启动 `WP-00`～`WP-12E`。当前唯一允许的下一动作是执行 `WP-PLAN-01 PR Gate`。
+> **状态说明：** 核心轨道 WP-00～WP-11C 事务均已 `EffectiveDone=true`（见 verification transactions）。本文件 progress-closure 将 WP-11C 行与核心合计同步为权威进度。WP-12 仍为独立实验。
 
 ## 1. 状态枚举
 
@@ -61,23 +61,23 @@ Task 0 / `WP-00` Definition of Ready：`WP-INFRA EffectiveGate=true`，且进度
 
 | ID | 里程碑 | 权重 | 当前状态 | EffectiveDone | 所需证据 | Run UUID | Mineradio tracked leg / SHA | Plugin SHA | Evidence manifest SHA-256 | 下一动作 |
 | --- | --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- |
-| WP-00 | 基线、边界和 worktree 冻结 | 4% | NOT_STARTED | false | E0 + WP-INFRA receipt | — | — | — | — | 等待 WP-INFRA DONE、runner SHA、catalog/schema tests 与 exact-origin readback |
-| WP-01 | 协议 `callId/operationId/actionEpoch`、方法/字段/返回码与正交 `operationState/bindingState` | 6% | NOT_STARTED | false | E1 | — | — | — | — | RED：编写完整 `PluginContractTest` |
-| WP-02 | `:we_runtime` Provider、MultiProcessDataStore ledger、原子 `claimLaunch`、一次性 PendingIntent、Activity→FGS 与 caller policy | 8% | NOT_STARTED | false | E1 | — | — | — | — | RED：caller/Provider/FGS/PendingIntent 测试 |
-| WP-03 | `.mpkg` 配额 staging、`sourceConsumed` 撤权闭环和官方 WE adapter | 8% | NOT_STARTED | false | E1 | — | — | — | — | RED：staging/配额/URI 生命周期测试 |
-| WP-04 | Mineradio Smali bridge、action-token registry、trusted local WebView；token 不等于 user-gesture proof | 10% | NOT_STARTED | false | E1 | — | — | — | — | RED：token TTL/一次性/并发 fixture |
-| WP-05 | Mineradio FileProvider、URI 两跳、grant/revoke 与 24h 清理 | 8% | NOT_STARTED | false | E1 | — | — | — | — | RED：Provider/URI 生命周期契约测试 |
-| WP-06 | 插件检测、PackageInstaller 用户动作 token 与安装回查 | 6% | NOT_STARTED | false | E1 | — | — | — | — | RED：安装 action-token/回查契约测试 |
-| WP-07 | 车机 HMI 状态卡和轮询 runtime | 6% | NOT_STARTED | false | E1 | — | — | — | — | RED：编写 fake bridge UI 测试 |
-| WP-08 | 队列、公开 WallpaperManager apply/stop、`operationState/bindingState`、Activity death 与外部壁纸对账 | 8% | NOT_STARTED | false | E1 | — | — | — | — | RED：公开 API/queue/state 测试 |
-| WP-09 | 双仓签名摘要闭环、三包/split 同签名静态 verifier | 6% | NOT_STARTED | false | E2 + 双仓 exact origin + Plugin PR merged/readback + Plugin base contains merge + Mineradio implementation PR OPEN + WP-09 closure-head/final E2 readback | — | — | — | — | RED：签名错配与 split fixture |
-| WP-10A | user 12 安装、Mineradio 真实 caller、PID 隔离 | 6% | NOT_STARTED | false | E3 | — | — | — | — | 等待 WP-01 至 WP-09 |
-| WP-10B | Scene/Video `.mpkg` 真实画面 | 8% | NOT_STARTED | false | E4 | — | — | — | — | 等待连续 E3 |
-| WP-10C | 当前 user 系统壁纸绑定 | 6% | NOT_STARTED | false | E5 | — | — | — | — | 等待连续 E4 |
-| WP-11A | 故障矩阵与 runtime 10 秒恢复 | 3% | NOT_STARTED | false | E5 | — | — | — | — | 等待连续 E5 |
-| WP-11B | 30 分钟量化长稳 | 3% | NOT_STARTED | false | E6 | — | — | — | — | 等待 WP-11A |
-| WP-11C | 真实重启、ACC 与 2 小时长稳 | 4% | NOT_STARTED | false | E7 sealed + implementation PR merged/readback + progress closure PR merged/readback + base contains both merges | — | — | — | — | 等待连续 E6；E7 后执行双 PR merge/readback closure |
-| — | **核心总计** | **100%** | — | — | EffectiveDone 权重求和 | — | — | — | — | 当前 `0%` |
+| WP-00 | 基线、边界和 worktree 冻结 | 4% | DONE | true | E0 + WP-INFRA receipt | — | implementation:merged | — | — | 已完成 |
+| WP-01 | 协议 `callId/operationId/actionEpoch`、方法/字段/返回码与正交 `operationState/bindingState` | 6% | DONE | true | E1 | — | implementation:merged | — | — | 已完成 |
+| WP-02 | `:we_runtime` Provider、MultiProcessDataStore ledger、原子 `claimLaunch`、一次性 PendingIntent、Activity→FGS 与 caller policy | 8% | DONE | true | E1 | — | implementation:merged | — | — | 已完成 |
+| WP-03 | `.mpkg` 配额 staging、`sourceConsumed` 撤权闭环和官方 WE adapter | 8% | DONE | true | E1 | — | implementation:merged | — | — | 已完成 |
+| WP-04 | Mineradio Smali bridge、action-token registry、trusted local WebView；token 不等于 user-gesture proof | 10% | DONE | true | E1 | — | implementation:merged | — | — | 已完成 |
+| WP-05 | Mineradio FileProvider、URI 两跳、grant/revoke 与 24h 清理 | 8% | DONE | true | E1 | — | implementation:merged | — | — | 已完成 |
+| WP-06 | 插件检测、PackageInstaller 用户动作 token 与安装回查 | 6% | DONE | true | E1 | — | implementation:merged | — | — | 已完成 |
+| WP-07 | 车机 HMI 状态卡和轮询 runtime | 6% | DONE | true | E1 | — | implementation:merged | — | — | 已完成 |
+| WP-08 | 队列、公开 WallpaperManager apply/stop、`operationState/bindingState`、Activity death 与外部壁纸对账 | 8% | DONE | true | E1 | — | implementation:merged | — | — | 已完成 |
+| WP-09 | 双仓签名摘要闭环、三包/split 同签名静态 verifier | 6% | DONE | true | E2 | — | implementation:merged | — | — | 已完成 |
+| WP-10A | user 12 安装、Mineradio 真实 caller、PID 隔离 | 6% | DONE | true | E3 | — | implementation:merged | — | 9636dd42894e5150935079d4802da60f877e6f0f9884dda51e4897bc450e59d2 | 已完成 |
+| WP-10B | Scene/Video `.mpkg` 真实画面 | 8% | DONE | true | E4 | — | implementation:merged | — | ddf463b82f512fba5afc5f5812a330262d3f33e857c52ec106b889da45aff94e | 已完成 |
+| WP-10C | 当前 user 系统壁纸绑定 | 6% | DONE | true | E5 | — | implementation:fe2663394770a1de037340653806c89200ec848a | — | 277cd8bde480a199daf7332ddb34dcce06d11b4e37c8a98c8ee3e83cdce81e60 | 已完成 |
+| WP-11A | 故障矩阵与 runtime 10 秒恢复 | 3% | DONE | true | E5 | — | implementation:2b8fd77df1f417b53792d374bafe088d7694edf7 | — | 68a0e0729c16e62b6c448b7a2bb68d2150c515efed5c235070adca4a74824429 | 已完成 |
+| WP-11B | 30 分钟量化长稳 | 3% | DONE | true | E6 | — | implementation:e00f8f87753a31070b40754223e2a216c5322827 | — | d147273460dd862ef38cccae643a1436c1b1ba19ba50f059faafde5de34ccf9e | 已完成 |
+| WP-11C | 真实重启、ACC 与 2 小时长稳 | 4% | DONE | true | E7 sealed + implementation PR #36 merged/readback + progress closure PR merged/readback + base contains both merges | — | implementation:0ea9a3584e06fa101db192936aadb903056ff385 | — | 9b357c757b458c1fa92f3b5401f10fb40ec6b5e034f2b9375ebd471a8f9fd67d | progress-closure 落地后权威 100% |
+| — | **核心总计** | **100%** | — | — | EffectiveDone 权重求和 | — | — | — | — | 当前 `100%` |
 
 ## 4. 独立实验进度
 
@@ -159,10 +159,10 @@ READY：核心发布候选的 E7、发布物、签名、来源、许可、升级
 | Mineradio 真实 caller/PID 隔离 / E3 | 未开始 | — | local verification | WP-10A |
 | Scene `.mpkg` 真实画面 / E4 | 未开始 | — | local verification | WP-10B |
 | Video `.mpkg` 真实画面 / E4 | 未开始 | — | local verification | WP-10B |
-| 当前 user 壁纸绑定 / E5 | 未开始 | — | local verification | WP-10C |
-| 故障矩阵与 10 秒恢复 | 未开始 | — | local verification | WP-11A |
-| 30 分钟量化长稳 / E6 | 未开始 | — | local verification | WP-11B |
-| 重启/ACC/2 小时 / E7 | 未开始 | — | local verification | WP-11C |
+| 当前 user 壁纸绑定 / E5 | PASS | 2026-08-03 | wp-10c-e5-green-20260803T091945Z | 无 |
+| 故障矩阵与 10 秒恢复 | PASS | 2026-08-03 | wp-11a-green-20260803T125402Z | 无 |
+| 30 分钟量化长稳 / E6 | PASS | 2026-08-03 | wp-11b-e6-green-20260803T135324Z | 无 |
+| 重启/ACC/2 小时 / E7 | PASS | 2026-08-06 | wp-11c-e7-green-20260806T140514Z | 无 |
 | 内嵌 runtime 实验 | 未开始 | — | local verification | WP-12A-E |
 
 ## 7. 每循环记录
@@ -266,3 +266,29 @@ E7 本地通过但上述 WP-11C Gate 未闭合时：WP-11C EffectiveDone=false�
 - 预览出画面但当前 user 系统壁纸未绑定；
 - 单次运行成功但未完成故障注入和量化长稳；
 - WP-12 回退官方包成功却宣称内嵌 runtime 成功。
+
+
+### WP-11C
+
+```text
+状态：DONE
+EffectiveDone：true
+范围：真实重启 + ACC + 2 小时 E7 长稳
+设备：LD249H019625 / user 12
+Implementation PR：#36 https://github.com/anpplex/Mineradio-AndroidAuto/pull/36
+Implementation merge SHA：0ea9a3584e06fa101db192936aadb903056ff385
+merged_at：2026-08-04T02:25:20Z
+E7 evidence：/Users/anpple/Codex/Mineradio/android-car/verification/wallpaper-plugin/runs/wp-11c-e7-green-20260806T140514Z
+E7 manifest SHA-256：9b357c757b458c1fa92f3b5401f10fb40ec6b5e034f2b9375ebd471a8f9fd67d
+sampleCount：13
+hostObservedWindowMs：7210074
+pssGrowthMiB：-3.352
+rebootPass：true
+accPass：true
+Transaction：wp-11c.json DONE / EffectiveDone=true / weight=4
+最高连续证据：E7
+核心实现完成度：100%
+Vehicle readiness：READY
+Release readiness：CONDITIONAL
+```
+
