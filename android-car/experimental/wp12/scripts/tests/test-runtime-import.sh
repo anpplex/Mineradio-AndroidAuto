@@ -1,23 +1,21 @@
 #!/usr/bin/env bash
 # WP-12A (experimental) — unit-like shell tests for runtime import/verify
-#
 # Experimental product path: android-car/experimental/wp12/scripts/tests/
-# (promoted from verification/wallpaper-plugin/runs/wp-12a-draft/)
-# Outline harness only; catalog fixture basenames land in plugin RED later.
+# (promoted from Plugin worktree wp12a-manifest-map/v1 tools)
 #
-# Intent:
-#   - Exercise verify-imported-runtime.sh modes against tiny JSON fixtures
-#     (inline under $TMP, not catalog basenames yet).
-#   - Assert exit codes + stderr failure signatures (fail-closed).
-#   - Optional smoke: import-official-runtime.sh → verify --mode positive
-#     when OFFICIAL_WE_APK or wp-12a-assets/base.apk is present.
+# Catalog RED harness: four negative fixtures under scripts/tests/fixtures/
+# (exact basenames from FIXTURES.md) plus positive outline /
+# optional catalog positive. Assert exit codes + stderr failure signatures
+# (fail-closed).
+#
+# Also retains draft-1 inline outline cases for importer-shaped inventories.
 #
 # Usage:
-#   ./test-runtime-import.sh           # run outline tests
+#   ./test-runtime-import.sh           # run catalog + outline tests
 #   ./test-runtime-import.sh --help
 #
 # Exit codes:
-#   0  all outline assertions passed
+#   0  all assertions passed
 #   1  one or more assertions failed
 #   2  usage / environment error
 #
@@ -25,29 +23,44 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
+# Layout: experimental/wp12/scripts/tests/this → scripts/{import,verify}-*.sh
+# WP12_ROOT = experimental/wp12 (holds runtime-import/)
 SCRIPTS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 WP12_ROOT="$(cd "${SCRIPTS_DIR}/.." && pwd)"
 VERIFY="${SCRIPTS_DIR}/verify-imported-runtime.sh"
 IMPORT="${SCRIPTS_DIR}/import-official-runtime.sh"
-# Optional smoke APK: env OFFICIAL_WE_APK, or verification assets if present.
+SCHEMA="${WP12_ROOT}/runtime-import/manifest-map.schema.json"
+FIXTURES_DIR="${SCRIPT_DIR}/fixtures"
+# Optional APK: OFFICIAL_WE_APK preferred; else local verification assets (host-only)
 ASSETS_APK="$(cd "${WP12_ROOT}/../.." && pwd)/verification/wallpaper-plugin/runs/wp-12a-assets/base.apk"
+if [[ ! -f "${ASSETS_APK}" ]]; then
+  ASSETS_APK="/Users/anpple/Codex/Mineradio/android-car/verification/wallpaper-plugin/runs/wp-12a-assets/base.apk"
+fi
 
 usage() {
   cat <<EOF
 Usage: ${SCRIPT_NAME}
 
-Minimal unit-like outline for WP-12A import/verify (draft).
+WP-12A experimental import/verify harness (catalog fixtures + draft outline).
 
-Assertions (outline):
-  1. positive + minimal clean inventory            → exit 0
-  2. negative-missing-dex + empty dexFiles         → exit 1, stderr MISSING_DEX
-  3. negative-auth-conflict + duplicate authority  → exit 1, stderr AUTHORITY_CONFLICT
-  4. positive + empty dexFiles                     → exit 1, stderr MISSING_DEX
-  5. invalid inventory (missing fields)            → exit 2
-  6. (optional) real APK import → positive verify  → exit 0
+Catalog fixtures (scripts/tests/fixtures/, FIXTURES.md basenames):
+  1. manifest-missing-dex.json
+       → negative-missing-dex, exit 1, stderr MISSING_DEX
+  2. manifest-authority-conflict.json
+       → negative-auth-conflict, exit 1, stderr AUTHORITY_CONFLICT
+  3. manifest-unknown-signature-permission.json
+       → negative-unknown-signature-permission, exit 1, stderr UNKNOWN_SIGNATURE_PERMISSION
+  4. manifest-resource-id-conflict.json
+       → negative-resource-id-conflict, exit 1, stderr RESOURCE_ID_CONFLICT
+  5. manifest-inventory-pass.json (optional positive)
+       → positive, exit 0
 
-Does not yet wire catalog fixture basenames from FIXTURES.md; those land
-in the Plugin worktree RED harness.
+Outline (inline TMP draft-1 inventories):
+  - positive clean inventory → exit 0
+  - draft missing-dex / auth-conflict / invalid fields
+
+Optional smoke: import-official-runtime.sh → verify --mode positive
+when OFFICIAL_WE_APK or verification wp-12a-assets/base.apk is present.
 EOF
 }
 
@@ -112,7 +125,7 @@ assert_cmd() {
   fi
 }
 
-# --- fixture writers --------------------------------------------------------
+# --- fixture writers (draft-1 outline) --------------------------------------
 write_clean_draft() {
   # Minimal draft-1 inventory that should pass positive mode.
   # authorities unique; dexFiles non-empty with classes.dex.
@@ -185,8 +198,50 @@ write_invalid_missing_fields() {
 JSON
 }
 
-# --- outline cases ----------------------------------------------------------
+# --- catalog fixture suite (FIXTURES.md basenames) --------------------------
 log "WORKDIR=${TMP}"
+log "FIXTURES_DIR=${FIXTURES_DIR}"
+
+if [[ ! -d "${FIXTURES_DIR}" ]]; then
+  log "FAIL: missing fixtures dir: ${FIXTURES_DIR}"
+  FAIL=$((FAIL + 1))
+else
+  log "--- catalog negatives (schema-shaped wp12a-manifest-map/v1) ---"
+
+  assert_cmd 1 "MISSING_DEX" \
+    "catalog manifest-missing-dex.json → MISSING_DEX" \
+    bash "${VERIFY}" --inventory "${FIXTURES_DIR}/manifest-missing-dex.json" \
+      --mode negative-missing-dex
+
+  assert_cmd 1 "AUTHORITY_CONFLICT" \
+    "catalog manifest-authority-conflict.json → AUTHORITY_CONFLICT" \
+    bash "${VERIFY}" --inventory "${FIXTURES_DIR}/manifest-authority-conflict.json" \
+      --mode negative-auth-conflict
+
+  assert_cmd 1 "UNKNOWN_SIGNATURE_PERMISSION" \
+    "catalog manifest-unknown-signature-permission.json → UNKNOWN_SIGNATURE_PERMISSION" \
+    bash "${VERIFY}" --inventory "${FIXTURES_DIR}/manifest-unknown-signature-permission.json" \
+      --mode negative-unknown-signature-permission
+
+  assert_cmd 1 "RESOURCE_ID_CONFLICT" \
+    "catalog manifest-resource-id-conflict.json → RESOURCE_ID_CONFLICT" \
+    bash "${VERIFY}" --inventory "${FIXTURES_DIR}/manifest-resource-id-conflict.json" \
+      --mode negative-resource-id-conflict
+
+  log "--- catalog positive ---"
+  PASS_FIXTURE="${FIXTURES_DIR}/manifest-inventory-pass.json"
+  if [[ -f "${PASS_FIXTURE}" ]]; then
+    assert_cmd 0 "" \
+      "catalog manifest-inventory-pass.json → positive exit 0" \
+      bash "${VERIFY}" --inventory "${PASS_FIXTURE}" --mode positive
+  else
+    log "SKIP: catalog positive manifest-inventory-pass.json not present"
+    SKIP=$((SKIP + 1))
+  fi
+fi
+
+# --- outline cases (draft-1) ------------------------------------------------
+log "--- outline draft-1 cases ---"
 
 CLEAN="${TMP}/clean.json"
 MISS="${TMP}/missing-dex.json"
@@ -199,31 +254,24 @@ write_auth_conflict "${AUTH}"
 write_invalid_missing_fields "${BAD}"
 
 assert_cmd 0 "" \
-  "positive clean inventory exits 0" \
+  "outline positive clean inventory exits 0" \
   bash "${VERIFY}" --inventory "${CLEAN}" --mode positive
 
 assert_cmd 1 "MISSING_DEX" \
-  "negative-missing-dex empty dexFiles" \
+  "outline negative-missing-dex empty dexFiles" \
   bash "${VERIFY}" --inventory "${MISS}" --mode negative-missing-dex
 
 assert_cmd 1 "AUTHORITY_CONFLICT" \
-  "negative-auth-conflict duplicate authorities" \
+  "outline negative-auth-conflict duplicate authorities" \
   bash "${VERIFY}" --inventory "${AUTH}" --mode negative-auth-conflict
 
 assert_cmd 1 "MISSING_DEX" \
-  "positive mode fail-closed on empty dexFiles" \
+  "outline positive mode fail-closed on empty dexFiles" \
   bash "${VERIFY}" --inventory "${MISS}" --mode positive
 
 assert_cmd 2 "INVALID_INVENTORY" \
-  "missing required fields → exit 2" \
+  "outline missing required fields → exit 2" \
   bash "${VERIFY}" --inventory "${BAD}" --mode positive
-
-# Outline placeholders for remaining fixture classes (schema-shaped).
-# Uncomment / flesh out when RED fixtures land under runtime-import/.
-#
-# write_unknown_sig / write_resource_conflict →
-#   assert_cmd 1 UNKNOWN_SIGNATURE_PERMISSION ...
-#   assert_cmd 1 RESOURCE_ID_CONFLICT ...
 
 # --- optional APK smoke -----------------------------------------------------
 APK_PATH="${OFFICIAL_WE_APK:-}"

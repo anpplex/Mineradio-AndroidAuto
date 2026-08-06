@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # WP-12A (experimental) — verify imported runtime inventory
+# Experimental product path: android-car/experimental/wp12/scripts/
+# (promoted from Plugin worktree wp12a-manifest-map/v1 tools)
 #
 # Fail-closed static verifier for inventory.json produced by
 # import-official-runtime.sh (draft-1 shape) or fixture inventories
 # conforming to manifest-map.schema.json (schema shape).
 #
-# Experimental product path: android-car/experimental/wp12/scripts/
-# (promoted from verification/wallpaper-plugin/runs/wp-12a-draft/)
-# Core plugin home later: runtime-import companion under plugin worktree.
+# Scaffolded from verification runs/wp-12a-draft; fail-closed verifier.
 #
 # Usage:
 #   verify-imported-runtime.sh --inventory PATH --mode MODE
@@ -314,10 +314,20 @@ def check_missing_dex() -> None:
 # AUTHORITY_CONFLICT
 # ---------------------------------------------------------------------------
 def extract_authorities() -> list[str]:
+    """Authority strings for conflict counting.
+
+    Policy (FIXTURES.md): two or more authorities[].authority values equal.
+    When top-level authorities[] is non-empty, use only that list (do not also
+    re-count components.providers[].authorities — same authority on the same
+    provider is listed in both places on full v1 inventories).
+
+    When top-level is absent/empty, fall back to components.providers[].
+    Pair-merge is not needed for the top-level-primary path; provider fallback
+    expands multi-authority ";" strings.
+    """
     auth_list: list[str] = []
-    # top-level authorities (schema or draft optional)
     raw = data.get("authorities")
-    if isinstance(raw, list):
+    if isinstance(raw, list) and len(raw) > 0:
         for item in raw:
             if isinstance(item, str) and item:
                 auth_list.append(item)
@@ -325,8 +335,8 @@ def extract_authorities() -> list[str]:
                 a = item.get("authority")
                 if isinstance(a, str) and a:
                     auth_list.append(a)
-                # multi-authority string "a;b" uncommon; skip
-    # schema components.providers[].authorities
+        return auth_list
+    # Fallback: schema components.providers[].authorities only when top-level empty
     comps = data.get("components")
     if isinstance(comps, dict):
         providers = comps.get("providers")
@@ -340,7 +350,6 @@ def extract_authorities() -> list[str]:
                         if isinstance(a, str) and a:
                             auth_list.append(a)
                 elif isinstance(aa, str) and aa:
-                    # android multi: "auth1;auth2"
                     for part in aa.split(";"):
                         part = part.strip()
                         if part:
