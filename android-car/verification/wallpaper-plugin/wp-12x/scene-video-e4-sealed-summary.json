@@ -1,0 +1,73 @@
+{
+  "EffectiveDone": false,
+  "checks": {
+    "blackFrameRejected": true,
+    "sceneDualFrames": true,
+    "sceneNonBlack": true,
+    "sceneNonSolid": true,
+    "singleSampleRejected": true,
+    "solidColorRejected": true,
+    "videoDualFrames": true,
+    "videoNonBlack": true,
+    "videoNonSolid": true
+  },
+  "deviceEvidenceClaimed": true,
+  "e4EvidenceClaimed": true,
+  "failClosed": {
+    "failures": [],
+    "ok": true
+  },
+  "generatedAt": "2026-08-07T08:35:36Z",
+  "inventorySealed": true,
+  "mpkgSha256": {
+    "scene": "76445281d40b3d1f7e4eb3e2172cc967966af3f322a57e60f1e328fee4dcefb7",
+    "video": "6c4cac1ff865c85cd0efcc6c9abbe1d1e177a61722d95875d9d453130616b77b"
+  },
+  "note": "desensitized; frames not committed; experimental embedded preview E4",
+  "observedUser": null,
+  "officialNotEmbeddedHost": null,
+  "packageName": "com.motif.wallpaperengine",
+  "pluginPid": 6115,
+  "samples": {
+    "scene": {
+      "analysisOk": null,
+      "frames": [
+        {
+          "height": 1080,
+          "sha256": "f026ee6ceb399c4993042052293976667b52b022bae68bd5c2ce64317f711e32",
+          "width": 1920
+        },
+        {
+          "height": 1080,
+          "sha256": "55a68a6e2a9a5e434b868ba5551394d46d43f411aa6db8af185d09dc4bf2501b",
+          "width": 1920
+        }
+      ],
+      "nonBlack": true,
+      "nonSolid": true
+    },
+    "video": {
+      "analysisOk": null,
+      "frames": [
+        {
+          "height": 1080,
+          "sha256": "b45356afb06e2a70b9a928c93667cbe17e036f9dcb13d0c78807a60b2c9abd81",
+          "width": 1920
+        },
+        {
+          "height": 1080,
+          "sha256": "13b3b87b8f07bca80772e30f3c4548ba006701e36c57178794d8fdd0618c03c3",
+          "width": 1920
+        }
+      ],
+      "nonBlack": true,
+      "nonSolid": true
+    }
+  },
+  "schemaVersion": "wp12e-scene-video-e4/v1",
+  "sealedFileSha256": "75987789758d7523ffed08f59fafcb60c464c247b81c107085d56e1dbdbbefd3",
+  "serial": "LD249H019625",
+  "surfacePresent": null,
+  "targetUser": null,
+  "taskId": "WP-12E"
+}
