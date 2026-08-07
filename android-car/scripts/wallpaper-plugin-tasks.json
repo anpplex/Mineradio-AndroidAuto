@@ -1757,6 +1757,122 @@
         "import/verify-imported-runtime scripts + manifest negative fixtures",
         "experimental progress 25% when verify-done DONE (not core weight)"
       ]
+    },
+    {
+      "taskId": "WP-12B",
+      "dependsOn": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07",
+        "WP-08",
+        "WP-09",
+        "WP-10A",
+        "WP-10B",
+        "WP-10C",
+        "WP-11A",
+        "WP-11B",
+        "WP-11C",
+        "WP-12A"
+      ],
+      "requiredEffectiveDone": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07",
+        "WP-08",
+        "WP-09",
+        "WP-10A",
+        "WP-10B",
+        "WP-10C",
+        "WP-11A",
+        "WP-11B",
+        "WP-11C",
+        "WP-12A"
+      ],
+      "phaseCommands": {
+        "RED": {
+          "commandId": "WP-12B-RED",
+          "argv": [
+            "true"
+          ]
+        },
+        "GREEN": {
+          "commandId": "WP-12B-GREEN",
+          "argv": [
+            "true"
+          ]
+        },
+        "REFACTOR": {
+          "commandId": "WP-12B-REFACTOR",
+          "argv": [
+            "true"
+          ]
+        },
+        "VERIFY": {
+          "commandId": "WP-12B-VERIFY",
+          "argv": [
+            "true"
+          ]
+        }
+      },
+      "expectedExit": {
+        "RED": 1,
+        "GREEN": 0,
+        "REFACTOR": 0,
+        "VERIFY": 0
+      },
+      "failureSignaturePolicy": {
+        "RED": {
+          "required": true,
+          "match": "stderr"
+        }
+      },
+      "scopeCheck": {
+        "repo": "wallpaper-engine-plugin",
+        "exactFiles": [
+          "runtime-import/native-libs.schema.json",
+          "scripts/import-native-libs.sh",
+          "scripts/verify-native-libs.sh",
+          "scripts/tests/test-native-libs.sh",
+          "scripts/tests/fixtures/native-missing-needed.json",
+          "scripts/tests/fixtures/native-wrong-abi.json"
+        ],
+        "product": "Wallpaper Engine",
+        "path": "runtime-import/",
+        "experimental": true,
+        "worktrees": {
+          "plugin": "/Users/anpple/Codex/WallpaperEngine/.worktrees/mineradio-plugin-embedded-runtime",
+          "mineradio": "/Users/anpple/Codex/Mineradio/.worktrees/wallpaper-plugin-experimental"
+        }
+      },
+      "evidenceLevel": "E2",
+      "weight": 20,
+      "product": "Wallpaper Engine",
+      "path": "experimental",
+      "experimental": true,
+      "requiredEffectiveGate": false,
+      "deviceEvidence": false,
+      "inputs": [
+        "WP-12A EffectiveDone / runtime inventory seal",
+        "WP-12 bootstrap receipt BOOTSTRAP_PUSHED",
+        "official WE APK/splits arm64 native libs (local only)"
+      ],
+      "outputs": [
+        "runtime-import/native-libs.schema.json ABI/JNI/DT_NEEDED closure seal",
+        "import/verify-native-libs scripts + native negative fixtures",
+        "experimental progress +20% when verify-done DONE (not core weight; not forge EffectiveDone)"
+      ]
     }
   ]
 }
