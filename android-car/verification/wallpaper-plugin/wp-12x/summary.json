@@ -22,8 +22,19 @@
     "BOOTSTRAP_PUSHED": true,
     "BOOTSTRAP_STATE": "BOOTSTRAP_PUSHED"
   },
-  "pluginMerges": [8, 9, 10, 11],
-  "mineradioMerges": [40, 41, 42, 43, 44],
+  "pluginMerges": [
+    8,
+    9,
+    10,
+    11
+  ],
+  "mineradioMerges": [
+    40,
+    41,
+    42,
+    43,
+    44
+  ],
   "legs": {
     "pluginTip": "b9bb3b2e75a6d6259ca02608b0744d688f739a74",
     "mineradioEvidenceSha": "22829e876c586072fc038fdc7e4f450610680427",
@@ -42,6 +53,31 @@
     "verify-done all hard gates PASS; EffectiveDone=true derived by verify-done only.",
     "WP-12A experimental weight 25% counts; WP-12B-E remain NOT_STARTED.",
     "Core remains 100% / E7; WP-12 does not fold into core completion.",
-    "No force-push."
-  ]
+    "No force-push.",
+    "WP-12B native inventory staged on allowlist (desensitized arm64Libs); state MINERADIO_EVIDENCE_STAGED.",
+    "Experimental still 25% until WP-12B DONE/verify-done; NO 20% WP-12B progress claim.",
+    "WP-12B EffectiveDone=false; weightStillZero=true; failClosedOk=true."
+  ],
+  "native": {
+    "schemaVersion": "wp12b-native-libs/v1",
+    "taskId": "WP-12B",
+    "state": "MINERADIO_EVIDENCE_STAGED",
+    "EffectiveDone": false,
+    "weightStillZero": true,
+    "apkSha256": "6982c82745444c5f2eef5a3d8c89ad807360bb5849a133548a6b25d18f4c4cb0",
+    "abiCounts": {
+      "arm64-v8a": 1,
+      "armeabi-v7a": 1
+    },
+    "arm64LibCount": 1,
+    "arm64Libs": [
+      {
+        "name": "libscenejni.so",
+        "sha256": "908bf18eb4360f1f629eb132f425bb433ed7b96fef2570919a148f9154c013a9",
+        "sizeBytes": 41866072
+      }
+    ],
+    "failClosedOk": true,
+    "finalManifestSha256": "4874635ddbb32bd83feff33a0f3e38892962628fcd1cfb54b89b9ae41a92a564"
+  }
 }
