@@ -4,10 +4,13 @@
 Scaffold only: defines the pre-verify-done proof gates for experimental WP-12A.
 This tool:
 
-  - never prints EffectiveDone=true (verify-done wiring point is future work)
+  - never prints EffectiveDone=true (DONE only via plugin wp12-transaction.py
+    verify-done — see futureVerifyDoneHook; not implemented here)
   - reports readyForEffectiveDone only when every required gate is PASS
   - never force-pushes, never mutates origin, never forges BOOTSTRAP_PUSHED
   - accepts merged dual/multi-PR identity (repeatable --plugin-pr / merge SHAs)
+  - C7 PASS on official sealed-summary / final-manifest when
+    inventorySealed=true and EffectiveDone=false (task ED still false overall)
 
 CLI:
   python3 evaluate-wp12a.py --help
@@ -16,7 +19,8 @@ CLI:
       --plugin-pr 8 --plugin-pr 9 --mineradio-pr 40 \\
       --plugin-merge-sha af0e757de91aa1cdd5d4ebd4cd21c8fa4533ba5d \\
       --plugin-merge-sha 4255a9f16141818ba0beeab9bde1eddb0f862c31 \\
-      --mineradio-merge-sha d0a5c3de211542cf50ef9b678b575452541b8646
+      --mineradio-merge-sha d0a5c3de211542cf50ef9b678b575452541b8646 \\
+      --sealed-evidence .../wp-12a-evidence-seal-official/sealed-summary.json
 
 Exit codes:
   0  evaluation report produced successfully (ok:true), even when
@@ -32,7 +36,9 @@ JSON contract (ok report):
     "EffectiveDone": false,
     "checks": [ { "id", "name", "status": "PASS|FAIL|SKIP", ... } ],
     "blockers": [ ... ],
-    "notes": [ ... ]
+    "notes": [ ... ],
+    "futureVerifyDoneHook": { "module": "wp12-transaction.py",
+                               "command": "verify-done", ... }
   }
 """
 
@@ -72,6 +78,39 @@ DEFAULT_INVENTORY = Path(
     "/Users/anpple/Codex/Mineradio/android-car/verification/wallpaper-plugin"
     "/runs/wp-12a-inventory-official-v1/inventory.json"
 )
+# Official sealed summary (desensitized). Prefer when present for C7 PASS.
+DEFAULT_SEALED_SUMMARY = Path(
+    "/Users/anpple/Codex/Mineradio/android-car/verification/wallpaper-plugin"
+    "/runs/wp-12a-evidence-seal-official/sealed-summary.json"
+)
+# Sibling final-manifest (lands after dual-sync seal publish); prefer second.
+DEFAULT_FINAL_MANIFEST = Path(
+    "/Users/anpple/Codex/Mineradio/android-car/verification/wallpaper-plugin"
+    "/wp-12x/final-manifest.json"
+)
+DEFAULT_SEALED_CANDIDATES: tuple[Path, ...] = (
+    DEFAULT_SEALED_SUMMARY,
+    DEFAULT_FINAL_MANIFEST,
+)
+# Future DONE surface lives on plugin transaction runner (not this evaluate module).
+FUTURE_VERIFY_DONE_HOOK = {
+    "module": "wp12-transaction.py",
+    "command": "verify-done",
+    "pluginPath": (
+        "scripts/wp12-transaction.py verify-done"
+        "  # plugin worktree: WallpaperEngine mineradio-plugin-embedded-runtime"
+    ),
+    "wallpaperTaskWiring": (
+        "optional future: wallpaper-task.py verify-done --task WP-12A may call "
+        "plugin wp12-transaction.py verify-done after evaluate readyForEffectiveDone; "
+        "only verify-done may set task EffectiveDone=true"
+    ),
+    "evaluateRole": (
+        "evaluate-wp12a.py cmd_check is a readiness probe only; "
+        "EffectiveDoneAllowedHere=false forever on this surface"
+    ),
+    "EffectiveDoneAllowedHere": False,
+}
 DEFAULT_PLUGIN_REPO = "anpplex/plugin-WallpaperEngine"
 DEFAULT_MINERADIO_REPO = "anpplex/Mineradio-AndroidAuto"
 DEFAULT_PLUGIN_BASE_REF = "origin/main"
@@ -870,23 +909,75 @@ def gate_dual_prs(
     )
 
 
-def gate_sealed_evidence(sealed_path: Path | None) -> dict[str, Any]:
-    """Optional sealed evidence path. SKIP if not provided (does not block ready).
+def resolve_sealed_evidence_path(
+    explicit: str | Path | None,
+    *,
+    require_sealed: bool,
+    prefer_defaults: bool = True,
+) -> tuple[Path | None, str]:
+    """Resolve sealed summary / final-manifest path for C7.
 
-    When provided, require readable JSON/dir with fail-closed seal markers.
-    readyForEffectiveDone does not require this gate unless the path is given
-    (then FAIL blocks). Scaffold never promotes EffectiveDone regardless.
+    Preference order when --sealed-evidence omitted:
+      1. runs/wp-12a-evidence-seal-official/sealed-summary.json
+      2. android-car/.../wp-12x/final-manifest.json
+
+    Returns (path_or_None, resolution_note). Missing → None (caller SKIPs unless
+    require_sealed, which still returns None so gate can FAIL).
     """
-    name = "sealed_evidence_optional"
+    if explicit is not None and str(explicit).strip():
+        return Path(explicit), "explicit --sealed-evidence"
+    if not prefer_defaults:
+        return None, "defaults_disabled"
+    for candidate in DEFAULT_SEALED_CANDIDATES:
+        if candidate.is_file():
+            return candidate, f"default_present:{candidate.name}"
+    if require_sealed:
+        return None, "require_sealed_but_missing"
+    return None, "defaults_absent"
+
+
+def gate_sealed_evidence(
+    sealed_path: Path | None,
+    *,
+    require_sealed: bool = False,
+    resolution: str | None = None,
+) -> dict[str, Any]:
+    """C7 sealed evidence / official inventory seal.
+
+    SKIP when no path (and not --require-sealed) — does not block ready.
+    PASS when official sealed-summary / final-manifest shows:
+      - inventorySealed=true
+      - EffectiveDone=false (task ED must stay false until verify-done)
+    Also accepts classic seal markers (sealed/treeFrozen/status=SEALED).
+    FAIL when path given (or required) but unreadable / not sealed / forges ED.
+    Scaffold never promotes EffectiveDone regardless of C7.
+    """
+    name = "sealed_evidence_inventory_seal"
     if sealed_path is None:
+        if require_sealed:
+            return check_result(
+                "C7",
+                name,
+                "FAIL",
+                reason="SEALED_EVIDENCE_REQUIRED_MISSING",
+                resolution=resolution,
+                preferredDefaults=[str(p) for p in DEFAULT_SEALED_CANDIDATES],
+                note=(
+                    "--require-sealed set but no sealed-summary.json / "
+                    "final-manifest.json found; C7 FAIL blocks readyForEffectiveDone"
+                ),
+            )
         return check_result(
             "C7",
             name,
             "SKIP",
             reason="SEALED_EVIDENCE_NOT_PROVIDED",
+            resolution=resolution,
+            preferredDefaults=[str(p) for p in DEFAULT_SEALED_CANDIDATES],
             note=(
-                "optional --sealed-evidence PATH; when omitted this gate is SKIP "
-                "and does not block readyForEffectiveDone"
+                "optional --sealed-evidence PATH (or default sealed-summary / "
+                "final-manifest when present); omitted → SKIP, does not block "
+                "readyForEffectiveDone unless --require-sealed"
             ),
         )
     path = Path(sealed_path)
@@ -894,10 +985,13 @@ def gate_sealed_evidence(sealed_path: Path | None) -> dict[str, Any]:
     used_path = path
     if path.is_dir():
         candidates = [
+            path / "sealed-summary.json",
+            path / "final-manifest.json",
             path / "seal.json",
             path / "SEAL.json",
             path / "evidence.json",
             path / "SUMMARY.json",
+            path / "seal-manifest.json",
         ]
         for c in candidates:
             data = load_json(c)
@@ -911,8 +1005,19 @@ def gate_sealed_evidence(sealed_path: Path | None) -> dict[str, Any]:
                 "FAIL",
                 reason="SEALED_EVIDENCE_DIR_NO_SEAL_JSON",
                 path=str(path),
+                resolution=resolution,
+                lookedFor=[str(c) for c in candidates],
             )
     else:
+        if not path.is_file():
+            return check_result(
+                "C7",
+                name,
+                "FAIL",
+                reason="SEALED_EVIDENCE_MISSING_OR_UNREADABLE",
+                path=str(path),
+                resolution=resolution,
+            )
         data = load_json(path)
         if data is None:
             return check_result(
@@ -921,11 +1026,41 @@ def gate_sealed_evidence(sealed_path: Path | None) -> dict[str, Any]:
                 "FAIL",
                 reason="SEALED_EVIDENCE_MISSING_OR_UNREADABLE",
                 path=str(path),
+                resolution=resolution,
             )
 
-    # Accept common seal markers; fail-closed if none present.
-    sealed = False
     markers_found: list[str] = []
+    reasons: list[str] = []
+    inventory_sealed = data.get("inventorySealed")
+    effective_done = data.get("EffectiveDone")
+    txn_effective_done = data.get("txnEffectiveDone")
+    fail_closed = data.get("failClosed")
+    schema = data.get("schema") or data.get("schemaVersion")
+    txn_state = data.get("txnState") or data.get("state")
+
+    # Fail-closed: seal surface must never claim task EffectiveDone=true.
+    forges_effective_done = effective_done is True or txn_effective_done is True
+    if effective_done is True:
+        markers_found.append("EffectiveDone=true")
+        reasons.append("SEALED_FORGES_EFFECTIVE_DONE")
+    else:
+        markers_found.append(f"EffectiveDone={effective_done!r}")
+    if txn_effective_done is True:
+        markers_found.append("txnEffectiveDone=true")
+        if "TXN_EFFECTIVE_DONE_TRUE" not in reasons:
+            reasons.append("TXN_EFFECTIVE_DONE_TRUE")
+    elif "txnEffectiveDone" in data:
+        markers_found.append(f"txnEffectiveDone={txn_effective_done!r}")
+
+    # Official seal contract: inventorySealed=true with task EffectiveDone=false.
+    official_ok = False
+    if inventory_sealed is True:
+        markers_found.append("inventorySealed=true")
+        if not forges_effective_done:
+            official_ok = True
+
+    # Classic / generic seal markers (backward compatible).
+    classic_ok = False
     for key, expect in (
         ("sealed", True),
         ("SEALED", True),
@@ -933,27 +1068,59 @@ def gate_sealed_evidence(sealed_path: Path | None) -> dict[str, Any]:
         ("TREE_FROZEN", True),
         ("status", "SEALED"),
         ("sealState", "SEALED"),
+        ("txnState", "EVIDENCE_SEALED"),
+        ("state", "EVIDENCE_SEALED"),
     ):
         if key not in data:
             continue
-        markers_found.append(key)
+        markers_found.append(f"{key}={data.get(key)!r}")
         val = data.get(key)
         if expect is True and val is True:
-            sealed = True
-        elif isinstance(expect, str) and str(val).upper() == expect:
-            sealed = True
-    if data.get("failClosed") is False:
-        sealed = False
+            classic_ok = True
+        elif isinstance(expect, str) and str(val).upper() == str(expect).upper():
+            classic_ok = True
+    if classic_ok and forges_effective_done:
+        classic_ok = False
+
+    # failClosed: bool false fails; dict with ok=false fails; ok=true is soft evidence.
+    if fail_closed is False:
+        reasons.append("FAILCLOSED_FALSE")
         markers_found.append("failClosed=false")
-    ok = sealed
+        official_ok = False
+        classic_ok = False
+    elif isinstance(fail_closed, dict):
+        markers_found.append(f"failClosed.ok={fail_closed.get('ok')!r}")
+        if fail_closed.get("ok") is False:
+            reasons.append("FAILCLOSED_NOT_OK")
+            official_ok = False
+            classic_ok = False
+
+    sealed = (official_ok or classic_ok) and not forges_effective_done
+    if not sealed and not reasons:
+        reasons.append("SEALED_EVIDENCE_NOT_MARKED_SEALED")
+
+    ok = sealed and not reasons
     return check_result(
         "C7",
         name,
         "PASS" if ok else "FAIL",
-        reason=None if ok else "SEALED_EVIDENCE_NOT_MARKED_SEALED",
+        reason=None if ok else ",".join(reasons),
         path=str(used_path),
+        resolution=resolution,
         markersFound=markers_found,
-        note="optional sealed evidence; FAIL only blocks when path was provided",
+        inventorySealed=inventory_sealed,
+        EffectiveDone=effective_done if effective_done is not None else False,
+        txnEffectiveDone=txn_effective_done,
+        txnState=txn_state,
+        schema=schema,
+        failClosed=fail_closed,
+        note=(
+            "C7 PASS accepts official sealed-summary/final-manifest with "
+            "inventorySealed=true and EffectiveDone=false (task ED still false "
+            "until plugin wp12-transaction.py verify-done). "
+            "FAIL blocks readyForEffectiveDone when path provided or --require-sealed."
+        ),
+        futureVerifyDoneHook=FUTURE_VERIFY_DONE_HOOK,
     )
 
 
@@ -966,6 +1133,8 @@ def required_for_ready(check: Mapping[str, Any]) -> bool:
     """C4 (optional RED) and C7 (optional sealed evidence) may SKIP without
     blocking readiness. FAIL on optional gates still blocks.
     Required PASS: C1, C2, C3, C5, C6.
+    When C7 PASSes (official seal present), readiness may still be true
+    (C1–C3, C5–C7 green); task EffectiveDone remains false until verify-done.
     """
     return check.get("id") not in {"C4", "C7"}
 
@@ -1042,15 +1211,24 @@ def cmd_check(args: argparse.Namespace) -> int:
         mineradio_base_ref=args.mineradio_base_ref or DEFAULT_MINERADIO_BASE_REF,
         bootstrap_ledger=ledger_path,
     )
-    sealed = Path(args.sealed_evidence) if args.sealed_evidence else None
-    c7 = gate_sealed_evidence(sealed)
+    require_sealed = bool(getattr(args, "require_sealed", False))
+    sealed, sealed_resolution = resolve_sealed_evidence_path(
+        args.sealed_evidence,
+        require_sealed=require_sealed,
+        prefer_defaults=not bool(getattr(args, "no_sealed_evidence", False)),
+    )
+    c7 = gate_sealed_evidence(
+        sealed,
+        require_sealed=require_sealed,
+        resolution=sealed_resolution,
+    )
 
     checks = [c1, c2, c3, c4, c5, c6, c7]
     ready, blockers = compute_ready(checks)
 
-    # Future wiring point: wallpaper-task.py verify-done may call evaluate_wp12a
-    # once BOOTSTRAP_PUSHED + dual PR merge + inventory seal + RED proof are green.
-    # This scaffold never promotes EffectiveDone.
+    # Future wiring: plugin wp12-transaction.py verify-done (not this module) may
+    # promote task EffectiveDone only after evaluate readyForEffectiveDone is true
+    # and dual-sync proofs land. This surface never sets EffectiveDone=true.
     return emit_report(
         command="check",
         readyForEffectiveDone=ready,
@@ -1074,6 +1252,8 @@ def cmd_check(args: argparse.Namespace) -> int:
             "pluginBaseRef": args.plugin_base_ref or DEFAULT_PLUGIN_BASE_REF,
             "mineradioBaseRef": args.mineradio_base_ref or DEFAULT_MINERADIO_BASE_REF,
             "sealedEvidence": str(sealed) if sealed else None,
+            "sealedEvidenceResolution": sealed_resolution,
+            "requireSealed": require_sealed,
             "runRed": bool(args.run_red),
         },
         proofChecklist=[
@@ -1083,27 +1263,24 @@ def cmd_check(args: argparse.Namespace) -> int:
             "C4 phase harness RED non-zero (optional local run via --run-red)",
             "C5 BOOTSTRAP_PUSHED=true with dual origin readback",
             "C6 dual/multi PRs merged (gh MERGED) or merge SHAs ancestor of origin bases",
-            "C7 optional sealed evidence path (SKIP if omitted; FAIL blocks when given)",
+            "C7 sealed evidence: inventorySealed=true + EffectiveDone=false "
+            "(SKIP if absent; FAIL blocks when given/--require-sealed)",
         ],
         notes=[
             "Scaffold evaluate-wp12a: EffectiveDone is always false on this surface.",
-            "readyForEffectiveDone is true only when required gates C1–C3,C5–C6 are PASS "
-            "(and C4/C7 are not FAIL).",
+            "readyForEffectiveDone is true when required gates C1–C3,C5–C6 are PASS "
+            "(and C4/C7 are not FAIL). C7 PASS (official seal) is compatible with "
+            "readyForEffectiveDone=true; task EffectiveDone stays false until verify-done.",
             "Post-merge: use --plugin-pr 8 --plugin-pr 9 --mineradio-pr 40 "
             "(and optional --plugin-merge-sha / --mineradio-merge-sha pins).",
-            "Future verify-done may promote EffectiveDone only after this checklist is green "
-            "plus sealed evidence transaction — not implemented here.",
+            "C7 prefers runs/wp-12a-evidence-seal-official/sealed-summary.json or "
+            "wp-12x/final-manifest.json when present; --sealed-evidence overrides; "
+            "missing → SKIP unless --require-sealed.",
+            "Future DONE: plugin scripts/wp12-transaction.py verify-done only "
+            "(documented in futureVerifyDoneHook) — not implemented on evaluate.",
             "No force-push. No forged BOOTSTRAP_PUSHED / EffectiveDone.",
         ],
-        futureVerifyDoneHook={
-            "module": "evaluate-wp12a.py",
-            "function": "cmd_check",
-            "wallpaperTaskWiring": (
-                "optional future: wallpaper-task.py verify-done --task WP-12A "
-                "delegates readiness probe here; only verify-done may set EffectiveDone"
-            ),
-            "EffectiveDoneAllowedHere": False,
-        },
+        futureVerifyDoneHook=FUTURE_VERIFY_DONE_HOOK,
     )
 
 
@@ -1198,8 +1375,26 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--sealed-evidence",
         default=None,
         help=(
-            "Optional sealed evidence JSON/dir. When provided, C7 must PASS; "
-            "when omitted, C7=SKIP (does not block readyForEffectiveDone)"
+            "Sealed evidence JSON/dir (official sealed-summary.json or "
+            "final-manifest.json). C7 PASS needs inventorySealed=true and "
+            "EffectiveDone=false. When omitted, prefer default sealed-summary / "
+            "final-manifest if present; else C7=SKIP (does not block ready)"
+        ),
+    )
+    parser.add_argument(
+        "--require-sealed",
+        action="store_true",
+        help=(
+            "Require C7 sealed evidence: FAIL (block ready) when no sealed-summary "
+            "/ final-manifest is available or seal markers are invalid"
+        ),
+    )
+    parser.add_argument(
+        "--no-sealed-evidence",
+        action="store_true",
+        help=(
+            "Do not auto-pick default sealed-summary/final-manifest; C7=SKIP "
+            "unless --sealed-evidence is explicit (still FAIL under --require-sealed)"
         ),
     )
     parser.add_argument(
