@@ -1,0 +1,45 @@
+{
+  "schema": "wp12x-mineradio-evidence-summary/v1",
+  "taskId": "WP-12C",
+  "status": "MINERADIO_EVIDENCE_STAGED",
+  "evidenceStatus": "EVIDENCE_SEALED",
+  "scope": "origin",
+  "weightStillZero": true,
+  "EffectiveDone": false,
+  "inventorySealed": true,
+  "failClosedOk": true,
+  "mode": "adapter-contract",
+  "inventorySchemaVersion": "wp12c-adapter-contract/v1",
+  "packageName": "com.motif.wallpaperengine",
+  "officialEnginePackage": "io.wallpaperengine.weclient",
+  "embeddedRuntimeDefault": false,
+  "checks": {
+    "unknownMethodRejected": true,
+    "appendedArgsRejected": true,
+    "fallbackMasqueradeRejected": true,
+    "defaultUsesOfficial": true
+  },
+  "bootstrap": {
+    "BOOTSTRAP_PUSHED": true,
+    "BOOTSTRAP_STATE": "BOOTSTRAP_PUSHED"
+  },
+  "pluginMerges": [
+    17,
+    18,
+    20
+  ],
+  "mineradioMerges": [
+    51
+  ],
+  "legs": {
+    "pluginTip": "f9e0eff15898ba02b061924857507f23312c90b6",
+    "adapterContractSealedSummarySha256": "d90c7c87aa0975314cbca9603cbfc11a6fbc63678c934d87e5b57dd4cec77ade"
+  },
+  "experimentalProgress": "45%",
+  "notes": [
+    "Staging only; EffectiveDone=false until dual-repo verify-done.",
+    "WP-12C experimental weight 20% not claimed yet; total experimental stays 45%.",
+    "Core remains 100% / E7; WP-12 does not fold into core completion.",
+    "No force-push."
+  ]
+}

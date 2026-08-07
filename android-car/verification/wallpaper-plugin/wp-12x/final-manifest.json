@@ -129,7 +129,9 @@
     "Source: runs/wp-12a-inventory-official-v1 + runs/wp-12a-evidence-seal-official (desensitized).",
     "native: WP-12B desensitized arm64 inventory from official APK + import-native-libs (wp12b-native-libs/v1).",
     "No .so blobs; hashes + counts only. WP-12B EffectiveDone remains false until dual-repo verify-done.",
-    "Source: runs/wp-12b-native-inventory + re-run import-native-libs on wallpaper-engine.apk (sha match)."
+    "Source: runs/wp-12b-native-inventory + re-run import-native-libs on wallpaper-engine.apk (sha match).",
+    "adapter-contract: WP-12C desensitized EmbeddedEngineAdapter contract from harness (wp12c-adapter-contract/v1).",
+    "WP-12C EffectiveDone remains false until dual-repo verify-done; experimental stays 45%."
   ],
   "native": {
     "schemaVersion": "wp12b-native-libs/v1",
@@ -156,5 +158,36 @@
       }
     ],
     "failClosedOk": true
+  },
+  "adapterContract": {
+    "schemaVersion": "wp12c-adapter-contract/v1",
+    "taskId": "WP-12C",
+    "state": "MINERADIO_EVIDENCE_STAGED",
+    "EffectiveDone": false,
+    "weightStillZero": true,
+    "packageName": "com.motif.wallpaperengine",
+    "officialEnginePackage": "io.wallpaperengine.weclient",
+    "embeddedRuntimeDefault": false,
+    "inventorySealed": true,
+    "failClosedOk": true,
+    "checks": {
+      "unknownMethodRejected": true,
+      "appendedArgsRejected": true,
+      "fallbackMasqueradeRejected": true,
+      "defaultUsesOfficial": true
+    },
+    "sourceSeal": {
+      "rawSha256": "33b7afca60bdcb04e020e1e8991eb14b0a51b7461341dfaa4e5660d57b3cb1ea",
+      "sealedFileSha256": "45f03f2ce1539eea2e2507e8ce81a1d76dba01b4aba46b16c7a415b9c73bb43a",
+      "sealedManifestSha256": "3cc89b2b6d513baf49917a9f275c9c9e09e388ffd7f04251b2db91004666355c",
+      "runUuid": "5630d9eb-48d7-4ccc-a807-e215031a193a",
+      "transactionId": "1e0a51a2-1903-4678-a73a-ef97269ced09"
+    },
+    "pluginMerges": [
+      17,
+      18,
+      20
+    ],
+    "sealedSummarySha256": "d90c7c87aa0975314cbca9603cbfc11a6fbc63678c934d87e5b57dd4cec77ade"
   }
 }

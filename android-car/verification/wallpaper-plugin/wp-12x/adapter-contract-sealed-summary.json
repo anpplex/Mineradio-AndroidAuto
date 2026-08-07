@@ -1,0 +1,63 @@
+{
+  "schema": "wp12x-adapter-contract-sealed-summary/v1",
+  "role": "mineradio-wp12x-adapter-contract-sealed-summary",
+  "taskId": "WP-12C",
+  "mode": "adapter-contract",
+  "inventorySchemaVersion": "wp12c-adapter-contract/v1",
+  "inventorySealed": true,
+  "EffectiveDone": false,
+  "packageName": "com.motif.wallpaperengine",
+  "officialEnginePackage": "io.wallpaperengine.weclient",
+  "embeddedRuntimeDefault": false,
+  "failClosed": {
+    "ok": true,
+    "failureCount": 0
+  },
+  "checks": {
+    "unknownMethodRejected": true,
+    "appendedArgsRejected": true,
+    "fallbackMasqueradeRejected": true,
+    "defaultUsesOfficial": true
+  },
+  "harness": {
+    "case": "adapter-positive",
+    "exitCode": 0,
+    "source": "scripts/verify-embedded-adapter.sh"
+  },
+  "pluginMerges": [
+    {
+      "pr": 17,
+      "repo": "anpplex/plugin-WallpaperEngine",
+      "mergeSha": "0ee5ab942d0ba321590bc06fbdd7c383290ffaf0",
+      "title": "EmbeddedEngineAdapter"
+    },
+    {
+      "pr": 18,
+      "repo": "anpplex/plugin-WallpaperEngine",
+      "mergeSha": "bf820a3568222f13d30b5e503d47b33625224332",
+      "title": "host harness"
+    },
+    {
+      "pr": 20,
+      "repo": "anpplex/plugin-WallpaperEngine",
+      "mergeSha": "f9e0eff15898ba02b061924857507f23312c90b6",
+      "title": "txn phases + adapter-contract collect/seal"
+    }
+  ],
+  "sourceSeal": {
+    "runLabel": "wp-12c-adapter-contract-harness",
+    "runUuid": "5630d9eb-48d7-4ccc-a807-e215031a193a",
+    "transactionId": "1e0a51a2-1903-4678-a73a-ef97269ced09",
+    "attemptNo": 1,
+    "inventorySchemaVersion": "wp12c-adapter-contract/v1",
+    "rawSha256": "33b7afca60bdcb04e020e1e8991eb14b0a51b7461341dfaa4e5660d57b3cb1ea",
+    "sealedManifestSha256": "3cc89b2b6d513baf49917a9f275c9c9e09e388ffd7f04251b2db91004666355c",
+    "sealedFileSha256": "45f03f2ce1539eea2e2507e8ce81a1d76dba01b4aba46b16c7a415b9c73bb43a"
+  },
+  "notes": [
+    "Desensitized adapter-contract sealed summary for Mineradio allowlist.",
+    "inventorySealed=true is inventory completeness only; EffectiveDone remains false until dual-repo verify-done.",
+    "No APK/DEX/SO blobs; no force-push; no progress % mutation.",
+    "Source: plugin harness adapter-positive + seal-wp12-evidence (wp12c-adapter-contract/v1)."
+  ]
+}
