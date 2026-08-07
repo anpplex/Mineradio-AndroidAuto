@@ -1,0 +1,32 @@
+{
+  "schema": "wp12x-mineradio-evidence-summary/v1",
+  "taskId": "WP-12A",
+  "status": "VERIFIED_LOCAL",
+  "evidenceStatus": "EVIDENCE_SEALED",
+  "scope": "local",
+  "weightStillZero": true,
+  "EffectiveDone": false,
+  "inventorySealed": true,
+  "failClosedOk": true,
+  "packageName": "io.wallpaperengine.weclient",
+  "apkSha256": "6982c82745444c5f2eef5a3d8c89ad807360bb5849a133548a6b25d18f4c4cb0",
+  "inventorySchemaVersion": "wp12a-manifest-map/v1",
+  "counts": {
+    "dex": 2,
+    "authorities": 2,
+    "permissionsDeclared": 1,
+    "permissionsUses": 15,
+    "resourceEntries": 5838
+  },
+  "bootstrap": {
+    "BOOTSTRAP_PUSHED": true,
+    "BOOTSTRAP_STATE": "BOOTSTRAP_PUSHED"
+  },
+  "pluginMerges": [8, 9, 10],
+  "mineradioMerges": [40, 41, 42],
+  "notes": [
+    "Mineradio-side allowlist staging of official sealed inventory (desensitized).",
+    "Local VERIFIED_LOCAL / EVIDENCE_SEALED only; experimental weight remains zero until verify-done.",
+    "No EffectiveDone claim. No force-push."
+  ]
+}
