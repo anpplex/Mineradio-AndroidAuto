@@ -1,114 +1,50 @@
 {
-  "schema": "wp12x-mineradio-evidence-receipt/v1",
-  "taskId": "WP-12B",
-  "transactionId": "19b1ecff-0da7-4817-9bee-037859358dd0",
-  "runUuid": "25ff8d37-d4e5-40e5-b91d-fd751f253200",
-  "state": "MINERADIO_EVIDENCE_STAGED",
   "EffectiveDone": false,
-  "inventorySealed": true,
-  "weightStillZero": true,
-  "dualClosureComplete": false,
-  "recordedAt": "2026-08-07T05:37:49Z",
   "apkSha256": "6982c82745444c5f2eef5a3d8c89ad807360bb5849a133548a6b25d18f4c4cb0",
-  "packageName": "io.wallpaperengine.weclient",
-  "inventorySchemaVersion": "wp12b-native-libs/v1",
-  "desensitizedFinalManifest": {
-    "path": "android-car/verification/wallpaper-plugin/wp-12x/final-manifest.json",
-    "sha256": "4874635ddbb32bd83feff33a0f3e38892962628fcd1cfb54b89b9ae41a92a564"
+  "bootstrap": {
+    "BOOTSTRAP_PUSHED": true,
+    "BOOTSTRAP_STATE": "BOOTSTRAP_PUSHED",
+    "source": "android-car/verification/wallpaper-plugin/runs/wp-12a-bootstrap-local.json"
   },
-  "native": {
-    "schemaVersion": "wp12b-native-libs/v1",
-    "apkSha256": "6982c82745444c5f2eef5a3d8c89ad807360bb5849a133548a6b25d18f4c4cb0",
-    "abiCounts": {
-      "arm64-v8a": 1,
-      "armeabi-v7a": 1
-    },
-    "arm64Libs": [
-      {
-        "name": "libscenejni.so",
-        "sha256": "908bf18eb4360f1f629eb132f425bb433ed7b96fef2570919a148f9154c013a9",
-        "sizeBytes": 41866072,
-        "soname": "libscenejni.so",
-        "needed": [
-          "libandroid.so",
-          "liblog.so",
-          "libGLESv3.so",
-          "libEGL.so",
-          "libc.so",
-          "libm.so",
-          "libdl.so"
-        ]
-      }
-    ],
-    "failClosedOk": true
+  "desensitizedNativeSealedSummary": {
+    "path": "android-car/verification/wallpaper-plugin/wp-12x/native-sealed-summary.json",
+    "sha256": "4e2244e9f4ee0b6c8d454cf2135344ed7bdd695915cdf9a41087a3c74ad5c1b4"
   },
-  "sourceInventory": {
-    "runLabel": "wp-12b-native-inventory",
-    "officialInventoryJsonSha256": "b9773d2af852eed00e4c743c297549d973e2eca72aa20453158051cb953c4a90",
-    "officialInventorySummarySha256": "1391066321c3821590a47cc5bf0235701801beb94a9858031fa2e1989281512b",
-    "importNativeLibsJsonSha256": "c49d77d4bef84afe1d74e6721e7c72c3fb4211d0d897070268db022e2c48e205",
-    "officialApkSha256": "6982c82745444c5f2eef5a3d8c89ad807360bb5849a133548a6b25d18f4c4cb0",
-    "note": "Hashes match between runs/wp-12b-native-inventory and re-run import-native-libs on official APK."
-  },
+  "dualClosureComplete": false,
   "failClosed": {
-    "ok": true,
     "failureCount": 0,
-    "EMPTY_NATIVE": false,
-    "MISSING_NEEDED": false,
-    "WRONG_ABI": false,
-    "DUPLICATE_SONAME": false
+    "ok": true
   },
-  "originTips": {
-    "source": "git-ls-remote",
-    "capturedAt": "2026-08-07T05:37:49Z",
-    "plugin": {
-      "remote": "origin",
-      "ref": "refs/heads/main",
-      "sha": "09641e04196a33d8f13ba8c77e326b2d61901047",
-      "repo": "anpplex/plugin-WallpaperEngine"
-    },
-    "mineradio": {
-      "remote": "origin",
-      "ref": "refs/heads/huawei-android12-car",
-      "sha": "dd47cb22ecc5df73d101eff76eeaa559b18d872f",
-      "repo": "anpplex/Mineradio-AndroidAuto"
-    }
-  },
-  "pluginMerges": [
-    {
-      "pr": 12,
-      "mergeSha": "851f9dd6b6943420e55faf1ec970472517b2727a"
-    },
-    {
-      "pr": 13,
-      "mergeSha": "7aca791c547794cde0b833668f4c4480594c6d9f"
-    },
-    {
-      "pr": 14,
-      "mergeSha": "09641e04196a33d8f13ba8c77e326b2d61901047"
-    }
-  ],
+  "inventorySchemaVersion": "wp12b-native-libs/v1",
+  "inventorySealed": true,
   "mineradioMerges": [
-    {
-      "pr": 46,
-      "mergeSha": "3117bacd80278ce3315c9d38626d3eb67fa4011a"
-    },
-    {
-      "pr": 47,
-      "mergeSha": "dd47cb22ecc5df73d101eff76eeaa559b18d872f"
-    }
+    46,
+    47
   ],
-  "allowlistPaths": [
-    "android-car/verification/wallpaper-plugin/wp-12x/final-manifest.json",
-    "android-car/verification/wallpaper-plugin/wp-12x/summary.json",
-    "android-car/verification/wallpaper-plugin/wp-12x/receipts/wp-12b.json"
-  ],
-  "experimentalProgress": "25%",
+  "mode": "native-closure",
   "notes": [
-    "Mineradio-side allowlist staging of WP-12B native inventory (desensitized).",
-    "state=MINERADIO_EVIDENCE_STAGED; EffectiveDone=false; weightStillZero=true.",
-    "Experimental progress remains 25% (WP-12A only); NO WP-12B 20% progress claim.",
-    "arm64 libscenejni.so sha256=908bf18eb4360f1f629eb132f425bb433ed7b96fef2570919a148f9154c013a9; failClosedOk=true; abiCounts arm64=1 armeabi-v7a=1.",
-    "No force-push. No .so/APK blobs."
-  ]
+    "Mineradio-side WP-12B native-closure evidence staging only.",
+    "EffectiveDone=false until dual-repo verify-done.",
+    "weightStillZero=true; experimental progress % not advanced here.",
+    "No force-push; no APK/SO blobs."
+  ],
+  "packageName": "io.wallpaperengine.weclient",
+  "pluginMerges": [
+    12,
+    14,
+    15,
+    16
+  ],
+  "recordedAt": "2026-08-07T05:44:10Z",
+  "runUuid": "eda2c0de-bf76-4644-873a-e2d99a3f2fb8",
+  "schema": "wp12x-mineradio-evidence-receipt/v1",
+  "sourceSealHashes": {
+    "rawSha256": "ae43bdfaa93948f860e0e4603c9b95e19af024067640c3d6622d9595140abb15",
+    "sealedFileSha256": "734362a213b8fb33a3ededae3064f419c68676458252d47588676e07e10c018f",
+    "sealedManifestSha256": "d9d9774aee6593708c5224701b4da1a2e45a0ecf99111bf7732812aedf97537b"
+  },
+  "state": "MINERADIO_EVIDENCE_STAGED",
+  "taskId": "WP-12B",
+  "transactionId": "11804a3e-1792-4059-aea5-c3d31edcd0e5",
+  "weightStillZero": true
 }
