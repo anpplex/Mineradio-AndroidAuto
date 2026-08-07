@@ -40,7 +40,17 @@ DEFAULT_PLUGIN_WORKTREE = (
 DEFAULT_MINERADIO_WORKTREE = (
     "/Users/anpple/Codex/Mineradio/.worktrees/wallpaper-plugin-experimental"
 )
+# Legacy brief name; keep as primary label for ledger/docs.
 EXPECTED_PLUGIN_BRANCH = "codex/mineradio-plugin-embedded-runtime"
+# Actual WP-12A plugin PR / worktree branch observed on the embedded-runtime worktree.
+PLUGIN_BRANCH_WP12A = "codex/wallpaper-plugin-embedded-runtime-wp12a"
+# Accept either name — do not rename remote branch; document both as aliases.
+ACCEPTED_PLUGIN_BRANCHES = frozenset(
+    {
+        EXPECTED_PLUGIN_BRANCH,  # legacy brief
+        PLUGIN_BRANCH_WP12A,  # observed PR branch
+    }
+)
 # Experimental worktree may already be on a WP-12A working branch; status reports both.
 EXPECTED_MINERADIO_BRANCH = "codex/wallpaper-plugin-experimental"
 
@@ -143,12 +153,25 @@ def atomic_write_json(path: Path, value: Mapping[str, Any], mode: int = LEDGER_M
                 pass
 
 
-def inspect_worktree(path: str, expected_branch: str) -> dict[str, Any]:
+def inspect_worktree(
+    path: str,
+    expected_branch: str,
+    *,
+    accepted_branches: frozenset[str] | None = None,
+) -> dict[str, Any]:
+    """Probe a worktree path/branch.
+
+    expected_branch is the primary/legacy label reported in inventory.
+    accepted_branches (if set) is the fail-closed allow-list for matchBranch;
+    when None, only expected_branch is accepted.
+    """
+    allowed = accepted_branches if accepted_branches is not None else frozenset({expected_branch})
     root = Path(path)
     info: dict[str, Any] = {
         "path": path,
         "exists": root.is_dir(),
         "expectedBranch": expected_branch,
+        "acceptedBranches": sorted(allowed),
         "branch": None,
         "head": None,
         "dirty": None,
@@ -174,15 +197,11 @@ def inspect_worktree(path: str, expected_branch: str) -> dict[str, Any]:
     info["head"] = (head.stdout or "").strip() or None
     dirty_lines = [ln for ln in (porcelain.stdout or "").splitlines() if ln.strip()]
     info["dirty"] = len(dirty_lines)
-    info["matchBranch"] = info["branch"] == expected_branch
+    info["matchBranch"] = info["branch"] in allowed if info["branch"] else False
     if not info["matchBranch"]:
         info["blockers"].append("BRANCH_MISMATCH")
     # dirty is reported but not a hard blocker for status/plan; init-local still records it
-    info["ok"] = info["exists"] and not info["blockers"] or (
-        info["exists"] and info["blockers"] == ["BRANCH_MISMATCH"]
-    )
-    # Treat BRANCH_MISMATCH as soft for inventory (scaffold may use wp12a working branch)
-    # but still surface it.
+    # Treat BRANCH_MISMATCH as soft for inventory ok (still surfaces in blockers list).
     info["ok"] = info["exists"] and "MISSING_WORKTREE" not in info["blockers"]
     return info
 
@@ -274,6 +293,7 @@ def empty_ledger() -> dict[str, Any]:
         "plugin": {
             "worktree": DEFAULT_PLUGIN_WORKTREE,
             "expectedBranch": EXPECTED_PLUGIN_BRANCH,
+            "acceptedBranches": sorted(ACCEPTED_PLUGIN_BRANCHES),
             "observedBranch": None,
             "head": None,
             "baseSha": None,
@@ -282,6 +302,7 @@ def empty_ledger() -> dict[str, Any]:
         "mineradio": {
             "worktree": DEFAULT_MINERADIO_WORKTREE,
             "expectedBranch": EXPECTED_MINERADIO_BRANCH,
+            "acceptedBranches": [EXPECTED_MINERADIO_BRANCH],
             "observedBranch": None,
             "head": None,
             "baseSha": None,
@@ -310,7 +331,11 @@ def load_ledger(path: Path) -> dict[str, Any]:
 def inventory(args: argparse.Namespace) -> dict[str, Any]:
     plugin_wt = args.plugin_worktree or DEFAULT_PLUGIN_WORKTREE
     mineradio_wt = args.mineradio_worktree or DEFAULT_MINERADIO_WORKTREE
-    plugin = inspect_worktree(plugin_wt, EXPECTED_PLUGIN_BRANCH)
+    plugin = inspect_worktree(
+        plugin_wt,
+        EXPECTED_PLUGIN_BRANCH,
+        accepted_branches=ACCEPTED_PLUGIN_BRANCHES,
+    )
     mineradio = inspect_worktree(mineradio_wt, EXPECTED_MINERADIO_BRANCH)
     plugin_base = resolve_plugin_base_sha()
     mineradio_base = resolve_mineradio_base_sha()
@@ -327,7 +352,9 @@ def inventory(args: argparse.Namespace) -> dict[str, Any]:
         blockers.append("MINERADIO_BASESHA_UNRESOLVED")
     if not tooling["complete"]:
         blockers.append("PLUGIN_BOOTSTRAP_FILES_INCOMPLETE")
-    if plugin.get("branch") and plugin["branch"] != EXPECTED_PLUGIN_BRANCH:
+    # PLUGIN_BRANCH_MISMATCH only when observed branch is outside accepted aliases
+    # (legacy brief name OR actual WP-12A PR branch).
+    if plugin.get("branch") and plugin["branch"] not in ACCEPTED_PLUGIN_BRANCHES:
         blockers.append("PLUGIN_BRANCH_MISMATCH")
     if mineradio.get("branch") and mineradio["branch"] != EXPECTED_MINERADIO_BRANCH:
         blockers.append("MINERADIO_BRANCH_MISMATCH")
@@ -515,6 +542,7 @@ def cmd_init_local(args: argparse.Namespace) -> int:
         "plugin": {
             "worktree": inv["pluginWorktree"]["path"],
             "expectedBranch": EXPECTED_PLUGIN_BRANCH,
+            "acceptedBranches": sorted(ACCEPTED_PLUGIN_BRANCHES),
             "observedBranch": inv["pluginWorktree"].get("branch"),
             "head": inv["pluginWorktree"].get("head"),
             "dirty": inv["pluginWorktree"].get("dirty"),
@@ -524,6 +552,7 @@ def cmd_init_local(args: argparse.Namespace) -> int:
         "mineradio": {
             "worktree": inv["mineradioWorktree"]["path"],
             "expectedBranch": EXPECTED_MINERADIO_BRANCH,
+            "acceptedBranches": [EXPECTED_MINERADIO_BRANCH],
             "observedBranch": inv["mineradioWorktree"].get("branch"),
             "head": inv["mineradioWorktree"].get("head"),
             "dirty": inv["mineradioWorktree"].get("dirty"),
