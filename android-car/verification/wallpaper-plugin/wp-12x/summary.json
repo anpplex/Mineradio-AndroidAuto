@@ -59,7 +59,10 @@
     "WP-12B EffectiveDone=false; weightStillZero=true; failClosedOk=true.",
     "WP-12C adapter-contract staged on allowlist (desensitized); state MINERADIO_EVIDENCE_STAGED.",
     "Experimental still 45% until WP-12C DONE/verify-done; NO 20% WP-12C progress claim.",
-    "WP-12C EffectiveDone=false; weightStillZero=true; failClosedOk=true."
+    "WP-12C EffectiveDone=false; weightStillZero=true; failClosedOk=true.",
+    "WP-12D device e2-e3 staged on allowlist (desensitized); state MINERADIO_EVIDENCE_STAGED.",
+    "Experimental still 65% until WP-12D DONE/verify-done; NO 15% WP-12D progress claim.",
+    "WP-12D EffectiveDone=false; weightStillZero=true; failClosedOk=true."
   ],
   "native": {
     "schemaVersion": "wp12b-native-libs/v1",
@@ -101,5 +104,26 @@
       "defaultUsesOfficial": true
     },
     "adapterContractSealedSummarySha256": "d90c7c87aa0975314cbca9603cbfc11a6fbc63678c934d87e5b57dd4cec77ade"
+  },
+  "deviceE2e3": {
+    "schemaVersion": "wp12d-device-e2e3/v1",
+    "taskId": "WP-12D",
+    "state": "MINERADIO_EVIDENCE_STAGED",
+    "EffectiveDone": false,
+    "weightStillZero": true,
+    "packageName": "com.motif.wallpaperengine",
+    "deviceEvidenceClaimed": true,
+    "officialNotEmbeddedHost": true,
+    "failClosedOk": true,
+    "inventorySealed": true,
+    "pluginPid": 13055,
+    "surfacePresent": false,
+    "checks": {
+      "missingSerialRejected": true,
+      "officialAsEmbeddedHostRejected": true,
+      "offlineFailClosed": true,
+      "wrongUserRejected": true
+    },
+    "deviceE2e3SealedSummarySha256": "b9d18e156cb2e4926d30d2b927a94a24c98a621d5fb627ec8b8467fd299d48cd"
   }
 }

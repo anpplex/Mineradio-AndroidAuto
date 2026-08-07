@@ -1,0 +1,37 @@
+{
+  "schema": "wp12x-mineradio-evidence-summary/v1",
+  "taskId": "WP-12D",
+  "status": "MINERADIO_EVIDENCE_STAGED",
+  "evidenceStatus": "EVIDENCE_SEALED",
+  "scope": "origin",
+  "weightStillZero": true,
+  "EffectiveDone": false,
+  "inventorySealed": true,
+  "failClosedOk": true,
+  "packageName": "com.motif.wallpaperengine",
+  "inventorySchemaVersion": "wp12d-device-e2e3/v1",
+  "deviceEvidenceClaimed": true,
+  "pluginPid": 13055,
+  "surfacePresent": false,
+  "officialNotEmbeddedHost": true,
+  "bootstrap": {
+    "BOOTSTRAP_PUSHED": true,
+    "BOOTSTRAP_STATE": "BOOTSTRAP_PUSHED"
+  },
+  "pluginMerges": [
+    21,
+    22,
+    23,
+    24
+  ],
+  "legs": {
+    "pluginTip": "99c0db42a5b354c464a8e0343a92bb46a99843d4",
+    "deviceE2e3SealedSummarySha256": "b9d18e156cb2e4926d30d2b927a94a24c98a621d5fb627ec8b8467fd299d48cd"
+  },
+  "experimentalProgress": "65%",
+  "notes": [
+    "WP-12D device e2-e3 sealed inventory staged; EffectiveDone=false until dual-repo verify-done.",
+    "Experimental remains 65% (no +15% claim at staging).",
+    "Live hard checks PASS; surface soft field present=false."
+  ]
+}
