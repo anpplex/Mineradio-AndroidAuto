@@ -91,7 +91,7 @@ test('WP-12A RED: scopeCheck lists runtime-import experimental files', () => {
   }
 });
 
-test('WP-12A RED: phaseCommands stub covers RED/GREEN/REFACTOR/VERIFY', () => {
+test('WP-12A RED: phaseCommands cover RED/GREEN/REFACTOR/VERIFY with real harness argv', () => {
   const loaded = loadWp12aEntry();
   assert.equal(loaded.ok, true, JSON.stringify(loaded));
   const phases = loaded.entry.phaseCommands || {};
@@ -100,6 +100,30 @@ test('WP-12A RED: phaseCommands stub covers RED/GREEN/REFACTOR/VERIFY', () => {
     assert.equal(phases[phase].commandId, `WP-12A-${phase}`);
     assert.ok(Array.isArray(phases[phase].argv));
   }
+
+  const redArgv = phases.RED.argv;
+  assert.notDeepEqual(redArgv, ['true'], 'RED argv must not be stub ["true"]');
+  assert.ok(
+    redArgv.includes('scripts/verify-imported-runtime.sh'),
+    'RED argv must include verify-imported-runtime.sh',
+  );
+  assert.ok(
+    redArgv.includes('negative-missing-dex'),
+    'RED argv must include negative-missing-dex mode',
+  );
+
+  const greenArgv = phases.GREEN.argv;
+  assert.ok(
+    greenArgv.includes('scripts/tests/test-runtime-import.sh'),
+    'GREEN argv must include test-runtime-import.sh',
+  );
+
+  const verifyArgv = phases.VERIFY.argv;
+  assert.ok(
+    verifyArgv.includes('scripts/tests/test-runtime-import.sh'),
+    'VERIFY argv must include test-runtime-import.sh',
+  );
+
   assert.equal(loaded.entry.expectedExit.RED, 1);
   assert.equal(loaded.entry.expectedExit.GREEN, 0);
   assert.equal(loaded.entry.expectedExit.VERIFY, 0);

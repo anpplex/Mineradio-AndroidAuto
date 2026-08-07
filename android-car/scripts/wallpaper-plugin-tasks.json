@@ -1679,13 +1679,19 @@
         "RED": {
           "commandId": "WP-12A-RED",
           "argv": [
-            "true"
+            "bash",
+            "scripts/verify-imported-runtime.sh",
+            "--inventory",
+            "scripts/tests/fixtures/manifest-missing-dex.json",
+            "--mode",
+            "negative-missing-dex"
           ]
         },
         "GREEN": {
           "commandId": "WP-12A-GREEN",
           "argv": [
-            "true"
+            "bash",
+            "scripts/tests/test-runtime-import.sh"
           ]
         },
         "REFACTOR": {
@@ -1697,7 +1703,8 @@
         "VERIFY": {
           "commandId": "WP-12A-VERIFY",
           "argv": [
-            "true"
+            "bash",
+            "scripts/tests/test-runtime-import.sh"
           ]
         }
       },
