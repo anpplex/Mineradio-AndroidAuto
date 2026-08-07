@@ -1,0 +1,126 @@
+{
+  "EffectiveDone": false,
+  "apkSha256": "6982c82745444c5f2eef5a3d8c89ad807360bb5849a133548a6b25d18f4c4cb0",
+  "closure": {
+    "duplicateSonameCount": 0,
+    "missingNeededCount": 0,
+    "systemNeeded": [
+      "libEGL.so",
+      "libGLESv3.so",
+      "libandroid.so",
+      "libc.so",
+      "libdl.so",
+      "liblog.so",
+      "libm.so"
+    ],
+    "wrongAbiCount": 0
+  },
+  "counts": {
+    "abiCount": 2,
+    "abiCounts": {
+      "arm64-v8a": 1,
+      "armeabi-v7a": 1
+    },
+    "arm64LibCount": 1,
+    "jniLoadCount": 1,
+    "jniLoadLibs": [
+      "scenejni"
+    ],
+    "totalSo": 2
+  },
+  "failClosed": {
+    "failureCount": 0,
+    "ok": true
+  },
+  "inventorySchemaVersion": "wp12b-native-libs/v1",
+  "inventorySealed": true,
+  "libraries": [
+    {
+      "abi": "arm64-v8a",
+      "elfClass": "ELFCLASS64",
+      "elfMachine": "EM_AARCH64",
+      "name": "libscenejni.so",
+      "needed": [
+        "libandroid.so",
+        "liblog.so",
+        "libGLESv3.so",
+        "libEGL.so",
+        "libc.so",
+        "libm.so",
+        "libdl.so"
+      ],
+      "path": "lib/arm64-v8a/libscenejni.so",
+      "sha256": "908bf18eb4360f1f629eb132f425bb433ed7b96fef2570919a148f9154c013a9",
+      "sizeBytes": 41866072,
+      "soname": "libscenejni.so"
+    },
+    {
+      "abi": "armeabi-v7a",
+      "elfClass": "ELFCLASS32",
+      "elfMachine": "EM_ARM",
+      "name": "libscenejni.so",
+      "needed": [
+        "libandroid.so",
+        "liblog.so",
+        "libGLESv3.so",
+        "libEGL.so",
+        "libc.so",
+        "libm.so",
+        "libdl.so"
+      ],
+      "path": "lib/armeabi-v7a/libscenejni.so",
+      "sha256": "ebe53584af0843621d3d06d7d8e0ab31113b41bb51fba0e164f1b291a42dbda2",
+      "sizeBytes": 29555440,
+      "soname": "libscenejni.so"
+    }
+  ],
+  "mode": "native-closure",
+  "notes": [
+    "Desensitized native-closure sealed summary for Mineradio allowlist.",
+    "inventorySealed=true is inventory completeness only; EffectiveDone remains false until dual-repo verify-done.",
+    "No APK/DEX/SO blobs; no force-push; no progress % mutation."
+  ],
+  "packageName": "io.wallpaperengine.weclient",
+  "pluginMerges": [
+    {
+      "mergeSha": "851f9dd6b6943420e55faf1ec970472517b2727a",
+      "pr": 12,
+      "repo": "anpplex/plugin-WallpaperEngine",
+      "title": "native-libs schema"
+    },
+    {
+      "mergeSha": "09641e04196a33d8f13ba8c77e326b2d61901047",
+      "pr": 14,
+      "repo": "anpplex/plugin-WallpaperEngine",
+      "title": "native import/verify tools"
+    },
+    {
+      "mergeSha": "01915ecc9caa632606d5bc520aaafa364823b179",
+      "pr": 15,
+      "repo": "anpplex/plugin-WallpaperEngine",
+      "title": "txn phase argv"
+    },
+    {
+      "mergeSha": "9507c01e9bd853a0ce4e71a4f62b9fcbfd4e62bf",
+      "pr": 16,
+      "repo": "anpplex/plugin-WallpaperEngine",
+      "title": "seal native-closure"
+    }
+  ],
+  "role": "mineradio-wp12x-native-sealed-summary",
+  "schema": "wp12x-native-sealed-summary/v1",
+  "sourceSeal": {
+    "attemptNo": 1,
+    "inventorySchemaVersion": "wp12b-native-libs/v1",
+    "officialApkSha256": "6982c82745444c5f2eef5a3d8c89ad807360bb5849a133548a6b25d18f4c4cb0",
+    "rawSha256": "ae43bdfaa93948f860e0e4603c9b95e19af024067640c3d6622d9595140abb15",
+    "runLabel": "wp-12b-native-closure-official",
+    "runUuid": "eda2c0de-bf76-4644-873a-e2d99a3f2fb8",
+    "sealedFileSha256": "734362a213b8fb33a3ededae3064f419c68676458252d47588676e07e10c018f",
+    "sealedManifestSha256": "d9d9774aee6593708c5224701b4da1a2e45a0ecf99111bf7732812aedf97537b",
+    "transactionId": "11804a3e-1792-4059-aea5-c3d31edcd0e5"
+  },
+  "taskId": "WP-12B",
+  "versionCode": 4354,
+  "versionName": "2.8.8"
+}
