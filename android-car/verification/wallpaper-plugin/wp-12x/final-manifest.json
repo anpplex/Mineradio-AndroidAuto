@@ -1,17 +1,91 @@
 {
-  "schemaVersion": "wp12a-manifest-map/v1",
-  "role": "mineradio-wp12x-allowlist-final-manifest",
-  "taskId": "WP-12A",
-  "packageName": "io.wallpaperengine.weclient",
-  "versionCode": 4354,
-  "versionName": "2.8.8",
+  "EffectiveDone": false,
+  "adapterContract": {
+    "EffectiveDone": false,
+    "checks": {
+      "appendedArgsRejected": true,
+      "defaultUsesOfficial": true,
+      "fallbackMasqueradeRejected": true,
+      "unknownMethodRejected": true
+    },
+    "embeddedRuntimeDefault": false,
+    "failClosedOk": true,
+    "inventorySealed": true,
+    "officialEnginePackage": "io.wallpaperengine.weclient",
+    "packageName": "com.motif.wallpaperengine",
+    "pluginMerges": [
+      17,
+      18,
+      20
+    ],
+    "schemaVersion": "wp12c-adapter-contract/v1",
+    "sealedSummarySha256": "d90c7c87aa0975314cbca9603cbfc11a6fbc63678c934d87e5b57dd4cec77ade",
+    "sourceSeal": {
+      "rawSha256": "33b7afca60bdcb04e020e1e8991eb14b0a51b7461341dfaa4e5660d57b3cb1ea",
+      "runUuid": "5630d9eb-48d7-4ccc-a807-e215031a193a",
+      "sealedFileSha256": "45f03f2ce1539eea2e2507e8ce81a1d76dba01b4aba46b16c7a415b9c73bb43a",
+      "sealedManifestSha256": "3cc89b2b6d513baf49917a9f275c9c9e09e388ffd7f04251b2db91004666355c",
+      "transactionId": "1e0a51a2-1903-4678-a73a-ef97269ced09"
+    },
+    "state": "MINERADIO_EVIDENCE_STAGED",
+    "taskId": "WP-12C",
+    "weightStillZero": true
+  },
   "apkSha256": "6982c82745444c5f2eef5a3d8c89ad807360bb5849a133548a6b25d18f4c4cb0",
-  "manifest": {
-    "packageName": "io.wallpaperengine.weclient",
-    "applicationProcess": null,
-    "minSdk": 29,
-    "targetSdk": 35,
-    "sha256": "9d6e7120b6067de33c8b1c3f41947d11fa6a5214c614fd6b98cc0e2a590b3e42"
+  "authorities": [
+    {
+      "authority": "io.wallpaperengine.weclient",
+      "componentName": "androidx.core.content.FileProvider",
+      "exported": false,
+      "grantUriPermissions": true
+    },
+    {
+      "authority": "io.wallpaperengine.weclient.androidx-startup",
+      "componentName": "androidx.startup.InitializationProvider",
+      "exported": false,
+      "grantUriPermissions": false
+    }
+  ],
+  "authoritiesCount": 2,
+  "components": {
+    "activitiesCount": 8,
+    "providersCount": 2,
+    "receiversCount": 1,
+    "servicesCount": 3
+  },
+  "deviceE2e3": {
+    "EffectiveDone": true,
+    "checks": {
+      "missingSerialRejected": true,
+      "officialAsEmbeddedHostRejected": true,
+      "offlineFailClosed": true,
+      "wrongUserRejected": true
+    },
+    "deviceEvidenceClaimed": true,
+    "failClosedOk": true,
+    "inventorySealed": true,
+    "officialNotEmbeddedHost": true,
+    "packageName": "com.motif.wallpaperengine",
+    "pluginMerges": [
+      21,
+      22,
+      23,
+      24
+    ],
+    "pluginPid": 13055,
+    "schemaVersion": "wp12d-device-e2e3/v1",
+    "sealedSummarySha256": "b9d18e156cb2e4926d30d2b927a94a24c98a621d5fb627ec8b8467fd299d48cd",
+    "sourceSeal": {
+      "rawSha256": "5b0e9663fa8972b786cdbc49f0715b4bb0e93c3b933ff108060d33f517eb416c",
+      "runUuid": "de03e4c5-354c-48ce-a1ef-6f116bf60e3a",
+      "sealedFileSha256": "29426533200c370c513c21b7362f1e0d00273290911bfdc7257254451c095807",
+      "sealedManifestSha256": "b1342982d61d86d0616bdc355128bb75b7675d20292d85039017c2c8599f04da",
+      "transactionId": "409cc283-21f0-4a7c-a1ff-3c6537a28d43"
+    },
+    "state": "DONE",
+    "surfacePresent": false,
+    "taskId": "WP-12D",
+    "weightStillZero": false
   },
   "dex": {
     "count": 2,
@@ -28,100 +102,138 @@
       }
     ]
   },
-  "resources": {
-    "arscSha256": "db72b9296bd9f1752c1cffeb321dd3fe027b39415668222d34209c53a50ba079",
-    "entryCount": 5838,
-    "idIndexCount": 5838
-  },
-  "authoritiesCount": 2,
-  "authorities": [
-    {
-      "authority": "io.wallpaperengine.weclient",
-      "componentName": "androidx.core.content.FileProvider",
-      "exported": false,
-      "grantUriPermissions": true
+  "e4": {
+    "EffectiveDone": false,
+    "checks": {
+      "blackFrameRejected": true,
+      "sceneDualFrames": true,
+      "sceneNonBlack": true,
+      "sceneNonSolid": true,
+      "singleSampleRejected": true,
+      "solidColorRejected": true,
+      "videoDualFrames": true,
+      "videoNonBlack": true,
+      "videoNonSolid": true
     },
-    {
-      "authority": "io.wallpaperengine.weclient.androidx-startup",
-      "componentName": "androidx.startup.InitializationProvider",
-      "exported": false,
-      "grantUriPermissions": false
-    }
-  ],
-  "permissions": {
-    "declaredCount": 1,
-    "usesCount": 15,
-    "signatureKnownCount": 68
-  },
-  "components": {
-    "activitiesCount": 8,
-    "servicesCount": 3,
-    "receiversCount": 1,
-    "providersCount": 2
+    "deviceEvidenceClaimed": true,
+    "e4EvidenceClaimed": true,
+    "failClosed": {
+      "failures": [],
+      "ok": true
+    },
+    "generatedAt": "2026-08-07T08:35:36Z",
+    "inventorySealed": true,
+    "mpkgSha256": {
+      "scene": "76445281d40b3d1f7e4eb3e2172cc967966af3f322a57e60f1e328fee4dcefb7",
+      "video": "6c4cac1ff865c85cd0efcc6c9abbe1d1e177a61722d95875d9d453130616b77b"
+    },
+    "note": "desensitized; frames not committed; experimental embedded preview E4",
+    "observedUser": null,
+    "officialNotEmbeddedHost": null,
+    "packageName": "com.motif.wallpaperengine",
+    "pluginPid": 6115,
+    "samples": {
+      "scene": {
+        "analysisOk": null,
+        "frames": [
+          {
+            "height": 1080,
+            "sha256": "f026ee6ceb399c4993042052293976667b52b022bae68bd5c2ce64317f711e32",
+            "width": 1920
+          },
+          {
+            "height": 1080,
+            "sha256": "55a68a6e2a9a5e434b868ba5551394d46d43f411aa6db8af185d09dc4bf2501b",
+            "width": 1920
+          }
+        ],
+        "nonBlack": true,
+        "nonSolid": true
+      },
+      "video": {
+        "analysisOk": null,
+        "frames": [
+          {
+            "height": 1080,
+            "sha256": "b45356afb06e2a70b9a928c93667cbe17e036f9dcb13d0c78807a60b2c9abd81",
+            "width": 1920
+          },
+          {
+            "height": 1080,
+            "sha256": "13b3b87b8f07bca80772e30f3c4548ba006701e36c57178794d8fdd0618c03c3",
+            "width": 1920
+          }
+        ],
+        "nonBlack": true,
+        "nonSolid": true
+      }
+    },
+    "schemaVersion": "wp12e-scene-video-e4/v1",
+    "sealedFileSha256": "75987789758d7523ffed08f59fafcb60c464c247b81c107085d56e1dbdbbefd3",
+    "serial": "LD249H019625",
+    "surfacePresent": null,
+    "targetUser": null,
+    "taskId": "WP-12E"
   },
   "failClosed": {
-    "ok": true,
+    "failureCount": 0,
     "failures": [],
-    "failureCount": 0
+    "ok": true
   },
   "inventorySealed": true,
-  "EffectiveDone": false,
-  "verify": {
-    "mode": "positive",
-    "exitCode": 0,
-    "status": "PASS"
+  "manifest": {
+    "applicationProcess": null,
+    "minSdk": 29,
+    "packageName": "io.wallpaperengine.weclient",
+    "sha256": "9d6e7120b6067de33c8b1c3f41947d11fa6a5214c614fd6b98cc0e2a590b3e42",
+    "targetSdk": 35
   },
-  "sourceSeal": {
-    "runLabel": "wp-12a-evidence-seal-official",
-    "runUuid": "548f4455-0588-4f99-8fe7-9aa6b27b6cd5",
-    "transactionId": "56a04719-ae66-4363-bb07-bbf820d354e0",
-    "attemptNo": 1,
-    "inventorySchemaVersion": "wp12a-manifest-map/v1",
-    "rawSha256": "d183c95d143e48a5420538ceafc65159a769717e9e439b69f7076ed8b48ad7ab",
-    "sealedManifestSha256": "33d6b54b609ff247288a42338ebce31656df3c4f724d19fbd106ee8fa13a05d8",
-    "sealedFileSha256": "092afdbafa9ac2621a6c8b2df6db7388f78e8a23d7a6640886227b78a92553ed",
-    "officialApkSha256": "6982c82745444c5f2eef5a3d8c89ad807360bb5849a133548a6b25d18f4c4cb0"
-  },
-  "pluginMerges": [
-    {
-      "pr": 8,
-      "repo": "anpplex/plugin-WallpaperEngine",
-      "mergeSha": "af0e757de91aa1cdd5d4ebd4cd21c8fa4533ba5d",
-      "title": "feat(wp12a): runtime inventory v1 + fixtures + local txn scaffold"
-    },
-    {
-      "pr": 9,
-      "repo": "anpplex/plugin-WallpaperEngine",
-      "mergeSha": "4255a9f16141818ba0beeab9bde1eddb0f862c31",
-      "title": "feat(wp12): record real RED/GREEN/REFACTOR/VERIFY phase fences"
-    },
-    {
-      "pr": 10,
-      "repo": "anpplex/plugin-WallpaperEngine",
-      "mergeSha": "9fa67bab2b257d5b6f1074dbab206b2113ba7a8f",
-      "title": "feat(wp12a): official v1 inventory collect→seal evidence DAG"
-    }
-  ],
   "mineradioMerges": [
     {
+      "mergeSha": "d0a5c3de211542cf50ef9b678b575452541b8646",
       "pr": 40,
       "repo": "anpplex/Mineradio-AndroidAuto",
-      "mergeSha": "d0a5c3de211542cf50ef9b678b575452541b8646",
       "title": "feat(android-car): WP-12A experimental v1 import + bootstrap scaffold"
     },
     {
+      "mergeSha": "4149235e51939670b75a12cd0f5dc839763e88d5",
       "pr": 41,
       "repo": "anpplex/Mineradio-AndroidAuto",
-      "mergeSha": "4149235e51939670b75a12cd0f5dc839763e88d5",
       "title": "feat(android-car): real dual-origin readback for WP-12 BOOTSTRAP_PUSHED"
     },
     {
+      "mergeSha": "e5aa709b1b924453453e86892b5610501fc60b67",
       "pr": 42,
       "repo": "anpplex/Mineradio-AndroidAuto",
-      "mergeSha": "e5aa709b1b924453453e86892b5610501fc60b67",
       "title": "feat(android-car): post-merge multi-PR identity for evaluate-wp12a"
     }
   ],
+  "native": {
+    "abiCounts": {
+      "arm64-v8a": 1,
+      "armeabi-v7a": 1
+    },
+    "apkSha256": "6982c82745444c5f2eef5a3d8c89ad807360bb5849a133548a6b25d18f4c4cb0",
+    "arm64Libs": [
+      {
+        "name": "libscenejni.so",
+        "needed": [
+          "libandroid.so",
+          "liblog.so",
+          "libGLESv3.so",
+          "libEGL.so",
+          "libc.so",
+          "libm.so",
+          "libdl.so"
+        ],
+        "sha256": "908bf18eb4360f1f629eb132f425bb433ed7b96fef2570919a148f9154c013a9",
+        "sizeBytes": 41866072,
+        "soname": "libscenejni.so"
+      }
+    ],
+    "failClosedOk": true,
+    "schemaVersion": "wp12b-native-libs/v1"
+  },
   "notes": [
     "Desensitized allowlist only: hashes + counts; no APK/DEX/SO blobs.",
     "inventorySealed=true means official v1 inventory completeness only.",
@@ -136,95 +248,56 @@
     "WP-12D EffectiveDone remains false until dual-repo verify-done; experimental stays 65%.",
     "WP-12D verify-done EffectiveDone=true; experimental 80%."
   ],
-  "native": {
-    "schemaVersion": "wp12b-native-libs/v1",
-    "apkSha256": "6982c82745444c5f2eef5a3d8c89ad807360bb5849a133548a6b25d18f4c4cb0",
-    "abiCounts": {
-      "arm64-v8a": 1,
-      "armeabi-v7a": 1
-    },
-    "arm64Libs": [
-      {
-        "name": "libscenejni.so",
-        "sha256": "908bf18eb4360f1f629eb132f425bb433ed7b96fef2570919a148f9154c013a9",
-        "sizeBytes": 41866072,
-        "soname": "libscenejni.so",
-        "needed": [
-          "libandroid.so",
-          "liblog.so",
-          "libGLESv3.so",
-          "libEGL.so",
-          "libc.so",
-          "libm.so",
-          "libdl.so"
-        ]
-      }
-    ],
-    "failClosedOk": true
+  "packageName": "io.wallpaperengine.weclient",
+  "permissions": {
+    "declaredCount": 1,
+    "signatureKnownCount": 68,
+    "usesCount": 15
   },
-  "adapterContract": {
-    "schemaVersion": "wp12c-adapter-contract/v1",
-    "taskId": "WP-12C",
-    "state": "MINERADIO_EVIDENCE_STAGED",
-    "EffectiveDone": false,
-    "weightStillZero": true,
-    "packageName": "com.motif.wallpaperengine",
-    "officialEnginePackage": "io.wallpaperengine.weclient",
-    "embeddedRuntimeDefault": false,
-    "inventorySealed": true,
-    "failClosedOk": true,
-    "checks": {
-      "unknownMethodRejected": true,
-      "appendedArgsRejected": true,
-      "fallbackMasqueradeRejected": true,
-      "defaultUsesOfficial": true
+  "pluginMerges": [
+    {
+      "mergeSha": "af0e757de91aa1cdd5d4ebd4cd21c8fa4533ba5d",
+      "pr": 8,
+      "repo": "anpplex/plugin-WallpaperEngine",
+      "title": "feat(wp12a): runtime inventory v1 + fixtures + local txn scaffold"
     },
-    "sourceSeal": {
-      "rawSha256": "33b7afca60bdcb04e020e1e8991eb14b0a51b7461341dfaa4e5660d57b3cb1ea",
-      "sealedFileSha256": "45f03f2ce1539eea2e2507e8ce81a1d76dba01b4aba46b16c7a415b9c73bb43a",
-      "sealedManifestSha256": "3cc89b2b6d513baf49917a9f275c9c9e09e388ffd7f04251b2db91004666355c",
-      "runUuid": "5630d9eb-48d7-4ccc-a807-e215031a193a",
-      "transactionId": "1e0a51a2-1903-4678-a73a-ef97269ced09"
+    {
+      "mergeSha": "4255a9f16141818ba0beeab9bde1eddb0f862c31",
+      "pr": 9,
+      "repo": "anpplex/plugin-WallpaperEngine",
+      "title": "feat(wp12): record real RED/GREEN/REFACTOR/VERIFY phase fences"
     },
-    "pluginMerges": [
-      17,
-      18,
-      20
-    ],
-    "sealedSummarySha256": "d90c7c87aa0975314cbca9603cbfc11a6fbc63678c934d87e5b57dd4cec77ade"
+    {
+      "mergeSha": "9fa67bab2b257d5b6f1074dbab206b2113ba7a8f",
+      "pr": 10,
+      "repo": "anpplex/plugin-WallpaperEngine",
+      "title": "feat(wp12a): official v1 inventory collect\u2192seal evidence DAG"
+    }
+  ],
+  "resources": {
+    "arscSha256": "db72b9296bd9f1752c1cffeb321dd3fe027b39415668222d34209c53a50ba079",
+    "entryCount": 5838,
+    "idIndexCount": 5838
   },
-  "deviceE2e3": {
-    "schemaVersion": "wp12d-device-e2e3/v1",
-    "taskId": "WP-12D",
-    "state": "DONE",
-    "EffectiveDone": true,
-    "weightStillZero": false,
-    "packageName": "com.motif.wallpaperengine",
-    "deviceEvidenceClaimed": true,
-    "officialNotEmbeddedHost": true,
-    "inventorySealed": true,
-    "failClosedOk": true,
-    "pluginPid": 13055,
-    "surfacePresent": false,
-    "checks": {
-      "missingSerialRejected": true,
-      "officialAsEmbeddedHostRejected": true,
-      "offlineFailClosed": true,
-      "wrongUserRejected": true
-    },
-    "sourceSeal": {
-      "rawSha256": "5b0e9663fa8972b786cdbc49f0715b4bb0e93c3b933ff108060d33f517eb416c",
-      "sealedFileSha256": "29426533200c370c513c21b7362f1e0d00273290911bfdc7257254451c095807",
-      "sealedManifestSha256": "b1342982d61d86d0616bdc355128bb75b7675d20292d85039017c2c8599f04da",
-      "runUuid": "de03e4c5-354c-48ce-a1ef-6f116bf60e3a",
-      "transactionId": "409cc283-21f0-4a7c-a1ff-3c6537a28d43"
-    },
-    "pluginMerges": [
-      21,
-      22,
-      23,
-      24
-    ],
-    "sealedSummarySha256": "b9d18e156cb2e4926d30d2b927a94a24c98a621d5fb627ec8b8467fd299d48cd"
-  }
+  "role": "mineradio-wp12x-allowlist-final-manifest",
+  "schemaVersion": "wp12a-manifest-map/v1",
+  "sourceSeal": {
+    "attemptNo": 1,
+    "inventorySchemaVersion": "wp12a-manifest-map/v1",
+    "officialApkSha256": "6982c82745444c5f2eef5a3d8c89ad807360bb5849a133548a6b25d18f4c4cb0",
+    "rawSha256": "d183c95d143e48a5420538ceafc65159a769717e9e439b69f7076ed8b48ad7ab",
+    "runLabel": "wp-12a-evidence-seal-official",
+    "runUuid": "548f4455-0588-4f99-8fe7-9aa6b27b6cd5",
+    "sealedFileSha256": "092afdbafa9ac2621a6c8b2df6db7388f78e8a23d7a6640886227b78a92553ed",
+    "sealedManifestSha256": "33d6b54b609ff247288a42338ebce31656df3c4f724d19fbd106ee8fa13a05d8",
+    "transactionId": "56a04719-ae66-4363-bb07-bbf820d354e0"
+  },
+  "taskId": "WP-12A",
+  "verify": {
+    "exitCode": 0,
+    "mode": "positive",
+    "status": "PASS"
+  },
+  "versionCode": 4354,
+  "versionName": "2.8.8"
 }
