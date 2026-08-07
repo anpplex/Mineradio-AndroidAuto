@@ -163,7 +163,7 @@ READY：核心发布候选的 E7、发布物、签名、来源、许可、升级
 | 故障矩阵与 10 秒恢复 | PASS | 2026-08-03 | wp-11a-green-20260803T125402Z | 无 |
 | 30 分钟量化长稳 / E6 | PASS | 2026-08-03 | wp-11b-e6-green-20260803T135324Z | 无 |
 | 重启/ACC/2 小时 / E7 | PASS | 2026-08-06 | wp-11c-e7-green-20260806T140514Z | 无 |
-| 内嵌 runtime 实验 | WP-12A+B+C+D DONE / EffectiveDone=true；实验进度 80%；WP-12E 未开始 | 2026-08-07 | wp-12x + WP-12D verify-done txn `409cc283-21f0-4a7c-a1ff-3c6537a28d43` | WP-12E |
+| 内嵌 runtime 实验 | WP-12A–E DONE / EffectiveDone=true；实验进度 100% | 2026-08-07 | wp-12x + WP-12E verify-done after Lyra install | — |
 
 ## 7. 每循环记录
 
@@ -371,3 +371,15 @@ WP-12D–E：NOT_STARTED
 
 下一循环：WP-12D 实验 APK E2/E3
 
+### WP-12E
+
+```text
+状态：DONE
+EffectiveDone：true
+范围：内嵌 runtime Scene+Video E4（Lyra 安装 + live 双帧非黑）
+权重：20% 实验池（verify-done 后计入 Experimental progress）
+安装：com.huawei.appinstaller.car（禁止裸 adb install）
+verify-done：txn transactions-12e-lyra/wp-12e.json
+Experimental progress：100%
+核心实现完成度：100%（不变；WP-12 不计入核心）
+```
