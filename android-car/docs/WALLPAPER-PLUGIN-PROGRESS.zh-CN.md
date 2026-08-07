@@ -9,11 +9,11 @@
 **最高连续证据：** `E7`
 **Vehicle readiness：** `READY`（E7 通过；无未关闭 P0/P1 记录）
 **Release readiness：** `CONDITIONAL`（E7 技术通过；发布物/许可/回滚审计仍独立）
-**Experimental progress：** `25%`
+**Experimental progress：** `45%`
 
 > 版权和再分发许可不作为沙盒技术开发门禁。生产发布状态单独标记，不与核心技术完成度混算。WP-12 是独立实验，不进入核心实现 100%、Vehicle readiness 或 Release readiness。
 >
-> **状态说明：** 核心轨道 WP-00～WP-11C 事务均已 `EffectiveDone=true`（见 verification transactions）。本文件 progress-closure 将 WP-11C 行与核心合计同步为权威进度。WP-12A 在 `verify-done` 后 `DONE` / EffectiveDone=true，实验进度 25%；WP-12B–E 仍为独立未开始实验。
+> **状态说明：** 核心轨道 WP-00～WP-11C 事务均已 `EffectiveDone=true`（见 verification transactions）。本文件 progress-closure 将 WP-11C 行与核心合计同步为权威进度。WP-12A 与 WP-12B 均在 `verify-done` 后 `DONE` / EffectiveDone=true，实验进度 45%（25%+20%）；WP-12C–E 仍为独立未开始实验。
 
 ## 1. 状态枚举
 
@@ -86,11 +86,11 @@ WP-12 不计入上表。实验步骤使用独立百分比，只有 transaction=`
 | ID | 实验步骤 | 权重 | 当前状态 | 通过标准 | Run UUID | Mineradio evidence SHA | Plugin SHA | Evidence manifest SHA-256 | 下一动作 |
 | --- | --- | ---: | --- | --- | --- | --- | --- | --- | --- |
 | WP-12A | runtime 清单与 DEX/resources/Manifest/JNI 风险审计 | 25% | DONE | 产出脱敏 schema/哈希清单；阻塞项 fail-closed；verify-done → EffectiveDone=true；sealed PASS + dual origin readback | 548f4455-0588-4f99-8fe7-9aa6b27b6cd5 | evidence:22829e876c586072fc038fdc7e4f450610680427 | b9bb3b2e75a6d6259ca02608b0744d688f739a74 | b0a6dbd8d1b2f9c13b0e3bfb85689d91c0da35f2541d18c6a67125df13207ec0 | 交接 WP-12B；mineradio tip c7ec5f3a84418b3831cb8dd08d51158a5a8dd139 |
-| WP-12B | arm64 native 依赖闭包 | 20% | NOT_STARTED | `.so` 非空、分析工具成功、依赖闭包完整 | — | — | — | — | 等待 WP-12A |
+| WP-12B | arm64 native 依赖闭包 | 20% | DONE | `.so` 非空、分析工具成功、依赖闭包完整；native-closure seal + dual origin readback；verify-done → EffectiveDone=true | eda2c0de-bf76-4644-873a-e2d99a3f2fb8 | evidence:81f9aac4d3fef7c20d6b1782286302d40032a90e | 9507c01e9bd853a0ce4e71a4f62b9fcbfd4e62bf | 4e2244e9f4ee0b6c8d454cf2135344ed7bdd695915cdf9a41087a3c74ad5c1b4 | 交接 WP-12C；mineradio tip 81f9aac4d3fef7c20d6b1782286302d40032a90e |
 | WP-12C | `EmbeddedEngineAdapter` 与官方包回退 | 20% | NOT_STARTED | 协议 1 不变；失败返回固定错误；回退可验证 | — | — | — | — | 等待 WP-12B |
 | WP-12D | 实验 APK E2/E3 | 15% | NOT_STARTED | 内嵌 adapter 明确启用，包/进程/调用链成立 | — | — | — | — | 等待 WP-12C 与设备 |
 | WP-12E | 内嵌 runtime 解析 `.mpkg` 并出真实画面 | 20% | NOT_STARTED | 不依赖官方包回退，Scene/Video 真实非黑画面 | — | — | — | — | 等待 WP-12D |
-| — | **Experimental progress** | **100%** | — | EffectiveDone 权重求和 | — | — | — | — | 当前 `25%` |
+| — | **Experimental progress** | **100%** | — | EffectiveDone 权重求和 | — | — | — | — | 当前 `45%` |
 
 ## 5. Readiness 与连续证据规则
 
@@ -163,7 +163,7 @@ READY：核心发布候选的 E7、发布物、签名、来源、许可、升级
 | 故障矩阵与 10 秒恢复 | PASS | 2026-08-03 | wp-11a-green-20260803T125402Z | 无 |
 | 30 分钟量化长稳 / E6 | PASS | 2026-08-03 | wp-11b-e6-green-20260803T135324Z | 无 |
 | 重启/ACC/2 小时 / E7 | PASS | 2026-08-06 | wp-11c-e7-green-20260806T140514Z | 无 |
-| 内嵌 runtime 实验 | WP-12A DONE / EffectiveDone=true；实验进度 25%；WP-12B–E 未开始 | 2026-08-07 | wp-12x + verify-done txn `56a04719-ae66-4363-bb07-bbf820d354e0` | WP-12B |
+| 内嵌 runtime 实验 | WP-12A+WP-12B DONE / EffectiveDone=true；实验进度 45%；WP-12C–E 未开始 | 2026-08-07 | wp-12x + WP-12B verify-done txn `11804a3e-1792-4059-aea5-c3d31edcd0e5` | WP-12C |
 
 ## 7. 每循环记录
 
@@ -312,8 +312,34 @@ inventorySealed：true / failClosed.ok=true / apkSha256=6982c82745444c5f2eef5a3d
 最高连续证据：E7（不变）
 Vehicle readiness：READY（不变）
 Release readiness：CONDITIONAL（不变）
-Experimental progress：25%
-WP-12B–E：NOT_STARTED
-下一循环：WP-12B arm64 native 依赖闭包
+Experimental progress：45%（与 WP-12B 合计；WP-12A 权重仍 25%）
+WP-12B：DONE / EffectiveDone=true
+WP-12C–E：NOT_STARTED
+下一循环：WP-12C EmbeddedEngineAdapter 与官方包回退
+```
+
+### WP-12B
+
+```text
+状态：DONE
+EffectiveDone：true
+范围：arm64 native / JNI 依赖闭包（独立实验；native-closure）
+权重：20% 实验池（verify-done 后计入 Experimental progress）
+Transaction：wp-12b.json DONE / EffectiveDone=true / runUuid=eda2c0de-bf76-4644-873a-e2d99a3f2fb8
+TransactionId：11804a3e-1792-4059-aea5-c3d31edcd0e5
+verify-done：2026-08-07T05:45:43Z（all hard gates PASS）
+Plugin tip / merge SHA：9507c01e9bd853a0ce4e71a4f62b9fcbfd4e62bf（origin/main；PR #15/#16 record-plugin-merged）
+Mineradio evidence / tip：81f9aac4d3fef7c20d6b1782286302d40032a90e（PR #48/#49）
+native-sealed-summary SHA-256：4e2244e9f4ee0b6c8d454cf2135344ed7bdd695915cdf9a41087a3c74ad5c1b4
+sealed inventory SHA-256：734362a213b8fb33a3ededae3064f419c68676458252d47588676e07e10c018f
+inventorySealed：true / failClosed.ok=true / apkSha256=6982c82745444c5f2eef5a3d8c89ad807360bb5849a133548a6b25d18f4c4cb0
+arm64：libscenejni.so (1) / totalSo=2 / jniLoadLibs=[scenejni]
+核心实现完成度：100%（不变；WP-12 不计入核心）
+最高连续证据：E7（不变）
+Vehicle readiness：READY（不变）
+Release readiness：CONDITIONAL（不变）
+Experimental progress：45%（25% WP-12A + 20% WP-12B）
+WP-12C–E：NOT_STARTED
+下一循环：WP-12C EmbeddedEngineAdapter 与官方包回退
 ```
 

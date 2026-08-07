@@ -1,5 +1,5 @@
 {
-  "EffectiveDone": false,
+  "EffectiveDone": true,
   "apkSha256": "6982c82745444c5f2eef5a3d8c89ad807360bb5849a133548a6b25d18f4c4cb0",
   "bootstrap": {
     "BOOTSTRAP_PUSHED": true,
@@ -19,9 +19,16 @@
     "totalSo": 2
   },
   "evidenceStatus": "EVIDENCE_SEALED",
+  "experimentalProgress": "45%",
   "failClosedOk": true,
   "inventorySchemaVersion": "wp12b-native-libs/v1",
   "inventorySealed": true,
+  "legs": {
+    "mineradioEvidenceSha": "81f9aac4d3fef7c20d6b1782286302d40032a90e",
+    "mineradioTip": "81f9aac4d3fef7c20d6b1782286302d40032a90e",
+    "nativeSealedSummarySha256": "4e2244e9f4ee0b6c8d454cf2135344ed7bdd695915cdf9a41087a3c74ad5c1b4",
+    "pluginTip": "9507c01e9bd853a0ce4e71a4f62b9fcbfd4e62bf"
+  },
   "mineradioMerges": [
     46,
     47
@@ -29,10 +36,9 @@
   "mode": "native-closure",
   "nativeSealedSummarySha256": "4e2244e9f4ee0b6c8d454cf2135344ed7bdd695915cdf9a41087a3c74ad5c1b4",
   "notes": [
-    "WP-12B evidence staged (not EffectiveDone).",
-    "Experimental progress remains 25% until WP-12B verify-done → 45%.",
-    "WP-12A remains DONE / EffectiveDone.",
-    "Core remains 100% / E7.",
+    "verify-done all hard gates PASS; EffectiveDone=true derived by verify-done only.",
+    "WP-12B experimental weight 20% counts; total experimental 45% with WP-12A.",
+    "Core remains 100% / E7; WP-12 does not fold into core completion.",
     "No force-push."
   ],
   "packageName": "io.wallpaperengine.weclient",
@@ -43,8 +49,15 @@
     16
   ],
   "schema": "wp12x-mineradio-evidence-summary/v1",
-  "scope": "origin-pending",
-  "status": "MINERADIO_EVIDENCE_STAGED",
+  "scope": "origin",
+  "status": "DONE",
   "taskId": "WP-12B",
-  "weightStillZero": true
+  "verifyDone": {
+    "runUuid": "eda2c0de-bf76-4644-873a-e2d99a3f2fb8",
+    "source": "verify-done",
+    "transactionId": "11804a3e-1792-4059-aea5-c3d31edcd0e5",
+    "transactionState": "DONE",
+    "verifiedAt": "2026-08-07T05:45:43Z"
+  },
+  "weightStillZero": false
 }
