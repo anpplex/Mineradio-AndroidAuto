@@ -1,7 +1,7 @@
 {
-  "EffectiveDone": false,
+  "EffectiveDone": true,
   "e4EvidenceClaimed": true,
-  "experimentalProgress": "80%",
+  "experimentalProgress": "100%",
   "failClosed": {
     "failures": [],
     "ok": true
@@ -11,7 +11,7 @@
     "scene": "76445281d40b3d1f7e4eb3e2172cc967966af3f322a57e60f1e328fee4dcefb7",
     "video": "6c4cac1ff865c85cd0efcc6c9abbe1d1e177a61722d95875d9d453130616b77b"
   },
-  "note": "staged before verify-done; Lyra-style install used for plugin",
+  "note": "verify-done after Lyra-style install + live e4 dual frames",
   "pluginPid": 6115,
   "samples": {
     "scene": {
@@ -27,8 +27,9 @@
   },
   "schema": "wp12-evidence-receipt/v1",
   "serial": "LD249H019625",
-  "state": "MINERADIO_EVIDENCE_STAGED",
+  "state": "DONE",
   "summarySha256": "e333dd3d4a85ccc4a80abef5a02ec072927552297001df2f319c515d573a40bf",
   "taskId": "WP-12E",
-  "weightStillZero": true
+  "verifiedAt": "2026-08-07T08:37:21Z",
+  "weightStillZero": false
 }
