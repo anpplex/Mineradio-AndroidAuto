@@ -1,0 +1,105 @@
+{
+  "schema": "wp12x-device-e2e3-sealed-summary/v1",
+  "role": "mineradio-wp12x-device-e2e3-sealed-summary",
+  "taskId": "WP-12D",
+  "mode": "device-e2e3",
+  "inventorySchemaVersion": "wp12d-device-e2e3/v1",
+  "inventorySealed": true,
+  "EffectiveDone": false,
+  "weightStillZero": true,
+  "packageName": "com.motif.wallpaperengine",
+  "packageIdentities": {
+    "mineradio": "com.mineradio.app",
+    "plugin": "com.motif.wallpaperengine",
+    "officialWe": "io.wallpaperengine.weclient",
+    "embeddedHost": "com.motif.wallpaperengine"
+  },
+  "officialNotEmbeddedHost": true,
+  "deviceEvidenceClaimed": true,
+  "deviceOnline": true,
+  "contractDryRun": false,
+  "targetUser": 12,
+  "observedUser": 12,
+  "serialPresent": true,
+  "pluginPid": 13055,
+  "surfacePresent": false,
+  "surface": {
+    "present": false,
+    "ownerPid": 13055
+  },
+  "realCaller": {
+    "package": "com.mineradio.app",
+    "uid": 10246,
+    "isShell": false,
+    "isMineradio": true,
+    "note": "hard-check path records Mineradio package identity when installed; Binder stamp is soft"
+  },
+  "apkPresent": {
+    "mineradio": true,
+    "officialWe": true,
+    "plugin": true
+  },
+  "signatures": {
+    "mineradio": "c7c8304d1518d259ba996ea4f46c8c2318b9f06926c44c845dd2a719f9d070ac",
+    "officialWe": "6982c82745444c5f2eef5a3d8c89ad807360bb5849a133548a6b25d18f4c4cb0",
+    "plugin": "4f6ca31d5c002c6d2f0d3468aa788607fcf73f83b022396c4732cdb487c59989"
+  },
+  "failClosed": {
+    "ok": true,
+    "failureCount": 0
+  },
+  "checks": {
+    "missingSerialRejected": true,
+    "officialAsEmbeddedHostRejected": true,
+    "offlineFailClosed": true,
+    "wrongUserRejected": true
+  },
+  "harness": {
+    "case": "device-positive-live",
+    "source": "scripts/collect-wp12-evidence.py --mode e2-e3 (live)"
+  },
+  "pluginMerges": [
+    {
+      "pr": 21,
+      "repo": "anpplex/plugin-WallpaperEngine",
+      "mergeSha": "cbb6a4cafad16ee1d1b6976ab7195709d56062c4",
+      "title": "EmbeddedRuntimeDeviceContract unit tests"
+    },
+    {
+      "pr": 22,
+      "repo": "anpplex/plugin-WallpaperEngine",
+      "mergeSha": "4c5ee4a37bc6cb62e78c50affdb05b5ab60cdc48",
+      "title": "device verify harness offline RED/GREEN"
+    },
+    {
+      "pr": 23,
+      "repo": "anpplex/plugin-WallpaperEngine",
+      "mergeSha": "3fffbda9ba989fbf68a330d2421535c8e221735e",
+      "title": "txn phases and e2-e3 collect/seal"
+    },
+    {
+      "pr": 24,
+      "repo": "anpplex/plugin-WallpaperEngine",
+      "mergeSha": "99c0db42a5b354c464a8e0343a92bb46a99843d4",
+      "title": "live e2-e3 device collect and seal path"
+    }
+  ],
+  "sourceSeal": {
+    "runLabel": "wp-12d-device-e2e3-live",
+    "runUuid": "de03e4c5-354c-48ce-a1ef-6f116bf60e3a",
+    "transactionId": "409cc283-21f0-4a7c-a1ff-3c6537a28d43",
+    "attemptNo": 1,
+    "inventorySchemaVersion": "wp12d-device-e2e3/v1",
+    "rawSha256": "5b0e9663fa8972b786cdbc49f0715b4bb0e93c3b933ff108060d33f517eb416c",
+    "sealedManifestSha256": "b1342982d61d86d0616bdc355128bb75b7675d20292d85039017c2c8599f04da",
+    "sealedFileSha256": "29426533200c370c513c21b7362f1e0d00273290911bfdc7257254451c095807"
+  },
+  "notes": [
+    "Desensitized device e2-e3 sealed summary for Mineradio allowlist.",
+    "Serial omitted; APK digests only; no APK/SO blobs.",
+    "inventorySealed=true is inventory completeness; EffectiveDone remains false until dual-repo verify-done.",
+    "Live hard checks: online serial, user 12, three packages installed, official not embedded host.",
+    "Soft fields: surface.present=false (EmbeddedPreview shell has no render surface yet); pluginPid from :we_runtime.",
+    "No force-push; experimental stays 65% until verify-done."
+  ]
+}
