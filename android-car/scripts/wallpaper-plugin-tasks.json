@@ -2006,6 +2006,135 @@
         "verify-embedded-adapter / test-embedded-adapter harness + negative/positive cases",
         "experimental progress +20% when verify-done DONE (not core weight; not forge EffectiveDone)"
       ]
+    },
+    {
+      "taskId": "WP-12D",
+      "dependsOn": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07",
+        "WP-08",
+        "WP-09",
+        "WP-10A",
+        "WP-10B",
+        "WP-10C",
+        "WP-11A",
+        "WP-11B",
+        "WP-11C",
+        "WP-12A",
+        "WP-12B",
+        "WP-12C"
+      ],
+      "requiredEffectiveDone": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07",
+        "WP-08",
+        "WP-09",
+        "WP-10A",
+        "WP-10B",
+        "WP-10C",
+        "WP-11A",
+        "WP-11B",
+        "WP-11C",
+        "WP-12A",
+        "WP-12B",
+        "WP-12C"
+      ],
+      "phaseCommands": {
+        "RED": {
+          "commandId": "WP-12D-RED",
+          "argv": [
+            "bash",
+            "scripts/verify-embedded-runtime-device.sh",
+            "--case",
+            "device-negative"
+          ]
+        },
+        "GREEN": {
+          "commandId": "WP-12D-GREEN",
+          "argv": [
+            "bash",
+            "scripts/verify-embedded-runtime-device.sh",
+            "--case",
+            "device-positive-offline"
+          ]
+        },
+        "REFACTOR": {
+          "commandId": "WP-12D-REFACTOR",
+          "argv": [
+            "true"
+          ]
+        },
+        "VERIFY": {
+          "commandId": "WP-12D-VERIFY",
+          "argv": [
+            "bash",
+            "scripts/tests/test-embedded-runtime-device.sh"
+          ]
+        }
+      },
+      "expectedExit": {
+        "RED": 1,
+        "GREEN": 0,
+        "REFACTOR": 0,
+        "VERIFY": 0
+      },
+      "failureSignaturePolicy": {
+        "RED": {
+          "required": true,
+          "match": "stderr"
+        }
+      },
+      "scopeCheck": {
+        "repo": "wallpaper-engine-plugin",
+        "exactFiles": [
+          "scripts/verify-embedded-runtime-device.sh",
+          "scripts/tests/test-embedded-runtime-device.sh",
+          "scripts/tests/fixtures/device-missing-serial.json",
+          "scripts/tests/fixtures/device-wrong-user.json",
+          "scripts/tests/fixtures/device-official-as-embedded-host.json",
+          "app/src/test/java/com/motif/wallpaperengine/plugin/EmbeddedRuntimeDeviceContractTest.kt"
+        ],
+        "product": "Wallpaper Engine",
+        "path": "experimental",
+        "experimental": true,
+        "worktrees": {
+          "plugin": "/Users/anpple/Codex/WallpaperEngine/.worktrees/mineradio-plugin-embedded-runtime",
+          "mineradio": "/Users/anpple/Codex/Mineradio/.worktrees/wallpaper-plugin-experimental"
+        }
+      },
+      "evidenceLevel": "E3",
+      "weight": 15,
+      "product": "Wallpaper Engine",
+      "path": "experimental",
+      "experimental": true,
+      "requiredEffectiveGate": false,
+      "deviceEvidence": true,
+      "inputs": [
+        "WP-12C EffectiveDone / EmbeddedEngineAdapter official-fallback isolation seal",
+        "WP-12B EffectiveDone / arm64 native dependency closure seal",
+        "WP-12A EffectiveDone / runtime inventory seal",
+        "WP-12 bootstrap receipt BOOTSTRAP_PUSHED",
+        "device optional: full device-positive requires SERIAL+APKs; offline GREEN validates contract fixtures only"
+      ],
+      "outputs": [
+        "verify-embedded-runtime-device harness + device-negative / device-positive-offline cases",
+        "EmbeddedRuntimeDeviceContractTest + device fail fixtures (missing-serial/wrong-user/official-as-embedded-host)",
+        "experimental progress +15% when verify-done DONE (not core weight; not forge EffectiveDone; device may be offline — catalog still registers capacity)"
+      ]
     }
   ]
 }
