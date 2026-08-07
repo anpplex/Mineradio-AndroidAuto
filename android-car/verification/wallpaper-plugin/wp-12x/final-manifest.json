@@ -1,0 +1,131 @@
+{
+  "schemaVersion": "wp12a-manifest-map/v1",
+  "role": "mineradio-wp12x-allowlist-final-manifest",
+  "taskId": "WP-12A",
+  "packageName": "io.wallpaperengine.weclient",
+  "versionCode": 4354,
+  "versionName": "2.8.8",
+  "apkSha256": "6982c82745444c5f2eef5a3d8c89ad807360bb5849a133548a6b25d18f4c4cb0",
+  "manifest": {
+    "packageName": "io.wallpaperengine.weclient",
+    "applicationProcess": null,
+    "minSdk": 29,
+    "targetSdk": 35,
+    "sha256": "9d6e7120b6067de33c8b1c3f41947d11fa6a5214c614fd6b98cc0e2a590b3e42"
+  },
+  "dex": {
+    "count": 2,
+    "entries": [
+      {
+        "name": "classes.dex",
+        "sha256": "cc49a6c00fc368d756d3bf4073dd084cda38a69a1e1bea20c0e766c4dce6879e",
+        "sizeBytes": 9669716
+      },
+      {
+        "name": "classes2.dex",
+        "sha256": "acd512b44dff2e8c119b03af564d96880ee0fc0bab69a1e43f1d2ee3116ca095",
+        "sizeBytes": 2275528
+      }
+    ]
+  },
+  "resources": {
+    "arscSha256": "db72b9296bd9f1752c1cffeb321dd3fe027b39415668222d34209c53a50ba079",
+    "entryCount": 5838,
+    "idIndexCount": 5838
+  },
+  "authoritiesCount": 2,
+  "authorities": [
+    {
+      "authority": "io.wallpaperengine.weclient",
+      "componentName": "androidx.core.content.FileProvider",
+      "exported": false,
+      "grantUriPermissions": true
+    },
+    {
+      "authority": "io.wallpaperengine.weclient.androidx-startup",
+      "componentName": "androidx.startup.InitializationProvider",
+      "exported": false,
+      "grantUriPermissions": false
+    }
+  ],
+  "permissions": {
+    "declaredCount": 1,
+    "usesCount": 15,
+    "signatureKnownCount": 68
+  },
+  "components": {
+    "activitiesCount": 8,
+    "servicesCount": 3,
+    "receiversCount": 1,
+    "providersCount": 2
+  },
+  "failClosed": {
+    "ok": true,
+    "failures": [],
+    "failureCount": 0
+  },
+  "inventorySealed": true,
+  "EffectiveDone": false,
+  "verify": {
+    "mode": "positive",
+    "exitCode": 0,
+    "status": "PASS"
+  },
+  "sourceSeal": {
+    "runLabel": "wp-12a-evidence-seal-official",
+    "runUuid": "548f4455-0588-4f99-8fe7-9aa6b27b6cd5",
+    "transactionId": "56a04719-ae66-4363-bb07-bbf820d354e0",
+    "attemptNo": 1,
+    "inventorySchemaVersion": "wp12a-manifest-map/v1",
+    "rawSha256": "d183c95d143e48a5420538ceafc65159a769717e9e439b69f7076ed8b48ad7ab",
+    "sealedManifestSha256": "33d6b54b609ff247288a42338ebce31656df3c4f724d19fbd106ee8fa13a05d8",
+    "sealedFileSha256": "092afdbafa9ac2621a6c8b2df6db7388f78e8a23d7a6640886227b78a92553ed",
+    "officialApkSha256": "6982c82745444c5f2eef5a3d8c89ad807360bb5849a133548a6b25d18f4c4cb0"
+  },
+  "pluginMerges": [
+    {
+      "pr": 8,
+      "repo": "anpplex/plugin-WallpaperEngine",
+      "mergeSha": "af0e757de91aa1cdd5d4ebd4cd21c8fa4533ba5d",
+      "title": "feat(wp12a): runtime inventory v1 + fixtures + local txn scaffold"
+    },
+    {
+      "pr": 9,
+      "repo": "anpplex/plugin-WallpaperEngine",
+      "mergeSha": "4255a9f16141818ba0beeab9bde1eddb0f862c31",
+      "title": "feat(wp12): record real RED/GREEN/REFACTOR/VERIFY phase fences"
+    },
+    {
+      "pr": 10,
+      "repo": "anpplex/plugin-WallpaperEngine",
+      "mergeSha": "9fa67bab2b257d5b6f1074dbab206b2113ba7a8f",
+      "title": "feat(wp12a): official v1 inventory collect→seal evidence DAG"
+    }
+  ],
+  "mineradioMerges": [
+    {
+      "pr": 40,
+      "repo": "anpplex/Mineradio-AndroidAuto",
+      "mergeSha": "d0a5c3de211542cf50ef9b678b575452541b8646",
+      "title": "feat(android-car): WP-12A experimental v1 import + bootstrap scaffold"
+    },
+    {
+      "pr": 41,
+      "repo": "anpplex/Mineradio-AndroidAuto",
+      "mergeSha": "4149235e51939670b75a12cd0f5dc839763e88d5",
+      "title": "feat(android-car): real dual-origin readback for WP-12 BOOTSTRAP_PUSHED"
+    },
+    {
+      "pr": 42,
+      "repo": "anpplex/Mineradio-AndroidAuto",
+      "mergeSha": "e5aa709b1b924453453e86892b5610501fc60b67",
+      "title": "feat(android-car): post-merge multi-PR identity for evaluate-wp12a"
+    }
+  ],
+  "notes": [
+    "Desensitized allowlist only: hashes + counts; no APK/DEX/SO blobs.",
+    "inventorySealed=true means official v1 inventory completeness only.",
+    "EffectiveDone must remain false until dual-repo verify-done.",
+    "Source: runs/wp-12a-inventory-official-v1 + runs/wp-12a-evidence-seal-official (desensitized)."
+  ]
+}
