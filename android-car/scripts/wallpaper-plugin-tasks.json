@@ -1880,6 +1880,132 @@
         "import/verify-native-libs scripts + native negative fixtures",
         "experimental progress +20% when verify-done DONE (not core weight; not forge EffectiveDone)"
       ]
+    },
+    {
+      "taskId": "WP-12C",
+      "dependsOn": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07",
+        "WP-08",
+        "WP-09",
+        "WP-10A",
+        "WP-10B",
+        "WP-10C",
+        "WP-11A",
+        "WP-11B",
+        "WP-11C",
+        "WP-12A",
+        "WP-12B"
+      ],
+      "requiredEffectiveDone": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07",
+        "WP-08",
+        "WP-09",
+        "WP-10A",
+        "WP-10B",
+        "WP-10C",
+        "WP-11A",
+        "WP-11B",
+        "WP-11C",
+        "WP-12A",
+        "WP-12B"
+      ],
+      "phaseCommands": {
+        "RED": {
+          "commandId": "WP-12C-RED",
+          "argv": [
+            "bash",
+            "scripts/verify-embedded-adapter.sh",
+            "--case",
+            "adapter-negative"
+          ]
+        },
+        "GREEN": {
+          "commandId": "WP-12C-GREEN",
+          "argv": [
+            "bash",
+            "scripts/verify-embedded-adapter.sh",
+            "--case",
+            "adapter-positive"
+          ]
+        },
+        "REFACTOR": {
+          "commandId": "WP-12C-REFACTOR",
+          "argv": [
+            "true"
+          ]
+        },
+        "VERIFY": {
+          "commandId": "WP-12C-VERIFY",
+          "argv": [
+            "bash",
+            "scripts/tests/test-embedded-adapter.sh"
+          ]
+        }
+      },
+      "expectedExit": {
+        "RED": 1,
+        "GREEN": 0,
+        "REFACTOR": 0,
+        "VERIFY": 0
+      },
+      "failureSignaturePolicy": {
+        "RED": {
+          "required": true,
+          "match": "stderr"
+        }
+      },
+      "scopeCheck": {
+        "repo": "wallpaper-engine-plugin",
+        "exactFiles": [
+          "app/src/main/java/com/motif/wallpaperengine/plugin/EngineAdapter.kt",
+          "app/src/main/java/com/motif/wallpaperengine/plugin/EmbeddedEngineAdapter.kt",
+          "app/src/main/java/com/motif/wallpaperengine/plugin/EmbeddedPreviewActivity.kt",
+          "app/src/test/java/com/motif/wallpaperengine/plugin/EmbeddedEngineAdapterTest.kt",
+          "app/src/test/java/com/motif/wallpaperengine/plugin/EmbeddedEngineAdapterNegativeTest.kt",
+          "scripts/verify-embedded-adapter.sh",
+          "scripts/tests/test-embedded-adapter.sh"
+        ],
+        "product": "Wallpaper Engine",
+        "path": "experimental",
+        "experimental": true,
+        "worktrees": {
+          "plugin": "/Users/anpple/Codex/WallpaperEngine/.worktrees/mineradio-plugin-embedded-runtime",
+          "mineradio": "/Users/anpple/Codex/Mineradio/.worktrees/wallpaper-plugin-experimental"
+        }
+      },
+      "evidenceLevel": "E2",
+      "weight": 20,
+      "product": "Wallpaper Engine",
+      "path": "experimental",
+      "experimental": true,
+      "requiredEffectiveGate": false,
+      "deviceEvidence": false,
+      "inputs": [
+        "WP-12B EffectiveDone / arm64 native dependency closure seal",
+        "WP-12A EffectiveDone / runtime inventory seal",
+        "WP-12 bootstrap receipt BOOTSTRAP_PUSHED"
+      ],
+      "outputs": [
+        "EmbeddedEngineAdapter + EmbeddedPreviewActivity official-fallback isolation seal",
+        "verify-embedded-adapter / test-embedded-adapter harness + negative/positive cases",
+        "experimental progress +20% when verify-done DONE (not core weight; not forge EffectiveDone)"
+      ]
     }
   ]
 }
