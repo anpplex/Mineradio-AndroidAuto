@@ -1,0 +1,50 @@
+{
+  "EffectiveDone": false,
+  "apkSha256": "6982c82745444c5f2eef5a3d8c89ad807360bb5849a133548a6b25d18f4c4cb0",
+  "bootstrap": {
+    "BOOTSTRAP_PUSHED": true,
+    "BOOTSTRAP_STATE": "BOOTSTRAP_PUSHED"
+  },
+  "counts": {
+    "abiCount": 2,
+    "abiCounts": {
+      "arm64-v8a": 1,
+      "armeabi-v7a": 1
+    },
+    "arm64LibCount": 1,
+    "jniLoadCount": 1,
+    "jniLoadLibs": [
+      "scenejni"
+    ],
+    "totalSo": 2
+  },
+  "evidenceStatus": "EVIDENCE_SEALED",
+  "failClosedOk": true,
+  "inventorySchemaVersion": "wp12b-native-libs/v1",
+  "inventorySealed": true,
+  "mineradioMerges": [
+    46,
+    47
+  ],
+  "mode": "native-closure",
+  "nativeSealedSummarySha256": "4e2244e9f4ee0b6c8d454cf2135344ed7bdd695915cdf9a41087a3c74ad5c1b4",
+  "notes": [
+    "WP-12B evidence staged (not EffectiveDone).",
+    "Experimental progress remains 25% until WP-12B verify-done → 45%.",
+    "WP-12A remains DONE / EffectiveDone.",
+    "Core remains 100% / E7.",
+    "No force-push."
+  ],
+  "packageName": "io.wallpaperengine.weclient",
+  "pluginMerges": [
+    12,
+    14,
+    15,
+    16
+  ],
+  "schema": "wp12x-mineradio-evidence-summary/v1",
+  "scope": "origin-pending",
+  "status": "MINERADIO_EVIDENCE_STAGED",
+  "taskId": "WP-12B",
+  "weightStillZero": true
+}
