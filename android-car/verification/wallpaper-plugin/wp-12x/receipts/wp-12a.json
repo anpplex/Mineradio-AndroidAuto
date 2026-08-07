@@ -3,12 +3,12 @@
   "taskId": "WP-12A",
   "transactionId": "56a04719-ae66-4363-bb07-bbf820d354e0",
   "runUuid": "548f4455-0588-4f99-8fe7-9aa6b27b6cd5",
-  "state": "MINERADIO_EVIDENCE_STAGED",
-  "EffectiveDone": false,
+  "state": "DONE",
+  "EffectiveDone": true,
   "inventorySealed": true,
-  "weightStillZero": true,
-  "dualClosureComplete": false,
-  "recordedAt": "2026-08-07T03:00:01Z",
+  "weightStillZero": false,
+  "dualClosureComplete": true,
+  "recordedAt": "2026-08-07T03:15:54Z",
   "apkSha256": "6982c82745444c5f2eef5a3d8c89ad807360bb5849a133548a6b25d18f4c4cb0",
   "packageName": "io.wallpaperengine.weclient",
   "inventorySchemaVersion": "wp12a-manifest-map/v1",
@@ -32,18 +32,37 @@
   },
   "originTips": {
     "source": "git-ls-remote",
-    "capturedAt": "2026-08-07T03:00:01Z",
+    "capturedAt": "2026-08-07T03:15:54Z",
     "plugin": {
       "remote": "origin",
       "ref": "refs/heads/main",
-      "sha": "9fa67bab2b257d5b6f1074dbab206b2113ba7a8f",
+      "sha": "b9bb3b2e75a6d6259ca02608b0744d688f739a74",
       "repo": "anpplex/plugin-WallpaperEngine"
     },
     "mineradio": {
       "remote": "origin",
       "ref": "refs/heads/huawei-android12-car",
-      "sha": "e5aa709b1b924453453e86892b5610501fc60b67",
+      "sha": "c7ec5f3a84418b3831cb8dd08d51158a5a8dd139",
       "repo": "anpplex/Mineradio-AndroidAuto"
+    }
+  },
+  "legs": {
+    "plugin": {
+      "commitSha": "b9bb3b2e75a6d6259ca02608b0744d688f739a74",
+      "mergeSha": "b9bb3b2e75a6d6259ca02608b0744d688f739a74",
+      "state": "PLUGIN_COMMITTED"
+    },
+    "mineradioEvidence": {
+      "evidenceSha": "22829e876c586072fc038fdc7e4f450610680427",
+      "commitSha": "22829e876c586072fc038fdc7e4f450610680427",
+      "manifestSha256": "b0a6dbd8d1b2f9c13b0e3bfb85689d91c0da35f2541d18c6a67125df13207ec0",
+      "state": "MINERADIO_EVIDENCE_PUSHED"
+    },
+    "closure": {
+      "commitSha": "c7ec5f3a84418b3831cb8dd08d51158a5a8dd139",
+      "pushedSha": "c7ec5f3a84418b3831cb8dd08d51158a5a8dd139",
+      "ref": "refs/heads/huawei-android12-car",
+      "state": "MINERADIO_CLOSURE_PUSHED"
     }
   },
   "pluginMerges": [
@@ -58,6 +77,10 @@
     {
       "pr": 10,
       "mergeSha": "9fa67bab2b257d5b6f1074dbab206b2113ba7a8f"
+    },
+    {
+      "pr": 11,
+      "mergeSha": "b9bb3b2e75a6d6259ca02608b0744d688f739a74"
     }
   ],
   "mineradioMerges": [
@@ -72,6 +95,14 @@
     {
       "pr": 42,
       "mergeSha": "e5aa709b1b924453453e86892b5610501fc60b67"
+    },
+    {
+      "pr": 43,
+      "mergeSha": "22829e876c586072fc038fdc7e4f450610680427"
+    },
+    {
+      "pr": 44,
+      "mergeSha": "c7ec5f3a84418b3831cb8dd08d51158a5a8dd139"
     }
   ],
   "allowlistPaths": [
@@ -79,10 +110,17 @@
     "android-car/verification/wallpaper-plugin/wp-12x/summary.json",
     "android-car/verification/wallpaper-plugin/wp-12x/receipts/wp-12a.json"
   ],
+  "verifyDone": {
+    "source": "verify-done",
+    "verifiedAt": "2026-08-07T03:15:54Z",
+    "note": "all hard gates passed; EffectiveDone derived by verify-done only",
+    "localPartial": false
+  },
+  "experimentalProgress": "25%",
   "notes": [
-    "Mineradio evidence allowlist staged from official sealed inventory (desensitized hashes only).",
-    "state=MINERADIO_EVIDENCE_STAGED: dual-repo verify-done / EffectiveDone not claimed.",
-    "Plugin-side txn may be EVIDENCE_SEALED locally; Mineradio allowlist does not promote EffectiveDone.",
-    "No force-push. No forged EffectiveDone / 25% progress."
+    "verify-done: DONE + EffectiveDone=true.",
+    "Plugin tip b9bb3b2; mineradio tip c7ec5f3; evidence 22829e8; final-manifest sha b0a6dbd8d1b2.",
+    "Experimental progress 25%; core 100%/E7 unchanged; WP-12B-E NOT_STARTED.",
+    "No force-push."
   ]
 }
