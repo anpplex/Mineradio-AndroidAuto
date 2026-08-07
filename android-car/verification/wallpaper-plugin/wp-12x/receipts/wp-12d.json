@@ -3,12 +3,12 @@
   "taskId": "WP-12D",
   "transactionId": "409cc283-21f0-4a7c-a1ff-3c6537a28d43",
   "runUuid": "de03e4c5-354c-48ce-a1ef-6f116bf60e3a",
-  "state": "MINERADIO_EVIDENCE_STAGED",
-  "EffectiveDone": false,
+  "state": "DONE",
+  "EffectiveDone": true,
   "inventorySealed": true,
-  "weightStillZero": true,
-  "dualClosureComplete": false,
-  "recordedAt": "2026-08-07T07:36:39Z",
+  "weightStillZero": false,
+  "dualClosureComplete": true,
+  "recordedAt": "2026-08-07T07:38:30Z",
   "mode": "device-e2e3",
   "inventorySchemaVersion": "wp12d-device-e2e3/v1",
   "packageName": "com.motif.wallpaperengine",
@@ -16,7 +16,7 @@
   "officialNotEmbeddedHost": true,
   "pluginPid": 13055,
   "surfacePresent": false,
-  "experimentalProgress": "65%",
+  "experimentalProgress": "80%",
   "desensitizedDeviceE2e3SealedSummary": {
     "path": "android-car/verification/wallpaper-plugin/wp-12x/device-e2e3-sealed-summary.json",
     "sha256": "b9d18e156cb2e4926d30d2b927a94a24c98a621d5fb627ec8b8467fd299d48cd"
@@ -41,15 +41,58 @@
     "BOOTSTRAP_STATE": "BOOTSTRAP_PUSHED",
     "source": "android-car/verification/wallpaper-plugin/runs/wp-12a-bootstrap-local.json"
   },
+  "originTips": {
+    "mineradio": {
+      "ref": "refs/heads/huawei-android12-car",
+      "repo": "anpplex/Mineradio-AndroidAuto",
+      "sha": "4ecbcb28259ee61a03a3a340e2c35578747f25e9"
+    },
+    "plugin": {
+      "ref": "refs/heads/main",
+      "repo": "anpplex/plugin-WallpaperEngine",
+      "sha": "99c0db42a5b354c464a8e0343a92bb46a99843d4"
+    }
+  },
+  "legs": {
+    "plugin": {
+      "commitSha": "99c0db42a5b354c464a8e0343a92bb46a99843d4",
+      "mergeSha": "99c0db42a5b354c464a8e0343a92bb46a99843d4",
+      "state": "PLUGIN_COMMITTED"
+    },
+    "mineradioEvidence": {
+      "commitSha": "4ecbcb28259ee61a03a3a340e2c35578747f25e9",
+      "manifestSha256": "b9d18e156cb2e4926d30d2b927a94a24c98a621d5fb627ec8b8467fd299d48cd",
+      "state": "MINERADIO_EVIDENCE_PUSHED"
+    },
+    "closure": {
+      "commitSha": "4ecbcb28259ee61a03a3a340e2c35578747f25e9",
+      "pushedSha": "4ecbcb28259ee61a03a3a340e2c35578747f25e9",
+      "ref": "refs/heads/huawei-android12-car",
+      "state": "MINERADIO_CLOSURE_PUSHED"
+    }
+  },
   "pluginMerges": [
     21,
     22,
     23,
     24
   ],
+  "mineradioMerges": [
+    54,
+    55
+  ],
+  "verifyDone": {
+    "source": "verify-done",
+    "verifiedAt": "2026-08-07T07:37:45Z",
+    "transactionState": "DONE",
+    "runUuid": "de03e4c5-354c-48ce-a1ef-6f116bf60e3a",
+    "transactionId": "409cc283-21f0-4a7c-a1ff-3c6537a28d43"
+  },
   "notes": [
-    "WP-12D Mineradio evidence staged (not EffectiveDone).",
-    "Live e2-e3 collect sealed inventorySealed=true; progress remains 65% until verify-done.",
-    "No force-push; no APK/SO blobs."
+    "verify-done all hard gates PASS; EffectiveDone=true derived by verify-done only.",
+    "WP-12D experimental weight 15% counts; experimental progress 65% → 80%.",
+    "Core remains 100% / E7; WP-12 does not fold into core completion.",
+    "Live e2-e3: three packages user 12, plugin :we_runtime PID, official not embedded host; surface soft present=false.",
+    "No force-push."
   ]
 }

@@ -133,7 +133,8 @@
     "adapter-contract: WP-12C desensitized EmbeddedEngineAdapter contract from harness (wp12c-adapter-contract/v1).",
     "WP-12C EffectiveDone remains false until dual-repo verify-done; experimental stays 45%.",
     "device-e2e3: WP-12D desensitized live e2-e3 inventory (wp12d-device-e2e3/v1).",
-    "WP-12D EffectiveDone remains false until dual-repo verify-done; experimental stays 65%."
+    "WP-12D EffectiveDone remains false until dual-repo verify-done; experimental stays 65%.",
+    "WP-12D verify-done EffectiveDone=true; experimental 80%."
   ],
   "native": {
     "schemaVersion": "wp12b-native-libs/v1",
@@ -195,9 +196,9 @@
   "deviceE2e3": {
     "schemaVersion": "wp12d-device-e2e3/v1",
     "taskId": "WP-12D",
-    "state": "MINERADIO_EVIDENCE_STAGED",
-    "EffectiveDone": false,
-    "weightStillZero": true,
+    "state": "DONE",
+    "EffectiveDone": true,
+    "weightStillZero": false,
     "packageName": "com.motif.wallpaperengine",
     "deviceEvidenceClaimed": true,
     "officialNotEmbeddedHost": true,
