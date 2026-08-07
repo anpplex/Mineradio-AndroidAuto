@@ -2135,6 +2135,139 @@
         "EmbeddedRuntimeDeviceContractTest + device fail fixtures (missing-serial/wrong-user/official-as-embedded-host)",
         "experimental progress +15% when verify-done DONE (not core weight; not forge EffectiveDone; device may be offline — catalog still registers capacity)"
       ]
+    },
+    {
+      "taskId": "WP-12E",
+      "dependsOn": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07",
+        "WP-08",
+        "WP-09",
+        "WP-10A",
+        "WP-10B",
+        "WP-10C",
+        "WP-11A",
+        "WP-11B",
+        "WP-11C",
+        "WP-12A",
+        "WP-12B",
+        "WP-12C",
+        "WP-12D"
+      ],
+      "requiredEffectiveDone": [
+        "WP-INFRA",
+        "WP-00",
+        "WP-01",
+        "WP-02",
+        "WP-03",
+        "WP-04",
+        "WP-05",
+        "WP-06",
+        "WP-07",
+        "WP-08",
+        "WP-09",
+        "WP-10A",
+        "WP-10B",
+        "WP-10C",
+        "WP-11A",
+        "WP-11B",
+        "WP-11C",
+        "WP-12A",
+        "WP-12B",
+        "WP-12C",
+        "WP-12D"
+      ],
+      "phaseCommands": {
+        "RED": {
+          "commandId": "WP-12E-RED",
+          "argv": [
+            "bash",
+            "scripts/verify-embedded-scene-video.sh",
+            "--case",
+            "frame-negative"
+          ]
+        },
+        "GREEN": {
+          "commandId": "WP-12E-GREEN",
+          "argv": [
+            "bash",
+            "scripts/verify-embedded-scene-video.sh",
+            "--case",
+            "frame-positive-offline"
+          ]
+        },
+        "REFACTOR": {
+          "commandId": "WP-12E-REFACTOR",
+          "argv": [
+            "true"
+          ]
+        },
+        "VERIFY": {
+          "commandId": "WP-12E-VERIFY",
+          "argv": [
+            "bash",
+            "scripts/tests/test-embedded-scene-video.sh"
+          ]
+        }
+      },
+      "expectedExit": {
+        "RED": 1,
+        "GREEN": 0,
+        "REFACTOR": 0,
+        "VERIFY": 0
+      },
+      "failureSignaturePolicy": {
+        "RED": {
+          "required": true,
+          "match": "stderr"
+        }
+      },
+      "scopeCheck": {
+        "repo": "wallpaper-engine-plugin",
+        "exactFiles": [
+          "scripts/verify-embedded-scene-video.sh",
+          "scripts/tests/test-embedded-scene-video.sh",
+          "scripts/tests/fixtures/frame-black.json",
+          "scripts/tests/fixtures/frame-single-sample.json",
+          "scripts/tests/fixtures/frame-e4-pass-offline.json",
+          "app/src/test/java/com/motif/wallpaperengine/plugin/EmbeddedSceneVideoTest.kt",
+          "scripts/analyze-frame-nonblack.py"
+        ],
+        "product": "Wallpaper Engine",
+        "path": "experimental",
+        "experimental": true,
+        "worktrees": {
+          "plugin": "/Users/anpple/Codex/WallpaperEngine/.worktrees/mineradio-plugin-embedded-runtime",
+          "mineradio": "/Users/anpple/Codex/Mineradio/.worktrees/wallpaper-plugin-experimental"
+        }
+      },
+      "evidenceLevel": "E4",
+      "weight": 20,
+      "product": "Wallpaper Engine",
+      "path": "experimental",
+      "experimental": true,
+      "requiredEffectiveGate": false,
+      "deviceEvidence": true,
+      "inputs": [
+        "WP-12D EffectiveDone / experimental APK E2/E3 device runtime seal",
+        "WP-12C EffectiveDone / EmbeddedEngineAdapter official-fallback isolation seal",
+        "WP-12B EffectiveDone / arm64 native dependency closure seal",
+        "WP-12A EffectiveDone / runtime inventory seal",
+        "WP-12 bootstrap receipt BOOTSTRAP_PUSHED",
+        "device optional: full Scene+Video E4 requires SERIAL+APKs+frames; offline GREEN validates frame contract fixtures only"
+      ],
+      "outputs": [
+        "verify-embedded-scene-video harness + frame-negative / frame-positive-offline cases",
+        "EmbeddedSceneVideoTest + frame fixtures (black/single-sample/e4-pass-offline) + analyze-frame-nonblack",
+        "experimental progress +20% when verify-done DONE (not core weight; not forge EffectiveDone; device may be offline — catalog still registers capacity)"
+      ]
     }
   ]
 }
