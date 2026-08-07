@@ -1,11 +1,11 @@
 {
   "schema": "wp12x-mineradio-evidence-summary/v1",
   "taskId": "WP-12D",
-  "status": "MINERADIO_EVIDENCE_STAGED",
+  "status": "DONE",
   "evidenceStatus": "EVIDENCE_SEALED",
   "scope": "origin",
-  "weightStillZero": true,
-  "EffectiveDone": false,
+  "weightStillZero": false,
+  "EffectiveDone": true,
   "inventorySealed": true,
   "failClosedOk": true,
   "packageName": "com.motif.wallpaperengine",
@@ -24,14 +24,29 @@
     23,
     24
   ],
+  "mineradioMerges": [
+    54,
+    55
+  ],
   "legs": {
     "pluginTip": "99c0db42a5b354c464a8e0343a92bb46a99843d4",
+    "mineradioEvidenceSha": "4ecbcb28259ee61a03a3a340e2c35578747f25e9",
+    "mineradioTip": "4ecbcb28259ee61a03a3a340e2c35578747f25e9",
     "deviceE2e3SealedSummarySha256": "b9d18e156cb2e4926d30d2b927a94a24c98a621d5fb627ec8b8467fd299d48cd"
   },
-  "experimentalProgress": "65%",
+  "verifyDone": {
+    "source": "verify-done",
+    "verifiedAt": "2026-08-07T07:37:45Z",
+    "transactionState": "DONE",
+    "runUuid": "de03e4c5-354c-48ce-a1ef-6f116bf60e3a",
+    "transactionId": "409cc283-21f0-4a7c-a1ff-3c6537a28d43"
+  },
+  "experimentalProgress": "80%",
   "notes": [
-    "WP-12D device e2-e3 sealed inventory staged; EffectiveDone=false until dual-repo verify-done.",
-    "Experimental remains 65% (no +15% claim at staging).",
-    "Live hard checks PASS; surface soft field present=false."
+    "verify-done all hard gates PASS; EffectiveDone=true derived by verify-done only.",
+    "WP-12D experimental weight 15% counts; experimental 65% → 80%.",
+    "WP-12E remains NOT_STARTED.",
+    "Core remains 100% / E7.",
+    "No force-push."
   ]
 }

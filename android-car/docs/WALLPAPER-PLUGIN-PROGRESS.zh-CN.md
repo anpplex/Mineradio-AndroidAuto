@@ -88,9 +88,9 @@ WP-12 不计入上表。实验步骤使用独立百分比，只有 transaction=`
 | WP-12A | runtime 清单与 DEX/resources/Manifest/JNI 风险审计 | 25% | DONE | 产出脱敏 schema/哈希清单；阻塞项 fail-closed；verify-done → EffectiveDone=true；sealed PASS + dual origin readback | 548f4455-0588-4f99-8fe7-9aa6b27b6cd5 | evidence:22829e876c586072fc038fdc7e4f450610680427 | b9bb3b2e75a6d6259ca02608b0744d688f739a74 | b0a6dbd8d1b2f9c13b0e3bfb85689d91c0da35f2541d18c6a67125df13207ec0 | 交接 WP-12B；mineradio tip c7ec5f3a84418b3831cb8dd08d51158a5a8dd139 |
 | WP-12B | arm64 native 依赖闭包 | 20% | DONE | `.so` 非空、分析工具成功、依赖闭包完整；native-closure seal + dual origin readback；verify-done → EffectiveDone=true | eda2c0de-bf76-4644-873a-e2d99a3f2fb8 | evidence:81f9aac4d3fef7c20d6b1782286302d40032a90e | 9507c01e9bd853a0ce4e71a4f62b9fcbfd4e62bf | 4e2244e9f4ee0b6c8d454cf2135344ed7bdd695915cdf9a41087a3c74ad5c1b4 | 交接 WP-12C；mineradio tip 81f9aac4d3fef7c20d6b1782286302d40032a90e |
 | WP-12C | `EmbeddedEngineAdapter` 与官方包回退 | 20% | DONE | 协议 1 不变；失败返回固定错误；回退可验证；adapter-contract seal + dual origin readback；verify-done → EffectiveDone=true | 5630d9eb-48d7-4ccc-a807-e215031a193a | evidence:ffe9c482a3e21388e7f4fc51e3ae88bb9b255a4a | f9e0eff15898ba02b061924857507f23312c90b6 | d90c7c87aa0975314cbca9603cbfc11a6fbc63678c934d87e5b57dd4cec77ade | 交接 WP-12D；mineradio tip ffe9c482a3e21388e7f4fc51e3ae88bb9b255a4a |
-| WP-12D | 实验 APK E2/E3 | 15% | NOT_STARTED | 内嵌 adapter 明确启用，包/进程/调用链成立 | — | — | — | — | 等待 WP-12C 与设备 |
+| WP-12D | 实验 APK E2/E3 | 15% | DONE | 内嵌 adapter 明确启用，包/进程/调用链成立；live e2-e3 seal + dual origin readback；verify-done → EffectiveDone=true | de03e4c5-354c-48ce-a1ef-6f116bf60e3a | evidence:4ecbcb28259ee61a03a3a340e2c35578747f25e9 | 99c0db42a5b354c464a8e0343a92bb46a99843d4 | b9d18e156cb2e4926d30d2b927a94a24c98a621d5fb627ec8b8467fd299d48cd | 交接 WP-12E；mineradio tip 4ecbcb28259ee61a03a3a340e2c35578747f25e9 |
 | WP-12E | 内嵌 runtime 解析 `.mpkg` 并出真实画面 | 20% | NOT_STARTED | 不依赖官方包回退，Scene/Video 真实非黑画面 | — | — | — | — | 等待 WP-12D |
-| — | **Experimental progress** | **100%** | — | EffectiveDone 权重求和 | — | — | — | — | 当前 `65%` |
+| — | **Experimental progress** | **100%** | — | EffectiveDone 权重求和 | — | — | — | — | 当前 `80%` |
 
 ## 5. Readiness 与连续证据规则
 

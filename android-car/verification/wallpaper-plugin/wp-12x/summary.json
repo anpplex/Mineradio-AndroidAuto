@@ -48,7 +48,7 @@
     "runUuid": "548f4455-0588-4f99-8fe7-9aa6b27b6cd5",
     "transactionId": "56a04719-ae66-4363-bb07-bbf820d354e0"
   },
-  "experimentalProgress": "25%",
+  "experimentalProgress": "80%",
   "notes": [
     "verify-done all hard gates PASS; EffectiveDone=true derived by verify-done only.",
     "WP-12A experimental weight 25% counts; WP-12B-E remain NOT_STARTED.",
@@ -62,7 +62,9 @@
     "WP-12C EffectiveDone=false; weightStillZero=true; failClosedOk=true.",
     "WP-12D device e2-e3 staged on allowlist (desensitized); state MINERADIO_EVIDENCE_STAGED.",
     "Experimental still 65% until WP-12D DONE/verify-done; NO 15% WP-12D progress claim.",
-    "WP-12D EffectiveDone=false; weightStillZero=true; failClosedOk=true."
+    "WP-12D EffectiveDone=false; weightStillZero=true; failClosedOk=true.",
+    "WP-12D verify-done EffectiveDone=true; experimental progress 65% → 80%.",
+    "WP-12E remains NOT_STARTED; core 100%/E7 unchanged."
   ],
   "native": {
     "schemaVersion": "wp12b-native-libs/v1",
@@ -108,9 +110,9 @@
   "deviceE2e3": {
     "schemaVersion": "wp12d-device-e2e3/v1",
     "taskId": "WP-12D",
-    "state": "MINERADIO_EVIDENCE_STAGED",
-    "EffectiveDone": false,
-    "weightStillZero": true,
+    "state": "DONE",
+    "EffectiveDone": true,
+    "weightStillZero": false,
     "packageName": "com.motif.wallpaperengine",
     "deviceEvidenceClaimed": true,
     "officialNotEmbeddedHost": true,
