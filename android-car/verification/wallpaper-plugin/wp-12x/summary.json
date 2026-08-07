@@ -1,11 +1,11 @@
 {
   "schema": "wp12x-mineradio-evidence-summary/v1",
   "taskId": "WP-12A",
-  "status": "VERIFIED_LOCAL",
+  "status": "DONE",
   "evidenceStatus": "EVIDENCE_SEALED",
-  "scope": "local",
-  "weightStillZero": true,
-  "EffectiveDone": false,
+  "scope": "origin",
+  "weightStillZero": false,
+  "EffectiveDone": true,
   "inventorySealed": true,
   "failClosedOk": true,
   "packageName": "io.wallpaperengine.weclient",
@@ -22,11 +22,26 @@
     "BOOTSTRAP_PUSHED": true,
     "BOOTSTRAP_STATE": "BOOTSTRAP_PUSHED"
   },
-  "pluginMerges": [8, 9, 10],
-  "mineradioMerges": [40, 41, 42],
+  "pluginMerges": [8, 9, 10, 11],
+  "mineradioMerges": [40, 41, 42, 43, 44],
+  "legs": {
+    "pluginTip": "b9bb3b2e75a6d6259ca02608b0744d688f739a74",
+    "mineradioEvidenceSha": "22829e876c586072fc038fdc7e4f450610680427",
+    "mineradioTip": "c7ec5f3a84418b3831cb8dd08d51158a5a8dd139",
+    "finalManifestSha256": "b0a6dbd8d1b2f9c13b0e3bfb85689d91c0da35f2541d18c6a67125df13207ec0"
+  },
+  "verifyDone": {
+    "source": "verify-done",
+    "verifiedAt": "2026-08-07T03:15:54Z",
+    "transactionState": "DONE",
+    "runUuid": "548f4455-0588-4f99-8fe7-9aa6b27b6cd5",
+    "transactionId": "56a04719-ae66-4363-bb07-bbf820d354e0"
+  },
+  "experimentalProgress": "25%",
   "notes": [
-    "Mineradio-side allowlist staging of official sealed inventory (desensitized).",
-    "Local VERIFIED_LOCAL / EVIDENCE_SEALED only; experimental weight remains zero until verify-done.",
-    "No EffectiveDone claim. No force-push."
+    "verify-done all hard gates PASS; EffectiveDone=true derived by verify-done only.",
+    "WP-12A experimental weight 25% counts; WP-12B-E remain NOT_STARTED.",
+    "Core remains 100% / E7; WP-12 does not fold into core completion.",
+    "No force-push."
   ]
 }
