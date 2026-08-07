@@ -1804,13 +1804,19 @@
         "RED": {
           "commandId": "WP-12B-RED",
           "argv": [
-            "true"
+            "bash",
+            "scripts/verify-native-libs.sh",
+            "--inventory",
+            "scripts/tests/fixtures/native-missing-needed.json",
+            "--mode",
+            "negative-missing-needed"
           ]
         },
         "GREEN": {
           "commandId": "WP-12B-GREEN",
           "argv": [
-            "true"
+            "bash",
+            "scripts/tests/test-native-libs.sh"
           ]
         },
         "REFACTOR": {
@@ -1822,7 +1828,8 @@
         "VERIFY": {
           "commandId": "WP-12B-VERIFY",
           "argv": [
-            "true"
+            "bash",
+            "scripts/tests/test-native-libs.sh"
           ]
         }
       },
