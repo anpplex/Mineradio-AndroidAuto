@@ -9,11 +9,11 @@
 **最高连续证据：** `E7`
 **Vehicle readiness：** `READY`（E7 通过；无未关闭 P0/P1 记录）
 **Release readiness：** `CONDITIONAL`（E7 技术通过；发布物/许可/回滚审计仍独立）
-**Experimental progress：** `80%`
+**Experimental progress：** `100%`
 
 > 版权和再分发许可不作为沙盒技术开发门禁。生产发布状态单独标记，不与核心技术完成度混算。WP-12 是独立实验，不进入核心实现 100%、Vehicle readiness 或 Release readiness。
 >
-> **状态说明：** 核心轨道 WP-00～WP-11C 事务均已 `EffectiveDone=true`（见 verification transactions）。本文件 progress-closure 将 WP-11C 行与核心合计同步为权威进度。WP-12A / WP-12B / WP-12C / WP-12D 均在 `verify-done` 后 `DONE` / EffectiveDone=true，实验进度 80%（25%+20%+20%+15%）；WP-12E 仍为独立未开始实验。
+> **状态说明：** 核心轨道 WP-00～WP-11C 事务均已 `EffectiveDone=true`（见 verification transactions）。本文件 progress-closure 将 WP-11C 行与核心合计同步为权威进度。WP-12A / WP-12B / WP-12C / WP-12D 均在 `verify-done` 后 `DONE` / EffectiveDone=true，实验进度 100%（25%+20%+20%+15%+20%）；WP-12A–E 均 EffectiveDone。
 
 ## 1. 状态枚举
 
@@ -89,8 +89,8 @@ WP-12 不计入上表。实验步骤使用独立百分比，只有 transaction=`
 | WP-12B | arm64 native 依赖闭包 | 20% | DONE | `.so` 非空、分析工具成功、依赖闭包完整；native-closure seal + dual origin readback；verify-done → EffectiveDone=true | eda2c0de-bf76-4644-873a-e2d99a3f2fb8 | evidence:81f9aac4d3fef7c20d6b1782286302d40032a90e | 9507c01e9bd853a0ce4e71a4f62b9fcbfd4e62bf | 4e2244e9f4ee0b6c8d454cf2135344ed7bdd695915cdf9a41087a3c74ad5c1b4 | 交接 WP-12C；mineradio tip 81f9aac4d3fef7c20d6b1782286302d40032a90e |
 | WP-12C | `EmbeddedEngineAdapter` 与官方包回退 | 20% | DONE | 协议 1 不变；失败返回固定错误；回退可验证；adapter-contract seal + dual origin readback；verify-done → EffectiveDone=true | 5630d9eb-48d7-4ccc-a807-e215031a193a | evidence:ffe9c482a3e21388e7f4fc51e3ae88bb9b255a4a | f9e0eff15898ba02b061924857507f23312c90b6 | d90c7c87aa0975314cbca9603cbfc11a6fbc63678c934d87e5b57dd4cec77ade | 交接 WP-12D；mineradio tip ffe9c482a3e21388e7f4fc51e3ae88bb9b255a4a |
 | WP-12D | 实验 APK E2/E3 | 15% | DONE | 内嵌 adapter 明确启用，包/进程/调用链成立；live e2-e3 seal + dual origin readback；verify-done → EffectiveDone=true | de03e4c5-354c-48ce-a1ef-6f116bf60e3a | evidence:4ecbcb28259ee61a03a3a340e2c35578747f25e9 | 99c0db42a5b354c464a8e0343a92bb46a99843d4 | b9d18e156cb2e4926d30d2b927a94a24c98a621d5fb627ec8b8467fd299d48cd | 交接 WP-12E；mineradio tip 4ecbcb28259ee61a03a3a340e2c35578747f25e9 |
-| WP-12E | 内嵌 runtime 解析 `.mpkg` 并出真实画面 | 20% | NOT_STARTED | 不依赖官方包回退，Scene/Video 真实非黑画面 | — | — | — | — | 等待 WP-12D |
-| — | **Experimental progress** | **100%** | — | EffectiveDone 权重求和 | — | — | — | — | 当前 `80%` |
+| WP-12E | 内嵌 runtime Scene+Video 真实画面 | 20% | DONE | 同一 attempt Scene+Video E4 非黑双帧 ≥3s；live collect after Lyra-style install；verify-done → EffectiveDone=true | da312b37-5553-4141-9b3f-a8415e9549cd | evidence:51fd4278b48b7ea5607e5b9aa35717d65d541a4f | 8a073f1b9ade03c557db9668c04031ea157368d8 | e333dd3d4a85ccc4a80abef5a02ec072927552297001df2f319c515d573a40bf | 实验池已满 100% |
+| — | **Experimental progress** | **100%** | — | EffectiveDone 权重求和 | — | — | — | — | 当前 `100%` |
 
 ## 5. Readiness 与连续证据规则
 
