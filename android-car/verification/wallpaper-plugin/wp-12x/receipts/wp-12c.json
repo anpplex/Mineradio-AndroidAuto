@@ -1,0 +1,55 @@
+{
+  "schema": "wp12x-mineradio-evidence-receipt/v1",
+  "taskId": "WP-12C",
+  "transactionId": "1e0a51a2-1903-4678-a73a-ef97269ced09",
+  "runUuid": "5630d9eb-48d7-4ccc-a807-e215031a193a",
+  "state": "MINERADIO_EVIDENCE_STAGED",
+  "EffectiveDone": false,
+  "inventorySealed": true,
+  "weightStillZero": true,
+  "dualClosureComplete": false,
+  "recordedAt": "2026-08-07T06:44:29Z",
+  "mode": "adapter-contract",
+  "inventorySchemaVersion": "wp12c-adapter-contract/v1",
+  "packageName": "com.motif.wallpaperengine",
+  "officialEnginePackage": "io.wallpaperengine.weclient",
+  "desensitizedAdapterContractSealedSummary": {
+    "path": "android-car/verification/wallpaper-plugin/wp-12x/adapter-contract-sealed-summary.json",
+    "sha256": "d90c7c87aa0975314cbca9603cbfc11a6fbc63678c934d87e5b57dd4cec77ade"
+  },
+  "sourceSealHashes": {
+    "rawSha256": "33b7afca60bdcb04e020e1e8991eb14b0a51b7461341dfaa4e5660d57b3cb1ea",
+    "sealedFileSha256": "45f03f2ce1539eea2e2507e8ce81a1d76dba01b4aba46b16c7a415b9c73bb43a",
+    "sealedManifestSha256": "3cc89b2b6d513baf49917a9f275c9c9e09e388ffd7f04251b2db91004666355c"
+  },
+  "failClosed": {
+    "ok": true,
+    "failureCount": 0
+  },
+  "checks": {
+    "unknownMethodRejected": true,
+    "appendedArgsRejected": true,
+    "fallbackMasqueradeRejected": true,
+    "defaultUsesOfficial": true
+  },
+  "embeddedRuntimeDefault": false,
+  "bootstrap": {
+    "BOOTSTRAP_PUSHED": true,
+    "BOOTSTRAP_STATE": "BOOTSTRAP_PUSHED",
+    "source": "android-car/verification/wallpaper-plugin/runs/wp-12a-bootstrap-local.json"
+  },
+  "pluginMerges": [
+    17,
+    18,
+    20
+  ],
+  "mineradioMerges": [
+    51
+  ],
+  "notes": [
+    "Mineradio-side WP-12C adapter-contract evidence staging only.",
+    "EffectiveDone=false until dual-repo verify-done.",
+    "weightStillZero=true; experimental progress % not advanced here (stays 45%).",
+    "No force-push; no APK/SO blobs."
+  ]
+}
