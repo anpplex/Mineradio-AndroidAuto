@@ -9,11 +9,11 @@
 **最高连续证据：** `E7`
 **Vehicle readiness：** `READY`（E7 通过；无未关闭 P0/P1 记录）
 **Release readiness：** `CONDITIONAL`（E7 技术通过；发布物/许可/回滚审计仍独立）
-**Experimental progress：** `65%`
+**Experimental progress：** `80%`
 
 > 版权和再分发许可不作为沙盒技术开发门禁。生产发布状态单独标记，不与核心技术完成度混算。WP-12 是独立实验，不进入核心实现 100%、Vehicle readiness 或 Release readiness。
 >
-> **状态说明：** 核心轨道 WP-00～WP-11C 事务均已 `EffectiveDone=true`（见 verification transactions）。本文件 progress-closure 将 WP-11C 行与核心合计同步为权威进度。WP-12A / WP-12B / WP-12C 均在 `verify-done` 后 `DONE` / EffectiveDone=true，实验进度 65%（25%+20%+20%）；WP-12D–E 仍为独立未开始实验。
+> **状态说明：** 核心轨道 WP-00～WP-11C 事务均已 `EffectiveDone=true`（见 verification transactions）。本文件 progress-closure 将 WP-11C 行与核心合计同步为权威进度。WP-12A / WP-12B / WP-12C / WP-12D 均在 `verify-done` 后 `DONE` / EffectiveDone=true，实验进度 80%（25%+20%+20%+15%）；WP-12E 仍为独立未开始实验。
 
 ## 1. 状态枚举
 
@@ -163,7 +163,7 @@ READY：核心发布候选的 E7、发布物、签名、来源、许可、升级
 | 故障矩阵与 10 秒恢复 | PASS | 2026-08-03 | wp-11a-green-20260803T125402Z | 无 |
 | 30 分钟量化长稳 / E6 | PASS | 2026-08-03 | wp-11b-e6-green-20260803T135324Z | 无 |
 | 重启/ACC/2 小时 / E7 | PASS | 2026-08-06 | wp-11c-e7-green-20260806T140514Z | 无 |
-| 内嵌 runtime 实验 | WP-12A+B+C DONE / EffectiveDone=true；实验进度 65%；WP-12D–E 未开始 | 2026-08-07 | wp-12x + WP-12C verify-done txn `1e0a51a2-1903-4678-a73a-ef97269ced09` | WP-12D |
+| 内嵌 runtime 实验 | WP-12A+B+C+D DONE / EffectiveDone=true；实验进度 80%；WP-12E 未开始 | 2026-08-07 | wp-12x + WP-12D verify-done txn `409cc283-21f0-4a7c-a1ff-3c6537a28d43` | WP-12E |
 
 ## 7. 每循环记录
 
@@ -315,8 +315,8 @@ Release readiness：CONDITIONAL（不变）
 Experimental progress：45%（与 WP-12B 合计；WP-12A 权重仍 25%）
 WP-12B：DONE / EffectiveDone=true
 WP-12C：DONE / EffectiveDone=true
-WP-12D–E：NOT_STARTED
-下一循环：WP-12D 实验 APK E2/E3
+WP-12E：NOT_STARTED
+下一循环：WP-12E 内嵌 runtime Scene/Video 真实画面
 ```
 
 ### WP-12B
@@ -341,8 +341,8 @@ Vehicle readiness：READY（不变）
 Release readiness：CONDITIONAL（不变）
 Experimental progress：45%（25% WP-12A + 20% WP-12B）
 WP-12C：DONE / EffectiveDone=true
-WP-12D–E：NOT_STARTED
-下一循环：WP-12D 实验 APK E2/E3
+WP-12E：NOT_STARTED
+下一循环：WP-12E 内嵌 runtime Scene/Video 真实画面
 ```
 
 
@@ -365,7 +365,7 @@ Plugin SHA：`f9e0eff15898ba02b061924857507f23312c90b6`
 
 Evidence sealed-summary SHA-256：`d90c7c87aa0975314cbca9603cbfc11a6fbc63678c934d87e5b57dd4cec77ade`
 
-Experimental progress：65%（25% WP-12A + 20% WP-12B + 20% WP-12C）
+Experimental progress：80%（25% WP-12A + 20% WP-12B + 20% WP-12C + 15% WP-12D）
 
 WP-12D–E：NOT_STARTED
 
